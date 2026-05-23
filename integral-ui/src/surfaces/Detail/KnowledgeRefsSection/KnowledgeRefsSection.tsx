@@ -6,56 +6,69 @@ export interface KnowledgeRefsSectionProps {
   intent: Intent
 }
 
+interface KnowledgeGroup {
+  scope: KnowledgeRef['scope']
+  role: KnowledgeRef['role']
+  count: number
+  /** Inherited groups carry the parent IntentId; only set for scope='inherited'. */
+  inheritedFrom?: string
+}
+
+const SCOPE_ORDER: KnowledgeRef['scope'][] = [
+  'global',
+  'project',
+  'campaign',
+  'iteration',
+  'inherited',
+]
+
 /**
- * KnowledgeRefsSection — lists `KnowledgeRef`s grouped by scope.
+ * KnowledgeRefsSection — summarizes attached `KnowledgeRef`s as count rows
+ * grouped by (scope, role).
  *
- * KnowledgeRef is a discriminated union over `scope`; the `inherited` arm
- * carries `inherited_from`. Surfacing the inheritance source explicitly
- * makes provenance chains legible at the Detail surface — a load-bearing
- * affordance when adapters start hydrating campaign-scoped knowledge into
- * descendants.
+ * v0.1 design: opaque URIs are NOT rendered. The schema can't carry the
+ * dereferenced content yet (gaps.md G-N-2), so a list of unclickable URIs
+ * would be a tease. Counts give the user the "what kinds of knowledge
+ * attach here" shape without overpromising. Full clickability returns in
+ * v0.2 once principles become first-class typed objects.
+ *
+ * Inherited refs still surface their `inherited_from` source — that one
+ * bit (where the inheritance came from) is meaningful even without
+ * dereferenceable content.
  */
 export function KnowledgeRefsSection({ intent }: KnowledgeRefsSectionProps) {
   if (intent.knowledge_refs.length === 0) return null
 
-  // Stable scope order: from broadest (global) to narrowest, then inherited.
-  const order: KnowledgeRef['scope'][] = [
-    'global',
-    'project',
-    'campaign',
-    'iteration',
-    'inherited',
-  ]
-  const sorted = [...intent.knowledge_refs].sort(
-    (a, b) => order.indexOf(a.scope) - order.indexOf(b.scope)
-  )
+  const groups = groupKnowledgeRefs(intent.knowledge_refs)
 
   return (
     <section className={styles.section}>
-      <SectionLabel hint={`${intent.knowledge_refs.length}`}>knowledge</SectionLabel>
+      <SectionLabel hint={`${intent.knowledge_refs.length}`}>
+        knowledge
+      </SectionLabel>
       <ul className={styles.list}>
-        {sorted.map((ref, i) => (
+        {groups.map((g) => (
           <li
-            key={`${ref.uri}-${i}`}
+            key={`${g.scope}:${g.role}:${g.inheritedFrom ?? ''}`}
             className={styles.row}
-            data-knowledge-ref="true"
-            data-scope={ref.scope}
-            data-role={ref.role}
+            data-knowledge-group="true"
+            data-scope={g.scope}
+            data-role={g.role}
           >
             <span className={styles.scopeChips}>
               <Chip mono tone="mute">
-                {ref.scope}
+                {g.scope}
               </Chip>
               <Chip mono tone="mute">
-                {ref.role}
+                {g.role}
               </Chip>
             </span>
-            <span className={styles.uri} title={ref.uri}>
-              {ref.uri}
+            <span className={styles.count}>
+              {g.count} {g.count === 1 ? 'ref' : 'refs'}
             </span>
-            {ref.scope === 'inherited' && (
+            {g.scope === 'inherited' && g.inheritedFrom && (
               <span className={styles.inheritedFrom}>
-                inherited from <code>{ref.inherited_from}</code>
+                inherited from <code>{g.inheritedFrom}</code>
               </span>
             )}
           </li>
@@ -63,4 +76,32 @@ export function KnowledgeRefsSection({ intent }: KnowledgeRefsSectionProps) {
       </ul>
     </section>
   )
+}
+
+function groupKnowledgeRefs(refs: KnowledgeRef[]): KnowledgeGroup[] {
+  // Inherited refs split by their `inherited_from` (each parent gets its own
+  // row); other scopes collapse purely on (scope, role).
+  const map = new Map<string, KnowledgeGroup>()
+  for (const ref of refs) {
+    const inheritedFrom =
+      ref.scope === 'inherited' ? ref.inherited_from : undefined
+    const key = `${ref.scope}:${ref.role}:${inheritedFrom ?? ''}`
+    const existing = map.get(key)
+    if (existing) {
+      existing.count += 1
+    } else {
+      const group: KnowledgeGroup = {
+        scope: ref.scope,
+        role: ref.role,
+        count: 1,
+      }
+      if (inheritedFrom) group.inheritedFrom = inheritedFrom
+      map.set(key, group)
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const s = SCOPE_ORDER.indexOf(a.scope) - SCOPE_ORDER.indexOf(b.scope)
+    if (s !== 0) return s
+    return a.role.localeCompare(b.role)
+  })
 }
