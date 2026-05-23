@@ -47,6 +47,8 @@ The matrix is *deliberately revisitable*. As Coral / GH issues / Paper adapters 
 
 **v0.1 commitment (revised):** A2 ships kind-pluggable engine + Nous plugins (campaign + iteration) + structure/detail prose. Other kinds fall back to raw fields until their plugins land.
 
+**Status (post-A2):** ✓ shipped for Nous kinds. The engine is at `src/lib/projection.ts` (pure, dependency-injected `LLMClient`); plugins at `src/lib/projection-plugins/`; chrome wiring at `src/surfaces/Detail/ProjectionSection/`; LLM call lives server-side in `vite-plugin-nous-adapter/` with `OPENAI_API_KEY` (preferred) or `ANTHROPIC_API_KEY` (fallback) read from env. Tests never call real LLMs — mocks injected. S-1 is now partially implemented (Nous kinds × {structure, detail}); other 7 kinds × 2 zoom levels fall back to raw-field render until their plugins land alongside their adapters.
+
 ### S-2. Status grammar
 
 `StatusSchema = enum('draft', 'active', 'gated', 'satisfied', 'abandoned', 'revoked')`. The same six values mean *different things* across kinds:
@@ -189,7 +191,7 @@ Both must agree on **meaning**: "satisfied" must mean the same thing whether a h
 
 | Component                    | v0.1 status                          |
 | ---------------------------- | ------------------------------------ |
-| S-1 Projection generators    | Not implemented (raw fields)         |
+| S-1 Projection generators    | Implemented for Nous (campaign, iteration) × {structure, detail}; other kinds fall back |
 | S-2 Status grammar           | Implicit in queue.ts + activity.ts   |
 | S-3 Decomposition stories    | Implicit in per-kind ChildrenSection |
 | S-4 Evidence narratives      | Structural rendering only            |
@@ -199,7 +201,7 @@ Both must agree on **meaning**: "satisfied" must mean the same thing whether a h
 | S-8 Significance heuristics  | Implemented (activity.ts)            |
 | S-9 Time semantics           | Uniform formatter                    |
 
-Three of nine components are real; the rest are implicit or absent. This is the **honest v0.1 surface**: the chrome is structurally correct; meaning rendering is mostly v0.2.
+Four of nine components are real (S-1 partial, S-7, S-8, S-9 complete); the rest are implicit or absent. This is the **honest v0.1 surface**: the chrome is structurally correct, the LLM-driven projection layer ships for Nous, and meaning rendering for the remaining kinds (Coral, GH issues, Paper) lands when their adapters do.
 
 ---
 

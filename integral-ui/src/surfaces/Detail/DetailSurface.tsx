@@ -4,6 +4,7 @@ import { DetailHeader } from './DetailHeader/DetailHeader'
 import { ChildrenSection } from './ChildrenSection/ChildrenSection'
 import { EvidenceEdges } from './EvidenceEdges/EvidenceEdges'
 import { KnowledgeRefsSection } from './KnowledgeRefsSection/KnowledgeRefsSection'
+import { ProjectionSection } from './ProjectionSection/ProjectionSection'
 import styles from './DetailSurface.module.css'
 
 export interface DetailSurfaceProps {
@@ -54,6 +55,7 @@ export function DetailSurface({
         onZoomChange={setZoom}
         onBack={onBack}
       />
+      <ProjectionSection intentId={intent.id} zoom={zoom} />
       <ChildrenSection
         intent={intent}
         workspace={workspace}
