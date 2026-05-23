@@ -16,10 +16,17 @@
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectionSection } from './ProjectionSection'
 
-function mockFetchOnce(response: { content: string; source: 'llm' | 'fallback' }) {
+interface MockProjectionResponse {
+  content: string
+  source: 'llm' | 'fallback'
+  generated_at?: string
+}
+
+function mockFetchOnce(response: MockProjectionResponse) {
   globalThis.fetch = vi.fn().mockResolvedValueOnce({
     ok: true,
     status: 200,
@@ -27,9 +34,7 @@ function mockFetchOnce(response: { content: string; source: 'llm' | 'fallback' }
   } as Response)
 }
 
-function mockFetchSequence(
-  responses: { content: string; source: 'llm' | 'fallback' }[]
-) {
+function mockFetchSequence(responses: MockProjectionResponse[]) {
   const queue = [...responses]
   globalThis.fetch = vi.fn().mockImplementation(async () => {
     const next = queue.shift()
@@ -160,5 +165,83 @@ describe('ProjectionSection', () => {
         container.querySelector('[data-projection-source]')
       ).toBeNull()
     })
+  })
+
+  // ─── Regenerate button + timestamp ───────────────────────────────────
+
+  it('shows a generated-at hint when the response includes generated_at', async () => {
+    mockFetchOnce({
+      content: 'cached prose',
+      source: 'llm',
+      generated_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    })
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(screen.getByText(/generated.*ago/i)).toBeInTheDocument()
+    })
+  })
+
+  it('does not show the generated-at hint when generated_at is missing (fallback case)', async () => {
+    mockFetchOnce({ content: 'fallback prose', source: 'fallback' })
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(screen.getByText(/fallback prose/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/generated.*ago/i)).not.toBeInTheDocument()
+  })
+
+  it('exposes a regenerate button when source=llm', async () => {
+    mockFetchOnce({
+      content: 'p',
+      source: 'llm',
+      generated_at: new Date().toISOString(),
+    })
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /regenerate/i })
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('does not show the regenerate button for fallback projections', async () => {
+    mockFetchOnce({ content: 'p', source: 'fallback' })
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(screen.getByText(/^p$/)).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByRole('button', { name: /regenerate/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('clicking regenerate refetches with refresh=true', async () => {
+    mockFetchSequence([
+      {
+        content: 'old prose',
+        source: 'llm',
+        generated_at: new Date(Date.now() - 60_000).toISOString(),
+      },
+      {
+        content: 'new prose',
+        source: 'llm',
+        generated_at: new Date().toISOString(),
+      },
+    ])
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(screen.getByText('old prose')).toBeInTheDocument()
+    })
+    const button = screen.getByRole('button', { name: /regenerate/i })
+    await userEvent.click(button)
+    await waitFor(() => {
+      expect(screen.getByText('new prose')).toBeInTheDocument()
+    })
+    // The second fetch carried refresh=true; assert this against the
+    // recorded call URL.
+    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls
+    expect(calls.length).toBe(2)
+    expect(String(calls[1]?.[0])).toContain('refresh=true')
   })
 })

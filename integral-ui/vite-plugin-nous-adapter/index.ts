@@ -4,7 +4,6 @@ import type { Plugin } from 'vite'
 import { buildNousWorkspace } from '../src/adapters/nous'
 import {
   generateProjection,
-  type Projection,
   type PluginRegistry,
 } from '../src/lib/projection'
 import { nousCampaignPlugin } from '../src/lib/projection-plugins/nous-campaign'
@@ -12,6 +11,11 @@ import { nousIterationPlugin } from '../src/lib/projection-plugins/nous-iteratio
 import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
 import { FilesystemNousSource } from './filesystem-source'
+import {
+  projectionCacheDir,
+  readPersistedProjection,
+  writePersistedProjection,
+} from './projection-cache'
 
 /**
  * Vite plugin that exposes the Nous adapter as `/api/workspace`.
@@ -38,9 +42,9 @@ export function nousAdapterPlugin(): Plugin {
   // Server-side state. The cached workspace is consulted by the projection
   // endpoint so it doesn't need to re-read .nous/<run>/ on every projection
   // request. Caching is per-source-path. v0.1 keeps it in-memory; refresh
-  // affordances (A3) will invalidate.
+  // affordances (A3) will invalidate. (Projections are cached on disk —
+  // see `projection-cache.ts`.)
   let cachedWorkspace: Workspace | null = null
-  const projectionCache = new Map<string, Projection>()
   const projectionPlugins: PluginRegistry = {
     'nous-campaign': nousCampaignPlugin,
     'nous-iteration': nousIterationPlugin,
@@ -55,6 +59,8 @@ export function nousAdapterPlugin(): Plugin {
       '[integral] no projection LLM provider configured (set OPENAI_API_KEY or ANTHROPIC_API_KEY) — projections will fall back to raw fields'
     )
   }
+  // eslint-disable-next-line no-console
+  console.log(`[integral] projection cache dir: ${projectionCacheDir()}`)
 
   return {
     name: 'nous-adapter',
@@ -188,16 +194,24 @@ export function nousAdapterPlugin(): Plugin {
             return
           }
 
-          // Cache key: intent id + state.last_advanced_at + zoom. If state
-          // hasn't changed since the last projection request, serve cached.
-          const cacheKey = `${intentId}::${state.last_advanced_at}::${zoom}`
-          const hit = projectionCache.get(cacheKey)
-          if (hit) {
-            res.statusCode = 200
-            res.setHeader('content-type', 'application/json')
-            res.setHeader('cache-control', 'no-store')
-            res.end(JSON.stringify(hit))
-            return
+          // Disk cache check (unless ?refresh=true). Cache key triple:
+          // (intent_id, zoom, state.last_advanced_at). State-driven
+          // invalidation is automatic — when state advances, the key
+          // misses and the LLM is called fresh.
+          const refresh = url.searchParams.get('refresh') === 'true'
+          if (!refresh) {
+            const cached = await readPersistedProjection({
+              intentId,
+              zoom,
+              stateTimestamp: state.last_advanced_at,
+            })
+            if (cached) {
+              res.statusCode = 200
+              res.setHeader('content-type', 'application/json')
+              res.setHeader('cache-control', 'no-store')
+              res.end(JSON.stringify(cached))
+              return
+            }
           }
 
           const projection = await generateProjection({
@@ -212,12 +226,26 @@ export function nousAdapterPlugin(): Plugin {
             llm: llm ?? noKeyLLMStub,
           })
 
-          projectionCache.set(cacheKey, projection)
+          // Persist to disk so next dev-server start (or the user's next
+          // visit to this intent) doesn't re-hit the LLM. Only persist
+          // llm-source projections — fallbacks are cheap to recompute and
+          // caching them would mask future plugin / API-key fixes.
+          let response: object = projection
+          if (projection.source === 'llm') {
+            const persisted = await writePersistedProjection({
+              intentId,
+              zoom,
+              stateTimestamp: state.last_advanced_at,
+              projection,
+              ...(llmProvider ? { model: llmProvider } : {}),
+            })
+            response = persisted
+          }
 
           res.statusCode = 200
           res.setHeader('content-type', 'application/json')
           res.setHeader('cache-control', 'no-store')
-          res.end(JSON.stringify(projection))
+          res.end(JSON.stringify(response))
         } catch (err) {
           res.statusCode = 500
           res.setHeader('content-type', 'application/json')

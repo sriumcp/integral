@@ -27,3 +27,39 @@
   font-size: 13px;
   color: var(--mute);
 }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.timestamp {
+  color: var(--mute);
+}
+
+.regenerateButton {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.regenerateButton:hover {
+  background: var(--paper-2);
+}
+
+.regenerateButton:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
