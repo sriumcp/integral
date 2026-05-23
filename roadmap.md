@@ -123,6 +123,15 @@ Remaining (in suggested order):
 13. **Adapter #4 — Feature.**
 14. **Visual baseline regen** after each chrome change.
 
+**Semantic-model work** (deliberately *not* slotted in the v0.1 expansion order — see `semantics-v0.1.md`). Items below are v0.2 candidates that surface as the four adapters land. They are listed for visibility, not commitment:
+
+- **S-1 Projection generators** (zoom-level prose at `read-at-zoom-level`). Currently raw fields render. Largest single semantic gap.
+- **S-2 Per-kind status grammars** explicit (hover tooltips on status chips; a `Kind × Status → Meaning` table consumed by chrome and generator).
+- **S-4 Evidence narratives** — one-line generated narrative per `EvidenceLink` in the chrome.
+- **S-5 Principles-as-typed-objects** (G-N-2 promotion). Unblocks click-through on `KnowledgeRef`s.
+- **C-4 Adapter-side vs generator-side projections.** Architectural decision; recommended generator-side.
+- **Two-audiences contract** — documented agent API surface (`/api/intents/<id>?zoom=...` returning structured projection); operation endpoints symmetric with chrome buttons.
+
 Verification triple after every item: `test:run` + `typecheck` + `build` + `test:e2e` (and `test:e2e:visual` after chrome changes).
 
 ---

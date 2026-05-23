@@ -41,6 +41,7 @@ These files are the source of truth. This CLAUDE.md does not summarize them; it 
 - `intents-and-harnesses.md` (v2) — the catalog of LLM-harness categories and the intent-aware abstractions Integral provides (intent as first-class object; collaboration mode; knowledge corpus; work state).
 - `intent-schema-v0.1.md` — the typed object model: `Intent`, `IntentState`, `KnowledgeRef`, `EvidenceLink`, four `IntentKind`s and their extensions, shaping operations, non-goals.
 - `intent-ux-sketch-v0.1.md` — the four UX surfaces (Map / Detail / Activity / Shaping), figure-rendering rules, filter/group/tag scope, design questions left open.
+- `semantics-v0.1.md` — the semantic model: how typed objects acquire meaning across the five layers (source / types / chrome / calculus / semantic). Catalogs S-1..S-9 components (projection, status grammar, decomposition stories, evidence narratives, knowledge growth, operation semantics, awaiting predicates, significance heuristics, time semantics) and C-1..C-8 couplings between layers. Names what v0.1 commits to vs. what is v0.2 work.
 
 Cross-references between these documents are normative. If a code change requires changing one, check whether the others need to follow.
 
