@@ -86,7 +86,7 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
     return (
       <section className={styles.section} data-testid="projection-loading">
         <SectionLabel>summary</SectionLabel>
-        <p className={styles.placeholder}>…</p>
+        <p className={styles.loadingText}>summarizing…</p>
       </section>
     )
   }
@@ -94,6 +94,7 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
   if (!projection) return null
 
   const isLLM = projection.source === 'llm'
+  const isRegenerating = loading && !!projection
   const generatedAtRel = projection.generated_at
     ? humanRelTime(projection.generated_at)
     : null
@@ -108,16 +109,21 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
       <p
         className={styles.prose}
         data-projection-source={projection.source}
+        data-regenerating={isRegenerating ? 'true' : undefined}
       >
         {projection.content}
       </p>
       {isLLM && (
         <footer className={styles.footer}>
-          {generatedAtRel && (
-            <span className={styles.timestamp}>
-              generated {generatedAtRel} ago
-              {projection.model ? ` · ${projection.model}` : ''}
-            </span>
+          {isRegenerating ? (
+            <span className={styles.regeneratingText}>regenerating…</span>
+          ) : (
+            generatedAtRel && (
+              <span className={styles.timestamp}>
+                generated {generatedAtRel} ago
+                {projection.model ? ` · ${projection.model}` : ''}
+              </span>
+            )
           )}
           <button
             type="button"

@@ -70,6 +70,8 @@ describe('ProjectionSection', () => {
     // Placeholder is rendered via data-projection-loading.
     const placeholder = await screen.findByTestId('projection-loading')
     expect(placeholder).toBeInTheDocument()
+    // The placeholder text reads "summarizing…" so users know the LLM is in flight.
+    expect(placeholder.textContent).toMatch(/summarizing/i)
     // Resolve so afterEach doesn't leak an unresolved promise.
     resolveFetch({
       ok: true,
@@ -213,6 +215,61 @@ describe('ProjectionSection', () => {
     expect(
       screen.queryByRole('button', { name: /regenerate/i })
     ).not.toBeInTheDocument()
+  })
+
+  it('shows "regenerating…" in the footer while a refresh is in flight', async () => {
+    // First call resolves quickly (so we have a populated state).
+    // Second call (the regenerate) is held pending so we can inspect the
+    // intermediate UI.
+    let resolveSecond: (value: Response) => void = () => {}
+    let firstDone = false
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      if (!firstDone) {
+        firstDone = true
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            content: 'old prose',
+            source: 'llm' as const,
+            generated_at: new Date(Date.now() - 60_000).toISOString(),
+          }),
+        } as Response)
+      }
+      return new Promise<Response>((r) => {
+        resolveSecond = r
+      })
+    })
+    render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(screen.getByText('old prose')).toBeInTheDocument()
+    })
+    // Click regenerate; second fetch is now pending.
+    await userEvent.click(
+      screen.getByRole('button', { name: /regenerate/i })
+    )
+    // The "regenerating…" hint should appear immediately (replacing the
+    // timestamp), and the existing prose stays visible (we don't blank
+    // the section while waiting).
+    await waitFor(() => {
+      expect(screen.getByText(/regenerating/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText('old prose')).toBeInTheDocument()
+    // Resolve so afterEach doesn't leak.
+    resolveSecond({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: 'new prose',
+        source: 'llm' as const,
+        generated_at: new Date().toISOString(),
+      }),
+    } as Response)
+    await waitFor(() => {
+      expect(screen.getByText('new prose')).toBeInTheDocument()
+    })
+    // Once the regenerate completes, the regenerating hint is gone.
+    expect(screen.queryByText(/regenerating/i)).not.toBeInTheDocument()
   })
 
   it('clicking regenerate refetches with refresh=true', async () => {
