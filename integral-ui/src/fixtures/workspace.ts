@@ -667,6 +667,107 @@ const evidence: EvidenceLink[] = [
   },
 ]
 
+// ─── Operations log ────────────────────────────────────────────────────────
+// Representative operations covering 8 of 16 op kinds — enough for the v0.1
+// surfaces to render meaningful operation events. Adapter implementations
+// in v0.1.next will emit these from real source-state transitions; the
+// fixture entries here are the kinetic preview.
+import type { Operation } from '@/schema'
+
+const operations: Operation[] = [
+  // Drafts being declared (shaping mode entry points)
+  {
+    id: 'op-001',
+    kind: 'declare',
+    at: '2026-05-22T16:00:00Z',
+    by: sri,
+    target_intent_id: DRAFT_NOUS_ID,
+    cause: 'declared evaluator-aware mutation study',
+  },
+  {
+    id: 'op-002',
+    kind: 'probe',
+    at: '2026-05-22T16:01:00Z',
+    by: nousPlanner,
+    target_intent_id: DRAFT_NOUS_ID,
+    cause: 'probed: discovery vs optimization?',
+  },
+  {
+    id: 'op-003',
+    kind: 'clarify',
+    at: '2026-05-22T16:02:00Z',
+    by: sri,
+    target_intent_id: DRAFT_NOUS_ID,
+    cause: 'clarified: discovery — want reusable principles',
+  },
+  {
+    id: 'op-004',
+    kind: 'declare',
+    at: '2026-05-22T16:30:00Z',
+    by: sri,
+    target_intent_id: DRAFT_CORAL_ID,
+    cause: 'declared evaluator-search candidate scan',
+  },
+  // Decompositions on existing campaigns (children created)
+  {
+    id: 'op-005',
+    kind: 'decompose',
+    at: '2026-05-18T10:00:00Z',
+    by: nousPlanner,
+    target_intent_id: NID,
+    cause: 'decomposed v3 plateau study into iter-2',
+    children: [NIID],
+  },
+  {
+    id: 'op-006',
+    kind: 'decompose',
+    at: '2026-05-22T09:14:00Z',
+    by: coralOrch,
+    target_intent_id: CID,
+    cause: 'decomposed island-3 search into attempt-042',
+    children: [CAID],
+  },
+  // Gate set on the Nous campaign — matches the awaiting state
+  {
+    id: 'op-007',
+    kind: 'gate',
+    at: '2026-05-22T14:13:00Z',
+    by: nousPlanner,
+    target_intent_id: NID,
+    cause: 'gated at execute_analyze, awaiting sri',
+    gate: 'execute_analyze',
+    awaiting_party: sri,
+  },
+  // Proposed iter-3 — the human (sri) is awaiting this proposal
+  {
+    id: 'op-008',
+    kind: 'propose-transition',
+    at: '2026-05-22T15:42:00Z',
+    by: nousPlanner,
+    target_intent_id: NID,
+    cause: 'proposed iter-3: principle-conditioned mutation',
+    proposal: 'iter-3 (principle-conditioned mutation arm)',
+  },
+  // Cross-tree accept-proposal aligning with the existing edge-001
+  {
+    id: 'op-009',
+    kind: 'accept-proposal',
+    at: '2026-05-19T12:00:00Z',
+    by: sri,
+    target_intent_id: PCID,
+    cause: 'accepted: claim 19 derived-from iter-2 (strong)',
+  },
+  // Paper section committed from outline
+  {
+    id: 'op-010',
+    kind: 'commit',
+    at: '2026-05-19T11:00:00Z',
+    by: paperDrafter,
+    target_intent_id: PSID,
+    cause: 'committed §4 Results from outline',
+  },
+]
+
 // ─── Bundled workspace ─────────────────────────────────────────────────────
 export const fixtureWorkspace: Workspace = {
   intents: [
@@ -684,4 +785,5 @@ export const fixtureWorkspace: Workspace = {
   ],
   states,
   evidence_links: evidence,
+  operations,
 }

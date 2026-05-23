@@ -17,6 +17,8 @@ import {
   IntentSchema,
   IntentStateSchema,
   KnowledgeRefSchema,
+  OperationKindSchema,
+  OperationSchema,
   SCHEMA_VERSION,
   WorkspaceSchema,
   isIntentOfKind,
@@ -264,6 +266,86 @@ describe('WorkspaceSchema — 1:1 Intent↔IntentState bijection', () => {
         },
         ...fixtureWorkspace.intents.slice(2),
       ],
+    }
+    const result = WorkspaceSchema.safeParse(broken)
+    expect(result.success).toBe(false)
+  })
+})
+
+describe('OperationSchema — fixture coverage + per-kind falsification', () => {
+  it('accepts every operation in the fixture', () => {
+    for (const op of fixtureWorkspace.operations) {
+      const result = OperationSchema.safeParse(op)
+      if (!result.success) {
+        throw new Error(
+          `OperationSchema rejected fixture op ${op.id}:\n` +
+            JSON.stringify(result.error.issues, null, 2)
+        )
+      }
+    }
+  })
+
+  it('exposes 16 operation kinds (9 lifecycle + 7 shaping)', () => {
+    expect(OperationKindSchema.options).toHaveLength(16)
+  })
+
+  it.each(OperationKindSchema.options)(
+    'requires id, kind, at, by, target_intent_id, cause for kind %s',
+    (kind) => {
+      const result = OperationSchema.safeParse({
+        kind,
+        // missing all required base fields
+      })
+      expect(result.success).toBe(false)
+    }
+  )
+
+  it('rejects an operation with an unknown kind', () => {
+    const result = OperationSchema.safeParse({
+      id: 'op-bogus',
+      kind: 'destroy', // not a real op kind in v0.1
+      at: '2026-05-22T16:00:00Z',
+      by: sri,
+      target_intent_id: 'some-intent',
+      cause: 'invented op',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('decompose requires a non-empty children array', () => {
+    const op = {
+      id: 'op-x',
+      kind: 'decompose',
+      at: '2026-05-22T16:00:00Z',
+      by: sri,
+      target_intent_id: 'parent',
+      cause: 'attempt',
+      children: [],
+    }
+    const result = OperationSchema.safeParse(op)
+    expect(result.success).toBe(false)
+  })
+
+  it('reframe requires from_kind and to_kind', () => {
+    const op = {
+      id: 'op-x',
+      kind: 'reframe',
+      at: '2026-05-22T16:00:00Z',
+      by: sri,
+      target_intent_id: 'target',
+      cause: 'rethink',
+      // missing from_kind / to_kind
+    }
+    const result = OperationSchema.safeParse(op)
+    expect(result.success).toBe(false)
+  })
+
+  it('WorkspaceSchema requires the operations field', () => {
+    const broken = {
+      intents: fixtureWorkspace.intents,
+      states: fixtureWorkspace.states,
+      evidence_links: fixtureWorkspace.evidence_links,
+      // missing operations
     }
     const result = WorkspaceSchema.safeParse(broken)
     expect(result.success).toBe(false)

@@ -172,7 +172,11 @@ test.describe('visual / shaping', () => {
 
   test('shaping surface — fully resolved Nous draft', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: /evaluator-aware mutation study/ }).click()
+    // Scope to TreeCards (data-kind/data-status) — operation rows in the
+    // workspace activity strip also expose buttons with overlapping text.
+    await page
+      .locator('button[data-kind="nous-campaign"][data-status="draft"]')
+      .click()
     await expect(page.locator('main[data-surface="shaping"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('shaping-nous-draft.png', { fullPage: true })

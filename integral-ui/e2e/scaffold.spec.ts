@@ -181,7 +181,9 @@ test.describe('Map + Detail (post-landing)', () => {
     await page.goto('/')
 
     // The fully-resolved Nous draft has its own TreeCard on the Map.
-    await page.getByRole('button', { name: /evaluator-aware mutation study/ }).click()
+    // Scope to TreeCard buttons (data-kind) — the new activity-strip
+    // operation rows also expose buttons with overlapping text.
+    await page.locator('button[data-kind="nous-campaign"][data-status="draft"]').click()
     await expect(page.locator('main[data-surface="shaping"]')).toBeVisible()
     // Both panes render.
     await expect(page.getByRole('heading', { name: /shaping dialog/i })).toBeVisible()
@@ -191,7 +193,7 @@ test.describe('Map + Detail (post-landing)', () => {
 
     // Partial Coral draft — commit should be disabled and pending chips visible.
     await page.getByRole('button', { name: /^← map$/ }).click()
-    await page.getByRole('button', { name: /evaluator-search candidate scan/ }).click()
+    await page.locator('button[data-kind="coral-optimization"][data-status="draft"]').click()
     await expect(page.getByRole('button', { name: /commit to active/i })).toBeDisabled()
     await expect(page.getByText(/⚠ pending/).first()).toBeVisible()
   })
@@ -201,16 +203,40 @@ test.describe('Map + Detail (post-landing)', () => {
     await page.goto('/')
 
     // Open any tree to reach Detail; the strip is still rendered alongside.
-    await page.getByRole('button', { name: /coral-optimization/ }).first().click()
+    await page.locator('button[data-kind="coral-optimization"][data-status="active"]').click()
     await expect(page.locator('header[data-kind="coral-optimization"]')).toBeVisible()
     await expect(
       page.getByRole('heading', { name: /activity/i }).first()
     ).toBeVisible()
 
-    // Routine bucket is collapsed by default; the section-status-changed
-    // routine event isn't visible until the toggle expands it.
+    // On Detail, the strip auto-scopes to "this intent" — toggle to "all"
+    // so the routine bucket includes events from other trees.
+    await page.getByRole('button', { name: /scope/i }).click()
     await expect(page.getByText(/section-status-changed/)).toBeHidden()
     await page.getByRole('button', { name: /routine \d+/ }).click()
     await expect(page.getByText(/section-status-changed/)).toBeVisible()
+  })
+
+  test('activity strip can be hidden and shown via the toggle', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/')
+
+    // Default: strip is visible, hide toggle is in the header.
+    await expect(
+      page.getByRole('heading', { name: /activity/i }).first()
+    ).toBeVisible()
+    await page.getByRole('button', { name: /hide activity/i }).click()
+
+    // Strip collapses to a rail; only the show-activity toggle remains.
+    await expect(page.getByRole('complementary', { name: /collapsed/i })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /activity/i })
+    ).not.toBeVisible()
+    await page.getByRole('button', { name: /show activity/i }).click()
+
+    // Strip expands again.
+    await expect(
+      page.getByRole('heading', { name: /activity/i }).first()
+    ).toBeVisible()
   })
 })

@@ -452,6 +452,173 @@ export const EvidenceLinkSchema = z.object({
   note: z.string().optional(),
 })
 
+// ─── Operation log ─────────────────────────────────────────────────────────
+// Operations are the "intent calculus" verbs — typed records emitted by
+// adapters when they detect transitions in source state. v0.1 ships them
+// as a parallel collection on `Workspace` (siblings to `evidence_links`)
+// rather than embedded in intents, so cross-cutting queries don't traverse
+// intent objects (same discipline as edges).
+//
+// The 16 op kinds split into:
+//  - Lifecycle (9): declare, refine, delegate, advance, gate,
+//    propose-transition, accept-proposal, satisfy, revoke.
+//  - Shaping (7): decompose, fork, merge, reframe, probe, clarify, commit.
+//
+// v0.1 = adapters EMIT operations; the UI RENDERS them; users do NOT FIRE
+// them (that's writeback, deferred to v0.2). Per `roadmap.md` Path 2.
+
+export const OperationKindSchema = z.enum([
+  // Lifecycle
+  'declare',
+  'refine',
+  'delegate',
+  'advance',
+  'gate',
+  'propose-transition',
+  'accept-proposal',
+  'satisfy',
+  'revoke',
+  // Shaping
+  'decompose',
+  'fork',
+  'merge',
+  'reframe',
+  'probe',
+  'clarify',
+  'commit',
+])
+
+// Kind-specific payload shapes — each lives in its own arm of the
+// discriminated union so TS narrows on `kind`.
+const BaseOperationFields = {
+  id: z.string().min(1),
+  at: TimestampSchema,
+  by: PartySchema,
+  /** The intent the operation acts on (parent for `decompose`,
+   *  source for `fork`/`merge`, target for `gate`/`satisfy`/etc). */
+  target_intent_id: IntentIdSchema,
+  cause: z.string().min(1),
+}
+
+// Lifecycle operation arms
+export const DeclareOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('declare'),
+})
+
+export const RefineOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('refine'),
+  /** Which declaration field was refined (free-form path in v0.1). */
+  field: z.string().min(1).optional(),
+})
+
+export const DelegateOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('delegate'),
+  to_party: PartySchema,
+})
+
+export const AdvanceOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('advance'),
+  from_status: StatusSchema,
+  to_status: StatusSchema,
+})
+
+export const GateOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('gate'),
+  gate: z.string().min(1),
+  awaiting_party: PartySchema.optional(),
+})
+
+export const ProposeTransitionOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('propose-transition'),
+  /** Free-form description of the proposal in v0.1; typed in v0.2. */
+  proposal: z.string().min(1),
+})
+
+export const AcceptProposalOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('accept-proposal'),
+  /** Reference to the proposal operation being accepted (id). */
+  proposal_id: z.string().min(1).optional(),
+})
+
+export const SatisfyOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('satisfy'),
+})
+
+export const RevokeOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('revoke'),
+})
+
+// Shaping operation arms
+export const DecomposeOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('decompose'),
+  children: z.array(IntentIdSchema).min(1),
+})
+
+export const ForkOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('fork'),
+  /** The newly-created forked intent. */
+  forked_intent_id: IntentIdSchema,
+})
+
+export const MergeOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('merge'),
+  /** The intents being merged into `target_intent_id`. */
+  merged_intent_ids: z.array(IntentIdSchema).min(1),
+})
+
+export const ReframeOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('reframe'),
+  from_kind: IntentKindSchema,
+  to_kind: IntentKindSchema,
+})
+
+export const ProbeOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('probe'),
+})
+
+export const ClarifyOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('clarify'),
+})
+
+export const CommitOperationSchema = z.object({
+  ...BaseOperationFields,
+  kind: z.literal('commit'),
+})
+
+export const OperationSchema = z.discriminatedUnion('kind', [
+  DeclareOperationSchema,
+  RefineOperationSchema,
+  DelegateOperationSchema,
+  AdvanceOperationSchema,
+  GateOperationSchema,
+  ProposeTransitionOperationSchema,
+  AcceptProposalOperationSchema,
+  SatisfyOperationSchema,
+  RevokeOperationSchema,
+  DecomposeOperationSchema,
+  ForkOperationSchema,
+  MergeOperationSchema,
+  ReframeOperationSchema,
+  ProbeOperationSchema,
+  ClarifyOperationSchema,
+  CommitOperationSchema,
+])
+
 // ─── Workspace bundle (for fixtures + adapter outputs) ─────────────────────
 // The .refine enforces the 1:1 Intent↔IntentState bijection at the workspace
 // level — a cross-record invariant that no per-record schema can express. It
@@ -462,6 +629,7 @@ export const WorkspaceSchema = z
     intents: z.array(IntentSchema),
     states: z.array(IntentStateSchema),
     evidence_links: z.array(EvidenceLinkSchema),
+    operations: z.array(OperationSchema),
   })
   .refine(
     ({ intents, states }) => {
@@ -539,6 +707,26 @@ export type StateTransition = z.infer<typeof StateTransitionSchema>
 export type Projection = z.infer<typeof ProjectionSchema>
 export type IntentState = z.infer<typeof IntentStateSchema>
 export type EvidenceLink = z.infer<typeof EvidenceLinkSchema>
+
+export type OperationKind = z.infer<typeof OperationKindSchema>
+export type Operation = z.infer<typeof OperationSchema>
+export type DeclareOperation = z.infer<typeof DeclareOperationSchema>
+export type RefineOperation = z.infer<typeof RefineOperationSchema>
+export type DelegateOperation = z.infer<typeof DelegateOperationSchema>
+export type AdvanceOperation = z.infer<typeof AdvanceOperationSchema>
+export type GateOperation = z.infer<typeof GateOperationSchema>
+export type ProposeTransitionOperation = z.infer<typeof ProposeTransitionOperationSchema>
+export type AcceptProposalOperation = z.infer<typeof AcceptProposalOperationSchema>
+export type SatisfyOperation = z.infer<typeof SatisfyOperationSchema>
+export type RevokeOperation = z.infer<typeof RevokeOperationSchema>
+export type DecomposeOperation = z.infer<typeof DecomposeOperationSchema>
+export type ForkOperation = z.infer<typeof ForkOperationSchema>
+export type MergeOperation = z.infer<typeof MergeOperationSchema>
+export type ReframeOperation = z.infer<typeof ReframeOperationSchema>
+export type ProbeOperation = z.infer<typeof ProbeOperationSchema>
+export type ClarifyOperation = z.infer<typeof ClarifyOperationSchema>
+export type CommitOperation = z.infer<typeof CommitOperationSchema>
+
 export type Workspace = z.infer<typeof WorkspaceSchema>
 
 // Helper: narrow an Intent to a specific kind.

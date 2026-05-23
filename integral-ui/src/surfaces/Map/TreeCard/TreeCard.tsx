@@ -43,6 +43,7 @@ export function TreeCard({ intent, state, me, onOpen }: TreeCardProps) {
       className={styles.card}
       data-awaiting={awaiting ? 'true' : undefined}
       data-kind={intent.kind}
+      data-status={state.status}
       data-pulse={externallyHovered ? 'true' : undefined}
       onClick={() => onOpen?.(intent)}
       aria-label={`${intent.kind} · ${intent.declaration.title}`}

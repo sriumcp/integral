@@ -18,6 +18,7 @@ import styles from './App.module.css'
 
 const ME = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
 const LANDING_SEEN_KEY = 'integral.landing-seen'
+const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
 
 /**
  * Root. Validates the fixture against `WorkspaceSchema` at load and gates
@@ -62,9 +63,33 @@ function initialView(): View {
   return { kind: 'landing' }
 }
 
+function initialStripCollapsed(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.sessionStorage.getItem(STRIP_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 function Router({ initialWorkspace }: { initialWorkspace: Workspace }) {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace)
   const [view, setView] = useState<View>(initialView)
+  const [stripCollapsed, setStripCollapsed] = useState<boolean>(
+    initialStripCollapsed
+  )
+
+  const toggleStrip = () => {
+    setStripCollapsed((v) => {
+      const next = !v
+      try {
+        window.sessionStorage.setItem(STRIP_COLLAPSED_KEY, String(next))
+      } catch {
+        // Best-effort.
+      }
+      return next
+    })
+  }
 
   // Lookup helper — used to route by status (drafts → shaping).
   const stateById = useMemo(
@@ -196,10 +221,18 @@ function Router({ initialWorkspace }: { initialWorkspace: Workspace }) {
             />
           )}
         </div>
-        <aside className={styles.aside}>
+        <aside
+          className={styles.aside}
+          data-collapsed={stripCollapsed ? 'true' : undefined}
+        >
           <WorkspaceActivityStrip
             workspace={workspace}
             onOpenIntent={openIntent}
+            collapsed={stripCollapsed}
+            onToggleCollapsed={toggleStrip}
+            {...(view.kind === 'detail' && {
+              focusedIntentId: view.intent.id,
+            })}
           />
         </aside>
       </div>

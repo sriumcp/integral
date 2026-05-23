@@ -4,7 +4,6 @@ import { DetailHeader } from './DetailHeader/DetailHeader'
 import { ChildrenSection } from './ChildrenSection/ChildrenSection'
 import { EvidenceEdges } from './EvidenceEdges/EvidenceEdges'
 import { KnowledgeRefsSection } from './KnowledgeRefsSection/KnowledgeRefsSection'
-import { IntentActivityStrip } from './IntentActivityStrip/IntentActivityStrip'
 import styles from './DetailSurface.module.css'
 
 export interface DetailSurfaceProps {
@@ -18,13 +17,18 @@ export interface DetailSurfaceProps {
 }
 
 /**
- * DetailSurface — composes header, structural body, evidence edges,
- * knowledge corpus, and a per-intent activity strip into the daily-use
- * detail view.
+ * DetailSurface — composes header, structural body, evidence edges, and
+ * knowledge corpus.
  *
- * Owns `zoom` state locally; the toggle in the header drives all body
- * sections that respect it. Per CLAUDE.md § Resolved surface decisions,
- * the toggle is *not* decorative — it changes body content.
+ * Per-intent activity used to live as a sibling aside column inside
+ * Detail. As of v0.1.next (Path 2 from `roadmap.md`), per-intent activity
+ * is folded into `WorkspaceActivityStrip` via a "this intent" filter
+ * chip — one panel, one chrome, one source of truth. Detail is now a
+ * single-column main layout.
+ *
+ * Owns `zoom` state locally; the header's toggle drives body sections
+ * that respect it. Per CLAUDE.md § Resolved surface decisions, the
+ * toggle changes body content, not just its own highlight.
  */
 export function DetailSurface({
   workspace,
@@ -42,31 +46,26 @@ export function DetailSurface({
 
   return (
     <main className={styles.surface}>
-      <div className={styles.main}>
-        <DetailHeader
-          intent={intent}
-          state={state}
-          me={me}
-          zoom={zoom}
-          onZoomChange={setZoom}
-          onBack={onBack}
-        />
-        <ChildrenSection
-          intent={intent}
-          workspace={workspace}
-          zoom={zoom}
-          onOpen={onOpenIntent}
-        />
-        <EvidenceEdges
-          intent={intent}
-          workspace={workspace}
-          onOpen={onOpenIntent}
-        />
-        <KnowledgeRefsSection intent={intent} />
-      </div>
-      <div className={styles.aside}>
-        <IntentActivityStrip intent={intent} state={state} />
-      </div>
+      <DetailHeader
+        intent={intent}
+        state={state}
+        me={me}
+        zoom={zoom}
+        onZoomChange={setZoom}
+        onBack={onBack}
+      />
+      <ChildrenSection
+        intent={intent}
+        workspace={workspace}
+        zoom={zoom}
+        onOpen={onOpenIntent}
+      />
+      <EvidenceEdges
+        intent={intent}
+        workspace={workspace}
+        onOpen={onOpenIntent}
+      />
+      <KnowledgeRefsSection intent={intent} />
     </main>
   )
 }

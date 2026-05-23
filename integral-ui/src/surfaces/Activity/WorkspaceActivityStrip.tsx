@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Intent, Workspace } from '@/schema'
 import {
   Chip,
@@ -17,66 +17,193 @@ import styles from './WorkspaceActivityStrip.module.css'
 export interface WorkspaceActivityStripProps {
   workspace: Workspace
   onOpenIntent: (intent: Intent) => void
+  /** When set, the strip auto-defaults its scope filter to "this intent"
+   *  (showing only events for `focusedIntentId`). The user can toggle to
+   *  "all" to see workspace-wide events. The scope auto-resets to "this"
+   *  whenever `focusedIntentId` changes. */
+  focusedIntentId?: string
+  /** When true, the strip renders as a thin vertical rail with just a
+   *  count + expand chevron. Caller owns the boolean (typically persists
+   *  it via sessionStorage) so the user's choice survives navigation. */
+  collapsed?: boolean
+  /** Toggle the collapsed state. Required when `collapsed` is provided. */
+  onToggleCollapsed?: () => void
 }
 
-type FilterMode = 'notable+' | 'routine+'
+type SignificanceFilter = 'notable+' | 'routine+'
+type ScopeFilter = 'this' | 'all'
 
 /**
  * WorkspaceActivityStrip — workspace-wide events bucketed by significance.
  *
- * Per CLAUDE.md § Resolved decision #2 and goals.md Item 3:
- *  - Buckets render in critical → notable → routine order.
- *  - The routine bucket is collapsed by default with a `▸ N` toggle.
- *  - Filter chip cycles between `notable+` (default) and `routine+`. When
- *    `routine+` is active the routine bucket auto-expands.
+ * v0.1.next (Path 2 expansion): per-intent activity is folded into this
+ * strip via the `focusedIntentId` prop + scope filter chip ("this intent" /
+ * "all"). The previous `IntentActivityStrip` is removed; one panel does
+ * both jobs.
+ *
+ * Behavior summary:
+ *  - Buckets in critical → notable → routine order.
+ *  - Routine bucket collapsed by default with a `▸ N` toggle.
+ *  - Significance filter cycles `notable+` (default) ↔ `routine+`.
+ *  - Scope filter "this" ↔ "all"; "this" only renders when `focusedIntentId`
+ *    is set, and resets to "this" each time the focused intent changes.
+ *  - Whole-strip collapse rail: when `collapsed`, renders as a narrow
+ *    vertical column with the non-routine count + expand chevron.
  *  - Hovering an event row writes the target intent id into the shared
  *    hovered-intent context; the Map reads it to preview-pulse the card.
- *
- * Event derivation lives in `src/lib/activity.ts` so the heuristic is
- * unit-testable in isolation and the strip stays presentation-only.
  */
 export function WorkspaceActivityStrip({
   workspace,
   onOpenIntent,
+  focusedIntentId,
+  collapsed = false,
+  onToggleCollapsed,
 }: WorkspaceActivityStripProps) {
-  const events = useMemo(() => deriveEvents(workspace), [workspace])
-  const [filter, setFilter] = useState<FilterMode>('notable+')
+  const allEvents = useMemo(() => deriveEvents(workspace), [workspace])
+  const [significanceFilter, setSignificanceFilter] =
+    useState<SignificanceFilter>('notable+')
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>(
+    focusedIntentId ? 'this' : 'all'
+  )
   const [routineExpanded, setRoutineExpanded] = useState(false)
+
+  // Reset scope to "this" each time the focused intent changes — a fresh
+  // Detail navigation should always start scoped to the focused intent;
+  // the user has to opt-in to the wider workspace view per-intent.
+  useEffect(() => {
+    setScopeFilter(focusedIntentId ? 'this' : 'all')
+  }, [focusedIntentId])
+
+  const events = useMemo(() => {
+    if (focusedIntentId && scopeFilter === 'this') {
+      return allEvents.filter((e) => e.intent.id === focusedIntentId)
+    }
+    return allEvents
+  }, [allEvents, focusedIntentId, scopeFilter])
 
   const buckets = {
     critical: events.filter((e) => e.significance === 'critical'),
     notable: events.filter((e) => e.significance === 'notable'),
     routine: events.filter((e) => e.significance === 'routine'),
   }
+  const nonRoutineCount = buckets.critical.length + buckets.notable.length
 
-  const showRoutine = filter === 'routine+' || routineExpanded
+  const showRoutine = significanceFilter === 'routine+' || routineExpanded
 
-  if (events.length === 0) {
+  // ── Collapsed rail ──────────────────────────────────────────────────────
+  if (collapsed) {
     return (
-      <aside className={styles.strip}>
-        <SectionLabel hint="workspace">activity</SectionLabel>
-        <p className={styles.emptyState}>no activity yet</p>
+      <aside
+        className={styles.rail}
+        data-collapsed="true"
+        aria-label="activity (collapsed)"
+      >
+        <button
+          type="button"
+          className={styles.railToggle}
+          onClick={onToggleCollapsed}
+          aria-label="show activity"
+          aria-expanded={false}
+        >
+          <span className={styles.railChevron} aria-hidden="true">
+            ‹
+          </span>
+          <span className={styles.railLabel}>activity</span>
+          {nonRoutineCount > 0 && (
+            <span className={styles.railCount}>{nonRoutineCount}</span>
+          )}
+        </button>
       </aside>
     )
   }
 
+  // ── Empty state ─────────────────────────────────────────────────────────
+  if (events.length === 0) {
+    return (
+      <aside className={styles.strip}>
+        <header className={styles.header}>
+          <SectionLabel
+            hint={focusedIntentId && scopeFilter === 'this' ? 'this intent' : 'workspace'}
+          >
+            activity
+          </SectionLabel>
+          {onToggleCollapsed && (
+            <button
+              type="button"
+              className={styles.collapseToggle}
+              onClick={onToggleCollapsed}
+              aria-label="hide activity"
+              aria-expanded={true}
+              title="hide"
+            >
+              ›
+            </button>
+          )}
+        </header>
+        {focusedIntentId && (
+          <ScopeChip
+            scope={scopeFilter}
+            onToggle={() =>
+              setScopeFilter((s) => (s === 'this' ? 'all' : 'this'))
+            }
+          />
+        )}
+        <p className={styles.emptyState}>
+          {focusedIntentId && scopeFilter === 'this'
+            ? 'no activity for this intent yet'
+            : 'no activity yet'}
+        </p>
+      </aside>
+    )
+  }
+
+  // ── Expanded full strip ─────────────────────────────────────────────────
   return (
     <aside className={styles.strip}>
       <header className={styles.header}>
-        <SectionLabel hint="workspace">activity</SectionLabel>
-        <button
-          type="button"
-          className={styles.filterToggle}
-          aria-label="significance filter"
-          onClick={() =>
-            setFilter((f) => (f === 'notable+' ? 'routine+' : 'notable+'))
-          }
+        <SectionLabel
+          hint={focusedIntentId && scopeFilter === 'this' ? 'this intent' : 'workspace'}
         >
-          <Chip mono tone={filter === 'routine+' ? 'amber' : 'mute'}>
-            {filter}
-          </Chip>
-        </button>
+          activity
+        </SectionLabel>
+        <div className={styles.headerControls}>
+          <button
+            type="button"
+            className={styles.filterToggle}
+            aria-label="significance filter"
+            onClick={() =>
+              setSignificanceFilter((f) =>
+                f === 'notable+' ? 'routine+' : 'notable+'
+              )
+            }
+          >
+            <Chip mono tone={significanceFilter === 'routine+' ? 'amber' : 'mute'}>
+              {significanceFilter}
+            </Chip>
+          </button>
+          {onToggleCollapsed && (
+            <button
+              type="button"
+              className={styles.collapseToggle}
+              onClick={onToggleCollapsed}
+              aria-label="hide activity"
+              aria-expanded={true}
+              title="hide"
+            >
+              ›
+            </button>
+          )}
+        </div>
       </header>
+
+      {focusedIntentId && (
+        <ScopeChip
+          scope={scopeFilter}
+          onToggle={() =>
+            setScopeFilter((s) => (s === 'this' ? 'all' : 'this'))
+          }
+        />
+      )}
 
       <Bucket
         kind="critical"
@@ -90,30 +217,54 @@ export function WorkspaceActivityStrip({
         onOpenIntent={onOpenIntent}
       />
 
-      <div data-bucket="routine" className={styles.bucket}>
-        <button
-          type="button"
-          className={styles.routineToggle}
-          aria-label={`routine ${buckets.routine.length}`}
-          aria-expanded={showRoutine}
-          onClick={() => setRoutineExpanded((v) => !v)}
-        >
-          <span className={styles.routineCaret} aria-hidden="true">
-            {showRoutine ? '▾' : '▸'}
-          </span>
-          routine · {buckets.routine.length}
-        </button>
-        {showRoutine && (
-          <ul className={styles.eventList}>
-            {buckets.routine.map((ev) => (
-              <li key={ev.id}>
-                <EventRow event={ev} onOpenIntent={onOpenIntent} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {buckets.routine.length > 0 && (
+        <div data-bucket="routine" className={styles.bucket}>
+          <button
+            type="button"
+            className={styles.routineToggle}
+            aria-label={`routine ${buckets.routine.length}`}
+            aria-expanded={showRoutine}
+            onClick={() => setRoutineExpanded((v) => !v)}
+          >
+            <span className={styles.routineCaret} aria-hidden="true">
+              {showRoutine ? '▾' : '▸'}
+            </span>
+            routine · {buckets.routine.length}
+          </button>
+          {showRoutine && (
+            <ul className={styles.eventList}>
+              {buckets.routine.map((ev) => (
+                <li key={ev.id}>
+                  <EventRow event={ev} onOpenIntent={onOpenIntent} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </aside>
+  )
+}
+
+function ScopeChip({
+  scope,
+  onToggle,
+}: {
+  scope: ScopeFilter
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={styles.scopeToggle}
+      onClick={onToggle}
+      aria-label={`scope: ${scope === 'this' ? 'this intent' : 'all'}`}
+      data-scope={scope}
+    >
+      <Chip mono tone={scope === 'this' ? 'sage' : 'mute'} soft={scope === 'all'}>
+        scope · {scope === 'this' ? 'this intent' : 'all'}
+      </Chip>
+    </button>
   )
 }
 
@@ -157,6 +308,7 @@ function EventRow({
       className={styles.row}
       data-event="true"
       data-significance={event.significance}
+      data-source={event.source}
       data-intent-id={event.intent.id}
       onClick={() => onOpenIntent(event.intent)}
       onMouseEnter={() => setHovered(event.intent.id)}
@@ -166,6 +318,11 @@ function EventRow({
       <span className={styles.rowMeta}>
         <span className={styles.rowTime}>{humanRelTime(event.at)}</span>
         <PartyChip party={event.by} dim />
+        {event.source === 'operation' && event.operation && (
+          <Chip mono tone="blue" soft>
+            {event.operation.kind}
+          </Chip>
+        )}
       </span>
       <span className={styles.rowCause}>{event.cause}</span>
       <span className={styles.rowTarget}>

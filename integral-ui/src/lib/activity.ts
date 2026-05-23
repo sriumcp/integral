@@ -2,42 +2,50 @@ import type {
   Intent,
   IntentKind,
   IntentState,
+  Operation,
+  OperationKind,
   Party,
   StateTransition,
+  Status,
   Workspace,
 } from '@/schema'
 
 export type Significance = 'critical' | 'notable' | 'routine'
 
+/** Source discriminator — where this event originated. */
+export type ActivitySource = 'transition' | 'operation' | 'synthetic'
+
 export interface ActivityEvent {
-  /** Stable id for React keys: `${state.id}#${index}`. */
+  /** Stable id for React keys. */
   id: string
   intent: Intent
   state: IntentState
   at: string
   by: Party
+  /** Human-readable label — for transitions: `cause` field; for operations:
+   *  the op kind plus its `cause` (which is also human-readable in v0.1). */
   cause: string
-  fromStatus: StateTransition['from_status']
-  toStatus: StateTransition['to_status']
   significance: Significance
+  source: ActivitySource
+  /** Set when source === 'transition'. */
+  fromStatus?: Status
+  toStatus?: Status
+  /** Set when source === 'operation' — the typed Operation record. */
+  operation?: Operation
 }
 
 /**
  * Classify a single state transition against its target intent.
  *
  * v0.1 heuristic (per goals.md). Operates on `cause` strings + the
- * target intent's extension.kind, since the schema doesn't model a
- * typed event taxonomy until v0.2:
+ * target intent's extension.kind, since the v0.1 schema doesn't model a
+ * typed event taxonomy:
  *
  *  - feature-pr CI passing→failing → critical
  *  - gate-resolved on any intent → notable
  *  - coral attempt-scored with "new best" annotation → notable
  *  - proposed-next-iteration on nous-campaign → notable
  *  - everything else → routine
- *
- * Schema-exhaustive: every `IntentKind` falls through to a `routine`
- * default rather than throwing, but the test suite parameterizes over
- * `IntentKindSchema.options` so a v0.2 kind addition still surfaces.
  */
 export function classifySignificance(
   transition: StateTransition,
@@ -83,17 +91,59 @@ export function classifySignificance(
 }
 
 /**
- * Derive activity events from a validated workspace.
+ * Classify a typed `Operation`. Schema-exhaustive over the 16 op kinds:
+ *  - revoke → critical (something was deliberately abandoned)
+ *  - declare / propose-transition / accept-proposal / satisfy / gate /
+ *    delegate / commit / fork / merge / reframe → notable (state-shaping moves)
+ *  - refine / advance / decompose / probe / clarify → routine (frequent,
+ *    fine-grained churn)
  *
- * One `ActivityEvent` per `StateTransition` across all states. Most-recent
- * first. Events whose target intent isn't resolvable (defensive — the
- * `WorkspaceSchema.refine` bijection guarantees this won't happen for
- * validated workspaces) are silently skipped rather than throwing.
+ * The split reflects "what would a human want surfaced from across the
+ * workspace at a glance" — not a formal calculus rule. v0.2 may shift the
+ * boundary as the operation semantics get more typed.
+ */
+export function classifyOperation(op: Operation): Significance {
+  const k: OperationKind = op.kind
+  switch (k) {
+    case 'revoke':
+      return 'critical'
+    case 'declare':
+    case 'propose-transition':
+    case 'accept-proposal':
+    case 'satisfy':
+    case 'gate':
+    case 'delegate':
+    case 'commit':
+    case 'fork':
+    case 'merge':
+    case 'reframe':
+      return 'notable'
+    case 'refine':
+    case 'advance':
+    case 'decompose':
+    case 'probe':
+    case 'clarify':
+      return 'routine'
+  }
+}
+
+/**
+ * Derive activity events from a validated workspace — combines:
+ *  - state.history transitions (status changes), and
+ *  - workspace.operations (typed ops emitted by adapters / shaping).
+ *
+ * One `ActivityEvent` per record. Most-recent first. Events whose target
+ * intent isn't resolvable are silently skipped (defensive — bijection
+ * refine guarantees this for validated workspaces).
  */
 export function deriveEvents(workspace: Workspace): ActivityEvent[] {
   const intentById = new Map(workspace.intents.map((i) => [i.id, i]))
+  const stateByIntentId = new Map(
+    workspace.states.map((s) => [s.intent_id, s])
+  )
   const events: ActivityEvent[] = []
 
+  // Transitions
   for (const state of workspace.states) {
     const intent = intentById.get(state.intent_id)
     if (!intent) continue
@@ -108,7 +158,27 @@ export function deriveEvents(workspace: Workspace): ActivityEvent[] {
         fromStatus: t.from_status,
         toStatus: t.to_status,
         significance: classifySignificance(t, intent),
+        source: 'transition',
       })
+    })
+  }
+
+  // Operations
+  for (const op of workspace.operations) {
+    const intent = intentById.get(op.target_intent_id)
+    if (!intent) continue
+    const state = stateByIntentId.get(intent.id)
+    if (!state) continue
+    events.push({
+      id: op.id,
+      intent,
+      state,
+      at: op.at,
+      by: op.by,
+      cause: op.cause,
+      significance: classifyOperation(op),
+      source: 'operation',
+      operation: op,
     })
   }
 

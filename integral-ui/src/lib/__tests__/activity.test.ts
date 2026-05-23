@@ -8,9 +8,15 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { IntentKindSchema, type Intent, type StateTransition } from '@/schema'
+import {
+  IntentKindSchema,
+  OperationKindSchema,
+  type Intent,
+  type Operation,
+  type StateTransition,
+} from '@/schema'
 import { fixtureWorkspace, sri, nousPlanner } from '@/fixtures/workspace'
-import { deriveEvents, classifySignificance } from '../activity'
+import { classifyOperation, classifySignificance, deriveEvents } from '../activity'
 
 const KINDS = IntentKindSchema.options
 
@@ -74,13 +80,14 @@ describe('classifySignificance', () => {
 })
 
 describe('deriveEvents', () => {
-  it('returns one ActivityEvent per StateTransition across the workspace', () => {
+  it('returns one ActivityEvent per StateTransition + per Operation', () => {
     const events = deriveEvents(fixtureWorkspace)
     const transitionCount = fixtureWorkspace.states.reduce(
       (acc, s) => acc + s.history.length,
       0
     )
-    expect(events.length).toBe(transitionCount)
+    const operationCount = fixtureWorkspace.operations.length
+    expect(events.length).toBe(transitionCount + operationCount)
   })
 
   it('orders events most-recent first', () => {
@@ -118,6 +125,7 @@ describe('deriveEvents', () => {
       intents: fixtureWorkspace.intents,
       states: fixtureWorkspace.states.map((s) => ({ ...s, history: [] })),
       evidence_links: [],
+      operations: [],
     }
     expect(deriveEvents(empty)).toEqual([])
   })
@@ -136,5 +144,81 @@ describe('deriveEvents', () => {
       states: fixtureWorkspace.states.slice(0, 2),
     }
     expect(() => deriveEvents(malformed)).not.toThrow()
+  })
+
+  it('emits operation events alongside transition events, source-tagged', () => {
+    const events = deriveEvents(fixtureWorkspace)
+    const opEvents = events.filter((e) => e.source === 'operation')
+    const transEvents = events.filter((e) => e.source === 'transition')
+    expect(opEvents.length).toBe(fixtureWorkspace.operations.length)
+    expect(transEvents.length).toBeGreaterThan(0)
+    // Operation events carry the typed Operation record.
+    for (const e of opEvents) {
+      expect(e.operation).toBeDefined()
+      expect(e.operation!.id).toBe(e.id)
+    }
+  })
+})
+
+describe('classifyOperation — schema-exhaustive', () => {
+  // Build a base op shape we can spread into per-kind variants.
+  const baseOp = (kind: Operation['kind']): Operation => {
+    const common = {
+      id: 'op-test',
+      at: '2026-05-22T16:00:00Z',
+      by: sri,
+      target_intent_id: '01HXYZ-NOUS-CAMPAIGN-001',
+      cause: 'test',
+    }
+    // Per-kind required payloads — must match the schema arms.
+    if (kind === 'decompose') return { ...common, kind, children: ['c1'] }
+    if (kind === 'fork') return { ...common, kind, forked_intent_id: 'f1' }
+    if (kind === 'merge')
+      return { ...common, kind, merged_intent_ids: ['m1', 'm2'] }
+    if (kind === 'reframe')
+      return {
+        ...common,
+        kind,
+        from_kind: 'nous-campaign',
+        to_kind: 'paper-campaign',
+      }
+    if (kind === 'gate') return { ...common, kind, gate: 'design' }
+    if (kind === 'propose-transition')
+      return { ...common, kind, proposal: 'iter-3' }
+    if (kind === 'delegate') return { ...common, kind, to_party: nousPlanner }
+    if (kind === 'advance')
+      return { ...common, kind, from_status: 'active', to_status: 'gated' }
+    return { ...common, kind } as Operation
+  }
+
+  it.each(OperationKindSchema.options)(
+    'returns a valid significance for kind %s',
+    (kind) => {
+      const sig = classifyOperation(baseOp(kind))
+      expect(['critical', 'notable', 'routine']).toContain(sig)
+    }
+  )
+
+  it('flags revoke as critical', () => {
+    expect(classifyOperation(baseOp('revoke'))).toBe('critical')
+  })
+
+  it('flags declare / satisfy / propose-transition / gate as notable', () => {
+    for (const kind of [
+      'declare',
+      'satisfy',
+      'propose-transition',
+      'gate',
+      'commit',
+      'accept-proposal',
+    ] as const) {
+      expect(classifyOperation(baseOp(kind))).toBe('notable')
+    }
+  })
+
+  it('flags fine-grained ops (refine / probe / clarify / decompose) as routine', () => {
+    for (const kind of ['refine', 'probe', 'clarify', 'decompose'] as const) {
+      expect(classifyOperation(baseOp(kind))).toBe('routine')
+    }
   })
 })

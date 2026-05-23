@@ -16,6 +16,12 @@
   .body {
     grid-template-columns: minmax(0, 1fr) 320px;
   }
+
+  /* When the activity strip is collapsed, the aside narrows to a rail
+     and the main column reclaims the freed horizontal space. */
+  .body:has(.aside[data-collapsed='true']) {
+    grid-template-columns: minmax(0, 1fr) 48px;
+  }
 }
 
 .aside {
