@@ -27,7 +27,7 @@ This roadmap is checked against those three at every revision. If a planned item
 
 **v0.1 expansion (Path 2) — in flight.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3 shipped. Round-trip work, projection layer, breadth adapters all remaining (see Track A / Track B / Track C below).
 
-Verification at this commit: 411 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
+Verification at this commit: 450 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
 **v0.1 substrate is descriptive only today.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output; the user navigates; nothing mutates persistent state outside the in-memory shaping commit. **v0.1 expansion changes this** — the round-trip on Nous (Track A items A4 + A5) lands real writeback + at least one user-fired operation. After v0.1 expansion, "descriptive only" no longer holds.
 
@@ -45,8 +45,8 @@ The two tracks share the schema and the chrome. Otherwise they're independent an
 
 Sequential. Each item depends on the prior.
 
-**A1. Nous Phase 4 — Operations from observed transitions.**
-The adapter compares prior runtime state to current and emits typed `Operation`s. Examples: an iteration completing → `satisfy(iter-N)`; a principle extracted → `declare-knowledge-ref(<uri>)`; a gate resolving → `accept-proposal`. Activity strip shows real ops, not just transitions.
+**A1. Nous Phase 4 — Operations from observed transitions. ✓ DONE.**
+Generic `diffWorkspaces(prior, current, by, at) → Operation[]` engine in `src/lib/workspace-diff.ts` — adapter-agnostic; reused by Coral/GH later. Schema-exhaustive over `OperationKindSchema.options` via a `KIND_DISPOSITIONS` map. Specialized ops (`satisfy`/`gate`/`revoke`) win over generic `advance`. Deterministic op ids (`op:<kind>:<target>:<at>`) for refresh idempotency. `buildNousWorkspace(source, { prior, at })` consumes the diff and includes ops in the returned workspace. Smoke against `inference-sim/` with synthesized prior: 59 Operations across 3 kinds (declare 20 + decompose 20 + satisfy 19), validates clean. New gap: G-N-12 (principle-extraction events have no canonical op kind — emit nothing in v0.1).
 
 **A2. Projection generator (S-1) — kind-pluggable.**
 Implements `read-at-zoom-level(intentId, zoom) → Projection` (CLAUDE.md § Operating conventions). LLM-driven prose at structure (≤800 chars) and detail (unbounded). Architecture: per-kind plugin pattern; kinds without a registered plugin fall back to today's raw-field rendering automatically. Nous kinds (campaign + iteration) get plugins first; Coral and feature-campaign get default rendering until their plugins land.
@@ -95,6 +95,7 @@ Every chrome-affecting item (A2, A3, A5, B1, B2, C1) regenerates the 15 baseline
 7. ✓ **Adapter #1 — Nous, Phase 3** — `principles.ts`: `parsePrinciples`, stable `nous-principle://<runId>/<id>` URI scheme, `interpretPrinciplesAsKnowledgeRefs` (campaign-scoped + iteration-scoped grouped by `extraction_iteration`). Lossy mapping per G-N-2; `version='v0.1-lossy'` marker recorded in G-N-11. Smoke: 157 campaign-scope + 157 iteration-scope principle refs from 20 campaigns.
 8. ✓ **KnowledgeRefsSection — collapse to count rows** — opaque URIs were a tease without dereferencing (G-N-2 keeps full content out of the schema). Per-`(scope, role)` count rows replace the URI list; inherited refs still surface their `inherited_from`. Click-through restored in v0.2 once principles get a real schema home.
 9. ✓ **`semantics-v0.1.md` drafted** — names the five layers (source / types / chrome / calculus / semantic), catalogs nine semantic components (S-1 through S-9), eight cross-layer couplings (C-1 through C-8), the two-audiences contract (humans need interpretability, agents need actionability), eight open questions, and seven non-goals. Wired into CLAUDE.md as a canonical reference. Unblocks A2 (projection generator) by giving it a documented design surface.
+10. ✓ **A1 — Nous Phase 4 (Operations from observed transitions).** Generic `diffWorkspaces` engine in `src/lib/workspace-diff.ts`; adapter-agnostic; schema-exhaustive over `OperationKindSchema.options` via `KIND_DISPOSITIONS` (every kind has a documented "fires when X" or "doesn't fire because Y" disposition — a v0.2 op-kind addition fails the test until acknowledged). `buildNousWorkspace(source, { prior, at, by? })` opt-in; ops emitted only when `prior` is provided. Specialized ops win over generic (`satisfy` / `gate` / `revoke` over `advance`). Deterministic op ids for refresh idempotency. Smoke: 59 ops across 3 kinds from real `inference-sim/` data. Gap G-N-12 records that principle-extraction events have no canonical op kind (deferred until G-N-2 promotion clarifies whether principles are intents or knowledge).
 
 Verification triple after every item: `npm run test:run` + `npm run typecheck` + `npm run build` + `npm run test:e2e` (and `npm run test:e2e:visual` after chrome changes).
 

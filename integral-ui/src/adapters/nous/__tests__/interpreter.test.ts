@@ -563,6 +563,158 @@ describe('buildNousWorkspace — Phase 2 (ledger → iterations)', () => {
     expect(iter.knowledge_refs[0]?.uri).toContain('RP-B')
   })
 
+  // ─── Phase 4: Operations from observed transitions (prior → current) ──
+
+  const STATE_GATED = JSON.stringify({
+    phase: 'GATED',
+    iteration: 1,
+    run_id: 'gated-run',
+    timestamp: '2026-05-22T15:00:00Z',
+  })
+
+  it('emits no operations when no prior workspace is provided (Phase 1-3 behavior preserved)', async () => {
+    const source = staticSource({
+      run: { campaignYaml: MIN_CAMPAIGN_YAML, state: STATE_DONE },
+    })
+    const workspace = await buildNousWorkspace(source)
+    expect(workspace.operations).toEqual([])
+  })
+
+  it('emits no operations when prior === current (idempotent re-read)', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const first = await buildNousWorkspace(source)
+    const second = await buildNousWorkspace(source, {
+      prior: first,
+      at: '2026-05-23T10:00:00Z',
+    })
+    expect(second.operations).toEqual([])
+  })
+
+  it('emits declare + decompose when a new iteration appears', async () => {
+    const sourceBefore = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+      },
+    })
+    const sourceAfter = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const prior = await buildNousWorkspace(sourceBefore)
+    const current = await buildNousWorkspace(sourceAfter, {
+      prior,
+      at: '2026-05-23T10:00:00Z',
+    })
+    const declares = current.operations.filter((o) => o.kind === 'declare')
+    const decomposes = current.operations.filter((o) => o.kind === 'decompose')
+    // iter-2 is newly declared (iter-1 already existed in prior).
+    expect(declares.length).toBeGreaterThanOrEqual(1)
+    expect(decomposes.length).toBeGreaterThanOrEqual(1)
+    if (decomposes[0]?.kind === 'decompose') {
+      expect(decomposes[0].children.some((c) => c.endsWith(':iter-2'))).toBe(true)
+    }
+  })
+
+  it('emits satisfy when an iteration h_main_result resolves', async () => {
+    // Prior: iter-1 in flight (h_main_result: null → status active)
+    // Current: iter-1 confirmed (h_main_result: CONFIRMED → status satisfied)
+    const sourceBefore = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+      },
+    })
+    const ledgerResolved = JSON.stringify({
+      iterations: [
+        {
+          iteration: 0,
+          family: 'baseline',
+          timestamp: '1970-01-01T00:00:00Z',
+        },
+        {
+          iteration: 1,
+          family: 'pilot',
+          timestamp: '2026-05-22T15:00:00Z',
+          candidate_id: 'iter-1',
+          h_main_result: 'CONFIRMED',
+        },
+      ],
+    })
+    const sourceAfter = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: ledgerResolved,
+      },
+    })
+    const prior = await buildNousWorkspace(sourceBefore)
+    const current = await buildNousWorkspace(sourceAfter, {
+      prior,
+      at: '2026-05-23T10:00:00Z',
+    })
+    const satisfies = current.operations.filter((o) => o.kind === 'satisfy')
+    expect(satisfies.length).toBe(1)
+    expect(satisfies[0]?.target_intent_id).toContain(':iter-1')
+  })
+
+  it('emits gate when campaign status flips to gated', async () => {
+    const sourceBefore = staticSource({
+      run: { campaignYaml: MIN_CAMPAIGN_YAML, state: STATE_ACTIVE },
+    })
+    const sourceAfter = staticSource({
+      run: { campaignYaml: MIN_CAMPAIGN_YAML, state: STATE_GATED },
+    })
+    const prior = await buildNousWorkspace(sourceBefore)
+    const current = await buildNousWorkspace(sourceAfter, {
+      prior,
+      at: '2026-05-23T10:00:00Z',
+    })
+    const gates = current.operations.filter((o) => o.kind === 'gate')
+    expect(gates.length).toBe(1)
+  })
+
+  it('emits ops that all validate against OperationSchema', async () => {
+    const sourceBefore = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+      },
+    })
+    const sourceAfter = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_DONE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const prior = await buildNousWorkspace(sourceBefore)
+    const current = await buildNousWorkspace(sourceAfter, {
+      prior,
+      at: '2026-05-23T10:00:00Z',
+    })
+    const result = WorkspaceSchema.safeParse(current)
+    if (!result.success) {
+      throw new Error(
+        'workspace rejected:\n' +
+          JSON.stringify(result.error.issues, null, 2)
+      )
+    }
+    expect(current.operations.length).toBeGreaterThan(0)
+  })
+
   it('emits multiple campaigns in parallel, each with their own iteration trees', async () => {
     const source = staticSource({
       'run-a': {

@@ -109,6 +109,17 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
   - Or: drop the marker entirely once principles get a real schema home — by then the lossy mapping is gone and the marker is meaningless.
 - **Severity:** Low for v0.1 (single adapter, single marker value), but the next adapter to take a similar lossy mapping will hit the same overload.
 
+### G-N-12. Principle extraction has no canonical `OperationKind`
+
+- **Evidence (Phase 4):** When a Nous campaign re-reads its `principles.json` and a new principle URI appears on an iteration's `knowledge_refs`, that's a meaningful state change — *the harness extracted a new principle from this iteration's evidence*. Phase 4's diff engine emits typed `Operation`s for declared intents, decomposed parents, and status changes — but **emits nothing for new knowledge refs** because no `OperationKind` fits.
+- **v0.1 schema:** `OperationKindSchema` enumerates 16 kinds (9 lifecycle + 7 shaping). None of `declare` / `refine` / `delegate` / `advance` / `gate` / `propose-transition` / `accept-proposal` / `satisfy` / `revoke` / `decompose` / `fork` / `merge` / `reframe` / `probe` / `clarify` / `commit` describes "a new piece of knowledge attached to this intent."
+- **Loss:** Principle-extraction events vanish from the activity log even though they're among the most semantically interesting moments in a Nous campaign's life. The principle still surfaces via the iteration's `knowledge_refs` count chip (post-Phase-3 UX), but the *moment of extraction* has no event row.
+- **v0.2 candidates:**
+  - Add `extract-knowledge` (or `attach-knowledge-ref`) as a typed op with payload `{ ref: KnowledgeRef }`.
+  - Tied to G-N-2 — if principles become first-class typed objects (their own `IntentKind`), the extraction event becomes a `declare(<principle-id>)` op, which is already in the vocabulary.
+  - Decision deferred until G-N-2 promotion clarifies whether principles are intents or knowledge.
+- **Severity:** Medium. Activity log under-represents the most informative moments of a research campaign.
+
 ---
 
 ## Cross-cutting observations

@@ -4,9 +4,11 @@ import type {
   Intent,
   IntentState,
   Operation,
+  Party,
   Status,
   Workspace,
 } from '../../schema'
+import { diffWorkspaces } from '../../lib/workspace-diff'
 import type {
   CampaignFiles,
   NousSource,
@@ -52,7 +54,23 @@ const DEFAULT_HUMAN_HOLDER = {
 
 const SCHEMA_VERSION = '0.1.0' as const
 
-export async function buildNousWorkspace(source: NousSource): Promise<Workspace> {
+export interface BuildNousWorkspaceOpts {
+  /** Prior workspace snapshot — when provided, the adapter computes a
+   *  typed `Operation[]` describing the delta and includes them in the
+   *  returned workspace's `operations`. */
+  prior?: Workspace
+  /** Timestamp to stamp on emitted ops. Defaults to `new Date().toISOString()`
+   *  but tests pass a fixed value for determinism. */
+  at?: string
+  /** Party emitting the ops. Defaults to the synthetic projector agent
+   *  used elsewhere in this adapter. */
+  by?: Party
+}
+
+export async function buildNousWorkspace(
+  source: NousSource,
+  opts: BuildNousWorkspaceOpts = {}
+): Promise<Workspace> {
   const runIds = await source.listRunIds()
   const intents: Intent[] = []
   const states: IntentState[] = []
@@ -127,12 +145,28 @@ export async function buildNousWorkspace(source: NousSource): Promise<Workspace>
     states.push(result.state)
   }
 
-  return {
+  const current: Workspace = {
     intents,
     states,
     evidence_links: evidenceLinks,
     operations,
   }
+
+  // Phase 4: if a prior workspace was provided, derive Operations from
+  // the delta. The diff engine is generic (`src/lib/workspace-diff.ts`);
+  // the adapter just supplies its identity (`PROJECTOR_AGENT`) and a
+  // timestamp.
+  if (opts.prior) {
+    const diffOps = diffWorkspaces({
+      prior: opts.prior,
+      current,
+      by: opts.by ?? PROJECTOR_AGENT,
+      at: opts.at ?? new Date().toISOString(),
+    })
+    current.operations = diffOps
+  }
+
+  return current
 }
 
 /** Pure mapping from a single campaign's raw files → typed Intent + IntentState.
