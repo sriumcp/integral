@@ -1,0 +1,54 @@
+/* PartyChip — small pill identifying a Party (human / agent / system) by
+   colored dot + display name. Color is chosen by `data-party-kind`.
+   `data-dim` makes the chip blend into surrounding text (no bg / no border).
+*/
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 2px 6px 2px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--party-border, var(--line));
+  background: var(--party-bg, var(--paper-2));
+  color: var(--party-fg, var(--ink-2));
+  white-space: nowrap;
+}
+
+.chip[data-party-kind='human'] {
+  --party-fg: var(--ink-2);
+  --party-border: var(--line);
+  --party-bg: var(--paper-2);
+  --party-dot: var(--ink-2);
+}
+
+.chip[data-party-kind='agent'] {
+  --party-fg: var(--blue-fg);
+  --party-border: var(--blue-border);
+  --party-bg: var(--blue-soft);
+  --party-dot: var(--blue);
+}
+
+.chip[data-party-kind='system'] {
+  --party-fg: var(--mute);
+  --party-border: var(--line);
+  --party-bg: var(--paper-3);
+  --party-dot: var(--mute-2);
+}
+
+.chip[data-dim='true'] {
+  background: transparent;
+  border-color: transparent;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--party-dot);
+  flex: none;
+}

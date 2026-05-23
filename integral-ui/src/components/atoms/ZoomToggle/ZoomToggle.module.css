@@ -1,0 +1,42 @@
+/* ZoomToggle — segmented 3-way control. Each segment is a button styled
+   from `data-active` / `data-zoom`. JS sets attributes; CSS picks colors. */
+
+.toggle {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--paper-2);
+  padding: 2px;
+  gap: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.segment {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mute);
+  padding: 4px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: 0.01em;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.segment:hover {
+  color: var(--ink-2);
+}
+
+.segment[data-active='true'] {
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}

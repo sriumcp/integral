@@ -1,0 +1,33 @@
+/* App layout — surface body + workspace activity strip.
+
+   The strip lives in the right column at ≥1280px on Map and Detail. Below
+   that breakpoint, the main column takes the full width and the strip
+   stacks below — workspace-wide context stays available without competing
+   for horizontal real estate. */
+
+.body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1280px) {
+  .body {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 24px;
+}
+
+@media (min-width: 1280px) {
+  .aside {
+    position: sticky;
+    top: 60px;
+    padding: 0 16px 16px 0;
+  }
+}

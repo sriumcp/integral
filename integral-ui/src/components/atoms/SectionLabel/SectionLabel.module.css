@@ -1,0 +1,27 @@
+/* SectionLabel — small-caps mono header used to chunk surfaces into named
+   regions (e.g. "INTENTS IN FIXTURE", "EVIDENCE EDGES", "KNOWLEDGE CORPUS").
+   Optional right-aligned hint appears alongside. */
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute-2);
+  white-space: nowrap;
+}

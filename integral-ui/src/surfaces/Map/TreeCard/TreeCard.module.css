@@ -1,0 +1,103 @@
+/* TreeCard — a single intent rendered as an overview-zoom card on the Map
+   surface. Composes atoms (StatusDot, KindBadge, IdPill, Chip, PartyChip,
+   plus optional figure atoms) under a uniform chrome envelope. */
+
+.card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: border-color 140ms ease, box-shadow 160ms ease;
+  padding: 0;
+}
+
+.card:hover {
+  border-color: var(--mute-2);
+  box-shadow: var(--shadow-card), 0 6px 24px -20px var(--ink);
+}
+
+.card[data-awaiting='true'] {
+  border-color: var(--amber-border);
+}
+
+/* External hover pulse — set by the WorkspaceActivityStrip via the shared
+   hovered-intent context. Subtle border + shadow lift; never the amber
+   accent (which is reserved for "needs attention"). */
+.card[data-pulse='true'] {
+  border-color: var(--ink-2);
+  box-shadow: var(--shadow-card), 0 0 0 2px var(--paper-3);
+  transform: translateY(-1px);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.headerRight {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.declaration {
+  padding: 14px 18px 12px;
+}
+
+.title {
+  font-family: var(--serif);
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.2px;
+  color: var(--ink);
+  margin: 0;
+  font-weight: 500;
+}
+
+.summary {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.figure {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--line-2);
+  background: var(--paper-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--mute);
+  flex-wrap: wrap;
+}
+
+.footerOpen {
+  margin-left: auto;
+  color: var(--mute);
+}

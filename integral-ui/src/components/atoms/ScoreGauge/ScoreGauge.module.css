@@ -1,0 +1,59 @@
+/* ScoreGauge — horizontal score bar with optional best marker.
+   Used on Coral attempt rows and similar 0..1 score readouts. */
+
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.track {
+  position: relative;
+  height: 6px;
+  background: var(--paper-3);
+  border-radius: 2px;
+  overflow: hidden;
+  flex: none;
+}
+
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink-2);
+}
+
+.fill[data-is-best='true'] {
+  background: var(--sage);
+}
+
+.fill[data-out-of-range='true'] {
+  /* Visual signal that the underlying score escaped [0, 1] — the bar is
+     clamped, but the right edge highlights so anomalies are not silently lost. */
+  background: var(--rose);
+  border-right: 2px solid var(--rose);
+}
+
+.bestMarker {
+  position: absolute;
+  /* No top/bottom offsets — track has overflow:hidden so any extension would
+     be clipped anyway. The marker is a 1px line spanning the track height. */
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--sage);
+  opacity: 0.6;
+}
+
+.value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.placeholder {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+}

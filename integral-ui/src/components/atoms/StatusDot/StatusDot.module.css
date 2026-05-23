@@ -1,0 +1,35 @@
+/* StatusDot — small colored circle whose color expresses Intent state.
+   When `presence` is true, a soft ring + pulse expresses an active agent. */
+
+.dot {
+  display: inline-block;
+  border-radius: 999px;
+  flex: none;
+  vertical-align: middle;
+  background: var(--status-color, var(--mute-2));
+}
+
+.dot[data-status='draft'] {
+  --status-color: var(--status-draft);
+}
+.dot[data-status='active'] {
+  --status-color: var(--status-active);
+}
+.dot[data-status='gated'] {
+  --status-color: var(--status-gated);
+}
+.dot[data-status='satisfied'] {
+  --status-color: var(--status-satisfied);
+}
+.dot[data-status='abandoned'] {
+  --status-color: var(--status-abandoned);
+}
+.dot[data-status='revoked'] {
+  --status-color: var(--status-revoked);
+}
+
+.presence {
+  /* Soft halo around the dot — the color matches the underlying status. */
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--status-color) 18%, transparent);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}

@@ -1,0 +1,42 @@
+/* HypothesisBars — segmented bar showing confirmed / refuted / pending counts
+   from a Nous hypothesis bundle. Pairs with a small mono caption summarizing
+   the breakdown. */
+
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bar {
+  display: block;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--paper-3);
+}
+
+.confirmed {
+  fill: var(--sage);
+}
+
+.refuted {
+  fill: var(--rose);
+}
+
+.pending {
+  fill: var(--mute-2);
+  opacity: 0.45;
+}
+
+.caption {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+.placeholder {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute-2);
+}

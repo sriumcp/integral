@@ -1,0 +1,137 @@
+/* AppHeader — sticky chrome bar.
+
+   Layout: three flex clusters separated by auto-margins. Left and right
+   are width-natural; center grows to fill, with the long intent-title
+   crumb ellipsis-truncating below 768px. */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--sans);
+  color: var(--ink);
+}
+
+.left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  color: var(--ink);
+}
+
+/* Clickable left cluster — wired to return to the Landing surface. */
+.leftBtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 80ms ease;
+}
+
+.leftBtn:hover {
+  background: var(--paper-2);
+}
+
+.leftBtn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.wordmark {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  line-height: 1;
+}
+
+.center {
+  display: inline-flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--mute);
+}
+
+.crumbRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.crumbSep {
+  color: var(--mute-2);
+  padding: 0 2px;
+}
+
+.crumbBtn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 3px 5px;
+  border-radius: 2px;
+  font: inherit;
+  color: var(--mute);
+  cursor: pointer;
+}
+
+.crumbBtn:hover {
+  color: var(--ink-2);
+  background: var(--paper-2);
+}
+
+.crumbBtn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.crumbCurrent {
+  padding: 3px 5px;
+  color: var(--ink);
+}
+
+/* The long intent-title crumb truncates with ellipsis below 768px so
+   narrow viewports still see the full breadcrumb path. The full title
+   stays available via the native title attribute. */
+.crumbCurrentLong {
+  padding: 3px 5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  .crumbCurrentLong {
+    max-width: 14ch;
+  }
+}
+
+.right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}

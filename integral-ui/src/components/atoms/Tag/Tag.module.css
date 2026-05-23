@@ -1,0 +1,17 @@
+/* Tag — dashed-border free-form label. Renders the schema's `Intent.tags`
+   and any UI-side ad-hoc labels (e.g. "draft", "investigation"). Single
+   visual mode; coloring matches the muted text family. */
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--mute);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  white-space: nowrap;
+}

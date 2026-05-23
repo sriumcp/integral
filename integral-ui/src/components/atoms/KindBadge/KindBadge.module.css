@@ -1,0 +1,39 @@
+/* KindBadge — small typographic glyph (+ optional label) identifying an
+   intent kind. The glyph is a single mono character in a bordered square; the
+   label is a small mono caption alongside. Per-kind color is *not* applied at
+   v0.1 (every kind shares the same chrome) — `data-kind` is exposed so that
+   future surfaces can color-code without changing the component API. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+}
+
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--kind-badge-size, 18px);
+  height: var(--kind-badge-size, 18px);
+  border-radius: 3px;
+  background: var(--paper-3);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1;
+  flex: none;
+  /* Glyph is centered visually regardless of character (digit, §, ↗, ·, etc.) */
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--mute);
+  text-transform: lowercase;
+}

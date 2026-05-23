@@ -1,0 +1,161 @@
+/* WorkspaceActivityStrip — right-side workspace activity column.
+
+   Visible at ≥1280px on Map and Detail. Below that breakpoint the surface
+   layout collapses the strip out of view; restoring it as a vertical icon
+   rail is a v0.1 refinement task tracked separately. */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.filterToggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.bucket {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bucketLabel {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mute);
+}
+
+.bucketLabel[data-significance='critical'] {
+  color: var(--rose-fg);
+}
+
+.bucketLabel[data-significance='notable'] {
+  color: var(--amber-fg);
+}
+
+.eventList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.routineToggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--mute);
+  cursor: pointer;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routineToggle:hover {
+  color: var(--ink-2);
+}
+
+.routineCaret {
+  font-size: 10px;
+  color: var(--mute-2);
+}
+
+.row {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  transition: border-color 80ms ease, background-color 80ms ease;
+}
+
+.row:hover {
+  border-color: var(--mute-2);
+  background: var(--paper-3);
+}
+
+.row[data-significance='critical'] {
+  border-left: 2px solid var(--rose);
+}
+
+.row[data-significance='notable'] {
+  border-left: 2px solid var(--amber);
+}
+
+.rowMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rowTime {
+  color: var(--mute);
+  font-size: 11px;
+}
+
+.rowCause {
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.rowTarget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mute);
+  font-size: 11px;
+}
+
+.rowTargetTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.emptyState {
+  margin: 0;
+  color: var(--mute);
+  font-size: 11.5px;
+  font-style: italic;
+}

@@ -1,0 +1,114 @@
+/* Chip — small inline pill with optional leading dot.
+   Color comes from `data-tone` / `data-status` attribute selectors driven by
+   the design tokens in `index.css`. `data-mono` and `data-soft` are
+   independent variant flags. (Pulse is a class on the inner dot, not an
+   attribute on the chip root.) */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--chip-border, var(--line));
+  background: var(--chip-bg, var(--paper-2));
+  color: var(--chip-fg, var(--ink-2));
+  white-space: nowrap;
+  font-family: var(--sans);
+}
+
+.chip[data-mono='true'] {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.chip[data-soft='true'] {
+  background: transparent;
+}
+
+/* Tone palette — accent is the dot color, fg/bg/border style the pill. */
+.chip[data-tone='mute'] {
+  --chip-bg: var(--paper-3);
+  --chip-border: var(--line);
+  --chip-fg: var(--mute);
+  --chip-accent: var(--mute-2);
+}
+.chip[data-tone='amber'] {
+  --chip-bg: var(--amber-soft);
+  --chip-border: var(--amber-border);
+  --chip-fg: var(--amber-fg);
+  --chip-accent: var(--amber);
+}
+.chip[data-tone='sage'] {
+  --chip-bg: var(--sage-soft);
+  --chip-border: var(--sage-border);
+  --chip-fg: var(--sage-fg);
+  --chip-accent: var(--sage);
+}
+.chip[data-tone='rose'] {
+  --chip-bg: var(--rose-soft);
+  --chip-border: var(--rose-border);
+  --chip-fg: var(--rose-fg);
+  --chip-accent: var(--rose);
+}
+.chip[data-tone='blue'] {
+  --chip-bg: var(--blue-soft);
+  --chip-border: var(--blue-border);
+  --chip-fg: var(--blue-fg);
+  --chip-accent: var(--blue);
+}
+
+/* Status-driven chips (an alternative to `tone`; both shouldn't be set).
+   --chip-accent must reference the per-status token from `index.css` directly;
+   the unscoped `--status-color` lives only inside StatusDot's module. */
+.chip[data-status='draft'] {
+  --chip-bg: var(--paper-3);
+  --chip-border: var(--line);
+  --chip-fg: var(--mute);
+  --chip-accent: var(--status-draft);
+}
+.chip[data-status='abandoned'] {
+  --chip-bg: var(--paper-3);
+  --chip-border: var(--line);
+  --chip-fg: var(--mute);
+  --chip-accent: var(--status-abandoned);
+}
+.chip[data-status='revoked'] {
+  --chip-bg: var(--paper-3);
+  --chip-border: var(--line);
+  --chip-fg: var(--mute);
+  --chip-accent: var(--status-revoked);
+}
+.chip[data-status='active'] {
+  --chip-bg: var(--paper-2);
+  --chip-border: var(--line);
+  --chip-fg: var(--ink);
+  --chip-accent: var(--status-active);
+}
+.chip[data-status='gated'] {
+  --chip-bg: var(--amber-soft);
+  --chip-border: var(--amber-border);
+  --chip-fg: var(--amber-fg);
+  --chip-accent: var(--amber);
+}
+.chip[data-status='satisfied'] {
+  --chip-bg: var(--sage-soft);
+  --chip-border: var(--sage-border);
+  --chip-fg: var(--sage-fg);
+  --chip-accent: var(--sage);
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chip-dot-color, var(--chip-accent));
+  flex: none;
+}
+
+.dotPulse {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}

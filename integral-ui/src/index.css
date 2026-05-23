@@ -1,0 +1,128 @@
+/**
+ * Integral · design system primitives.
+ * Ported from `../../ccdesign/Integral.html` <style> block — these are the
+ * load-bearing aesthetic decisions (warm paper / cool ink / single signal
+ * amber + sage/rose accents) that the kinetic review confirmed should survive
+ * into production. CSS variables are the source of truth; component CSS
+ * Modules consume them.
+ */
+
+:root {
+  /* Palette — OKLCH for perceptual uniformity. */
+  --paper: oklch(0.985 0.004 85);
+  --paper-2: oklch(0.975 0.005 85);
+  --paper-3: oklch(0.955 0.006 82);
+  --ink: oklch(0.205 0.012 260);
+  --ink-2: oklch(0.34 0.01 260);
+  --mute: oklch(0.52 0.008 260);
+  --mute-2: oklch(0.68 0.006 260);
+  --line: oklch(0.88 0.006 80);
+  --line-2: oklch(0.93 0.005 80);
+
+  --amber: oklch(0.68 0.135 65);
+  --amber-soft: oklch(0.94 0.045 75);
+  --amber-fg: oklch(0.42 0.11 65);
+  --amber-border: oklch(0.86 0.08 75);
+
+  --sage: oklch(0.58 0.07 155);
+  --sage-soft: oklch(0.94 0.025 150);
+  --sage-fg: oklch(0.4 0.06 155);
+  --sage-border: oklch(0.86 0.05 150);
+
+  --rose: oklch(0.6 0.13 25);
+  --rose-soft: oklch(0.94 0.03 30);
+  --rose-fg: oklch(0.42 0.11 25);
+  --rose-border: oklch(0.86 0.07 30);
+
+  --blue: oklch(0.55 0.08 245);
+  --blue-soft: oklch(0.94 0.025 245);
+  --blue-fg: oklch(0.4 0.08 245);
+  --blue-border: oklch(0.86 0.04 245);
+
+  /* Type stack — IBM Plex per the mock. */
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --serif: 'IBM Plex Serif', Georgia, serif;
+
+  --shadow-card: 0 1px 0 oklch(0.9 0.005 80 / 0.6);
+
+  /* Status → color mapping. Atoms read these via attribute selectors. */
+  --status-draft: var(--mute-2);
+  --status-active: var(--ink);
+  --status-gated: var(--amber);
+  --status-proposed: var(--amber);
+  --status-satisfied: var(--sage);
+  --status-abandoned: var(--mute-2);
+  --status-revoked: var(--mute-2);
+}
+
+/* Reset + baseline. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 14px/1.45 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: var(--amber-soft);
+  color: var(--ink);
+}
+
+/* Scrollbar restraint — match the mock's calm scrollbars. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mute-2);
+}
+
+/* Shared keyframes for atoms that need them. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+}
