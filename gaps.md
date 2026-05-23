@@ -99,6 +99,16 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
 - **Loss:** The action becomes opaque metadata. UI can't filter "show only iterations that *introduced* new principles vs. iterations that *updated* existing ones" without re-parsing the prose note.
 - **v0.2 candidate:** Closely tied to G-N-2 (principles graph). If principles become first-class typed objects, the action becomes a typed `OperationKind` over them (`principle-insert`, `principle-update`, `principle-supersede`).
 
+### G-N-11. `KnowledgeRef.version` is overloaded as a lossy-mapping marker
+
+- **Evidence (Phase 3):** Phase 3 emits `version: 'v0.1-lossy'` on every principle-derived `KnowledgeRef` to mark "the rich principles.json structure (confidence/regime/mechanism/applicability_bounds/evidence/contradicts/superseded_by/category/status) was dropped per G-N-2." The `version` field's natural meaning is "version of the referenced document/corpus" — using it as a lossy-mapping signal is overload.
+- **v0.1 schema:** `KnowledgeRef.version: string?` — free-form, no semantic constraint.
+- **Loss:** When v0.2 promotes principles to typed objects (per G-N-2), there's no obvious place to flip the marker — does v0.2's adapter use a different `version` string, or does the field name itself shift? A future adapter author won't know whether `version='v0.1-lossy'` means "the corpus is at version v0.1-lossy" or "the adapter took a lossy mapping."
+- **v0.2 candidates:**
+  - Add `KnowledgeRef.lossy: boolean` (or a richer `lossy_reason: string`) so the lossy-mapping signal has its own field.
+  - Or: drop the marker entirely once principles get a real schema home — by then the lossy mapping is gone and the marker is meaningless.
+- **Severity:** Low for v0.1 (single adapter, single marker value), but the next adapter to take a similar lossy mapping will hit the same overload.
+
 ---
 
 ## Cross-cutting observations

@@ -416,6 +416,153 @@ describe('buildNousWorkspace — Phase 2 (ledger → iterations)', () => {
     expect(iterState.status).toBe('active')
   })
 
+  // ─── Phase 3: principles.json → KnowledgeRef wiring ─────────────────────
+
+  it('attaches campaign-scoped KnowledgeRefs (role=principles) when principles.json is present', async () => {
+    const principlesJson = JSON.stringify({
+      principles: [
+        { id: 'RP-1', extraction_iteration: 1 },
+        { id: 'RP-2', extraction_iteration: 2 },
+        { id: 'RP-3', extraction_iteration: 2 },
+      ],
+    })
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+        principles: principlesJson,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const result = WorkspaceSchema.safeParse(workspace)
+    if (!result.success) {
+      throw new Error(
+        'workspace rejected:\n' +
+          JSON.stringify(result.error.issues, null, 2)
+      )
+    }
+
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    const campaignPrinciples = campaign.knowledge_refs.filter(
+      (k) => k.role === 'principles'
+    )
+    expect(campaignPrinciples.length).toBe(3)
+    expect(campaignPrinciples.every((k) => k.scope === 'campaign')).toBe(true)
+    // URIs are stable & adapter-namespaced.
+    expect(campaignPrinciples[0]?.uri).toMatch(/^nous-principle:\/\/run\/RP-1$/)
+  })
+
+  it('attaches iteration-scoped KnowledgeRefs only to the iteration that emitted each principle', async () => {
+    const principlesJson = JSON.stringify({
+      principles: [
+        { id: 'RP-1', extraction_iteration: 1 },
+        { id: 'RP-2', extraction_iteration: 2 },
+        { id: 'RP-3', extraction_iteration: 2 },
+      ],
+    })
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+        principles: principlesJson,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const iter1 = workspace.intents.find(
+      (i) => i.kind === 'nous-iteration' && i.id.endsWith(':iter-1')
+    )!
+    const iter2 = workspace.intents.find(
+      (i) => i.kind === 'nous-iteration' && i.id.endsWith(':iter-2')
+    )!
+    expect(iter1.knowledge_refs.length).toBe(1)
+    expect(iter1.knowledge_refs[0]?.scope).toBe('iteration')
+    expect(iter1.knowledge_refs[0]?.uri).toContain('RP-1')
+    expect(iter2.knowledge_refs.length).toBe(2)
+    expect(iter2.knowledge_refs.every((k) => k.scope === 'iteration')).toBe(
+      true
+    )
+  })
+
+  it('emits the same uri on the campaign and iteration refs (so cross-scope lookups resolve)', async () => {
+    const principlesJson = JSON.stringify({
+      principles: [{ id: 'RP-7', extraction_iteration: 1 }],
+    })
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+        principles: principlesJson,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    const iter = workspace.intents.find((i) => i.kind === 'nous-iteration')!
+    expect(campaign.knowledge_refs[0]?.uri).toBe(iter.knowledge_refs[0]?.uri)
+  })
+
+  it('produces no KnowledgeRefs when principles.json is absent (graceful absence)', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    expect(campaign.knowledge_refs).toEqual([])
+    const iters = workspace.intents.filter((i) => i.kind === 'nous-iteration')
+    for (const iter of iters) {
+      expect(iter.knowledge_refs).toEqual([])
+    }
+  })
+
+  it('tolerates malformed principles.json without crashing the campaign', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+        principles: '@@ not json @@',
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    // Campaign + iterations still produced; just no knowledge refs.
+    expect(workspace.intents.length).toBe(3)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    expect(campaign.knowledge_refs).toEqual([])
+  })
+
+  it('drops principles whose extraction_iteration is the synthetic baseline (0) — campaign keeps them but no iteration intent owns iter-0', async () => {
+    const principlesJson = JSON.stringify({
+      principles: [
+        { id: 'RP-A', extraction_iteration: 0 }, // owned by the filtered baseline
+        { id: 'RP-B', extraction_iteration: 1 },
+      ],
+    })
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+        principles: principlesJson,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    // Both principles attached at campaign scope (campaign owns the full set).
+    expect(campaign.knowledge_refs.length).toBe(2)
+    // Only RP-B reaches iter-1; RP-A's iter-0 owner was filtered upstream,
+    // so it has no per-iteration intent to attach to. That's deliberate
+    // (gaps.md G-N-2 — baseline iterations are synthetic).
+    const iter = workspace.intents.find((i) => i.kind === 'nous-iteration')!
+    expect(iter.knowledge_refs.length).toBe(1)
+    expect(iter.knowledge_refs[0]?.uri).toContain('RP-B')
+  })
+
   it('emits multiple campaigns in parallel, each with their own iteration trees', async () => {
     const source = staticSource({
       'run-a': {

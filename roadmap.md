@@ -15,9 +15,9 @@ Tracks what's done, what's in flight, and what's deferred. Companion file to `go
 
 **v0.1 expansion (Path 2) — partial:** Item A done, parts of D done. Items B, C, E remain.
 
-Verification at this commit: 389 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
+Verification at this commit: 410 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
-**v0.1 substrate is descriptive only.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture; the user navigates; nothing mutates persistent state outside the in-memory shaping commit. No adapters yet.
+**v0.1 substrate is descriptive only.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output; the user navigates; nothing mutates persistent state outside the in-memory shaping commit. Adapter #1 (Nous) ships in Phases 1+2+3 — campaign declarations, iteration ledger, and principles.json all flow through the chrome.
 
 ---
 
@@ -112,9 +112,9 @@ Done:
 4. ✓ **Adapter #1 — Nous, Phase 1.** Transport/interpreter split (`NousSource` abstract; `FilesystemNousSource` impl). `buildNousWorkspace` reads `campaign-X.yaml` + `.nous/<run>/state.json` → typed `nous-campaign` Intents. Vite plugin exposes `/api/workspace?source=nous`. Smoke test: 20 real campaigns from `~/Documents/Projects/inference-sim/`.
 5. ✓ **Multi-source data plane** — `Provenance.source` v0.1.0 additive schema amendment; `src/lib/sources.ts` registry + URL parsing + workspace merging; `App.tsx` fetches all enabled sources and merges; `MapSurface` source-picker chip cluster (URL-synced via `history.replaceState`); `TreeCard` + `DetailHeader` carry a `via <source>` attribution chip. Default URL behavior: all known sources merged. Existing tests scoped to `?sources=fixture` for determinism.
 6. ✓ **Adapter #1 — Nous, Phase 2.** `src/adapters/nous/ledger.ts` adds `parseLedger` (tolerant JSON), `mapHmainResultToHypothesisResult` (schema-exhaustive falsification over `HypothesisResultSchema.options`), and `interpretIteration` (parent-scoped intent ids `nous:<source>:<run>:<candidate>` so refresh is idempotent). `buildNousWorkspace` filters synthetic iter-0 baselines, emits one `nous-iteration` per non-baseline ledger entry, wires ids into parent `decomposition.children` and `extension.current_iteration` (most-recent). Lossy mappings: `PARTIALLY_CONFIRMED → inconclusive` (G-N-1), `principles_extracted: [{id, action}]` → `Reference[]` with kind=observation (G-N-2/G-N-10), `family` → `tags` (G-N-3), runtime ledger fields without a schema home dropped (G-N-9). Smoke test: 47 iteration intents from 20 real `inference-sim/` campaigns, validates clean.
+7. ✓ **Adapter #1 — Nous, Phase 3.** `src/adapters/nous/principles.ts` adds `parsePrinciples` (tolerant JSON), `principleUri` (stable `nous-principle://<runId>/<id>` scheme), and `interpretPrinciplesAsKnowledgeRefs` (splits into campaign-scoped + iteration-scoped grouped by `extraction_iteration`). Each emitted `KnowledgeRef` carries `role='principles'` + `version='v0.1-lossy'` (the version field is the machine-readable signal that the rich principle structure was dropped per G-N-2). `buildNousWorkspace` attaches the full set at campaign scope (every principle on parent campaign) and per-iteration refs only on the iteration whose number matches `extraction_iteration` (synthetic iter-0 owners flow to campaign only). Smoke test: 157 campaign-scope + 157 iteration-scope principle refs from 20 real campaigns, validates clean.
 
 Remaining (in suggested order):
-7. **Adapter #1 — Nous, Phase 3.** Read `principles.json` → emit `KnowledgeRef`s (lossy per `gaps.md` G-N-2; principles graph deferred to v0.2).
 8. **Adapter #1 — Nous, Phase 4.** Emit `Operation`s from observed transitions (gate-resolved, iteration-completed, principle-extracted, etc.).
 9. **Refresh affordances** (workspace + per-intent buttons in the chrome; staleness chip on projections). Now meaningful since the API endpoint is live.
 10. **Filter / group / sort on Map** (UI-only, can run in parallel with adapter work).

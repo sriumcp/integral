@@ -14,6 +14,10 @@ import type {
   ParsedNousState,
 } from './types'
 import { interpretIteration, parseLedger, type LedgerEntry } from './ledger'
+import {
+  interpretPrinciplesAsKnowledgeRefs,
+  parsePrinciples,
+} from './principles'
 
 /**
  * Nous adapter interpreter — pure function from a `NousSource` to a typed
@@ -75,6 +79,15 @@ export async function buildNousWorkspace(source: NousSource): Promise<Workspace>
         )
       : []
 
+    // Phase 3: parse principles.json (if present) → KnowledgeRefs to attach
+    // at campaign + iteration scope.
+    const principleBundle = files.principles
+      ? interpretPrinciplesAsKnowledgeRefs(
+          parsePrinciples(files.principles),
+          runId
+        )
+      : { campaignRefs: [], iterationRefsByIter: new Map<number, never[]>() }
+
     const childIds: string[] = []
     let mostRecentIterId: string | undefined
     for (const entry of ledgerEntries) {
@@ -84,16 +97,24 @@ export async function buildNousWorkspace(source: NousSource): Promise<Workspace>
         entry,
         sourceId: source.id,
       })
-      intents.push(iter.intent)
+      const iterRefs =
+        principleBundle.iterationRefsByIter.get(entry.iteration) ?? []
+      const iterIntent: Intent =
+        iterRefs.length > 0
+          ? { ...iter.intent, knowledge_refs: iterRefs }
+          : iter.intent
+      intents.push(iterIntent)
       states.push(iter.state)
-      childIds.push(iter.intent.id)
-      mostRecentIterId = iter.intent.id
+      childIds.push(iterIntent.id)
+      mostRecentIterId = iterIntent.id
     }
 
-    // Wire iteration ids into the parent campaign's decomposition + extension.
+    // Wire iteration ids into the parent campaign's decomposition + extension,
+    // and attach the full set of campaign-scoped principle refs.
     const wiredIntent: Intent = {
       ...result.intent,
       decomposition: { children: childIds },
+      knowledge_refs: principleBundle.campaignRefs,
       extension:
         result.intent.extension.kind === 'nous-campaign' && mostRecentIterId
           ? {
