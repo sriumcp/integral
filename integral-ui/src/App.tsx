@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   WorkspaceSchema,
   type Intent,
@@ -20,6 +20,16 @@ const ME = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
 const LANDING_SEEN_KEY = 'integral.landing-seen'
 const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
 
+type DataSource = 'fixture' | 'nous'
+
+function readDataSource(): DataSource {
+  if (typeof window === 'undefined') return 'fixture'
+  const params = new URLSearchParams(window.location.search)
+  const source = params.get('source')
+  if (source === 'nous') return 'nous'
+  return 'fixture'
+}
+
 /**
  * Root. Validates the fixture against `WorkspaceSchema` at load and gates
  * downstream rendering on success — when the fixture fails, only the error
@@ -33,6 +43,11 @@ const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
  * in the live workspace state (in-memory only — fixture is not rewritten).
  */
 function App() {
+  const dataSource = readDataSource()
+  if (dataSource === 'nous') {
+    return <NousAdapterApp />
+  }
+  // Default: render the fixture (existing behavior).
   const result = WorkspaceSchema.safeParse(fixtureWorkspace)
   if (!result.success) {
     return <SchemaErrorBanner issues={result.error.issues} />
@@ -40,6 +55,96 @@ function App() {
   return (
     <HoveredIntentProvider>
       <Router initialWorkspace={result.data} />
+    </HoveredIntentProvider>
+  )
+}
+
+/**
+ * `NousAdapterApp` — boot path when `?source=nous` is in the URL.
+ *
+ * Fetches `/api/workspace?source=nous` (served by the Vite plugin in
+ * `vite-plugin-nous-adapter/`) and validates the response against
+ * `WorkspaceSchema` before handing it to the surfaces. Schema-validation
+ * gating is the same discipline the fixture path uses — never render
+ * unvalidated data.
+ *
+ * Loading + error states are minimal and aesthetically aligned with the
+ * SchemaErrorBanner. v0.1.1 will refine these when the workspace refresh
+ * affordances land.
+ */
+function NousAdapterApp() {
+  const [state, setState] = useState<
+    | { kind: 'loading' }
+    | { kind: 'error'; message: string }
+    | { kind: 'ready'; workspace: Workspace; sourceLabel: string }
+  >({ kind: 'loading' })
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/workspace?source=nous')
+      .then(async (res) => {
+        const body = await res.json()
+        if (cancelled) return
+        if (!res.ok) {
+          setState({
+            kind: 'error',
+            message: body?.error ?? `HTTP ${res.status}`,
+          })
+          return
+        }
+        const parsed = WorkspaceSchema.safeParse(body.workspace)
+        if (!parsed.success) {
+          setState({
+            kind: 'error',
+            message:
+              'WorkspaceSchema rejected adapter output:\n' +
+              JSON.stringify(parsed.error.issues, null, 2),
+          })
+          return
+        }
+        setState({
+          kind: 'ready',
+          workspace: parsed.data,
+          sourceLabel: body.source?.label ?? 'nous',
+        })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setState({
+          kind: 'error',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (state.kind === 'loading') {
+    return (
+      <main
+        style={{
+          fontFamily: 'var(--mono)',
+          maxWidth: 760,
+          margin: '60px auto',
+          padding: '0 24px',
+          color: 'var(--mute)',
+        }}
+      >
+        loading nous workspace…
+      </main>
+    )
+  }
+  if (state.kind === 'error') {
+    return (
+      <SchemaErrorBanner
+        issues={[{ message: state.message, path: ['nous-adapter'] }]}
+      />
+    )
+  }
+  return (
+    <HoveredIntentProvider>
+      <Router initialWorkspace={state.workspace} />
     </HoveredIntentProvider>
   )
 }
