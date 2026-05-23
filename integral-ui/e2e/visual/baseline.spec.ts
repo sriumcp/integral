@@ -30,7 +30,7 @@ async function readyForScreenshot(page: import('@playwright/test').Page) {
 
 test.describe('visual / landing', () => {
   test('landing surface', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await expect(page.getByRole('button', { name: /enter/i })).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('landing.png', { fullPage: true })
@@ -43,21 +43,21 @@ test.describe('visual / map + detail + activity', () => {
   })
 
   test('map default', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await expect(page.locator('header[data-surface="map"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('map-default.png', { fullPage: true })
   })
 
   test('map with awaiting-me filter active', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByText(/^awaiting me · /).click()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('map-awaiting-filter.png', { fullPage: true })
   })
 
   test('workspace activity strip', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     // Expand routine bucket so the strip's full content is captured.
     await page.getByRole('button', { name: /routine \d+/ }).click()
     await readyForScreenshot(page)
@@ -75,7 +75,7 @@ test.describe('visual / detail by intent kind', () => {
   // fixture decomposition so the breadcrumb depth is consistent.
 
   test('detail nous-campaign at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /nous-campaign/ }).first().click()
     await expect(page.locator('header[data-kind="nous-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -83,7 +83,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail nous-iteration at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /nous-campaign/ }).first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
     await expect(page.locator('header[data-kind="nous-iteration"]')).toBeVisible()
@@ -92,7 +92,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail nous-iteration at detail zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /nous-campaign/ }).first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
     await page
@@ -104,7 +104,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail coral-optimization at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /coral-optimization/ }).first().click()
     await expect(page.locator('header[data-kind="coral-optimization"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -112,7 +112,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail coral-attempt at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /coral-optimization/ }).first().click()
     await page.getByRole('button', { name: /open attempt-042/ }).click()
     await expect(page.locator('header[data-kind="coral-attempt"]')).toBeVisible()
@@ -121,7 +121,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail feature-campaign at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /feature-campaign/ }).first().click()
     await expect(page.locator('header[data-kind="feature-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -129,7 +129,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail feature-pr at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /feature-campaign/ }).first().click()
     await page.getByRole('button', { name: /open Add intent-state projection cache/ }).click()
     await expect(page.locator('header[data-kind="feature-pr"]')).toBeVisible()
@@ -138,7 +138,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail paper-campaign at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /paper-campaign/ }).first().click()
     await expect(page.locator('header[data-kind="paper-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -146,7 +146,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail paper-section at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /paper-campaign/ }).first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
     await expect(page.locator('header[data-kind="paper-section"]')).toBeVisible()
@@ -155,7 +155,7 @@ test.describe('visual / detail by intent kind', () => {
   })
 
   test('detail paper-claim at structure zoom', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /paper-campaign/ }).first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
     await page.getByRole('button', { name: /open Claim 19/ }).click()
@@ -171,7 +171,7 @@ test.describe('visual / shaping', () => {
   })
 
   test('shaping surface — fully resolved Nous draft', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     // Scope to TreeCards (data-kind/data-status) — operation rows in the
     // workspace activity strip also expose buttons with overlapping text.
     await page

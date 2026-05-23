@@ -58,6 +58,11 @@ export function DetailHeader({
       <div className={styles.metaRow}>
         <StatusDot status={state.status} ariaLabel={`status ${state.status}`} />
         <KindBadge kind={intent.kind} label={intent.kind} />
+        {intent.provenance.source && (
+          <Chip mono tone="mute" soft title={`source: ${intent.provenance.source}`}>
+            via {intent.provenance.source}
+          </Chip>
+        )}
         <Chip mono tone="mute">
           {intent.holder.mode}
         </Chip>

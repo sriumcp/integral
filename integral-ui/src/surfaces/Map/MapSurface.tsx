@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Intent, Party, Workspace } from '@/schema'
 import { Chip, SectionLabel } from '@/components/atoms'
 import { isAwaitingMe } from '@/lib/queue'
+import type { SourceEntry } from '@/lib/sources'
 import { TreeCard } from './TreeCard/TreeCard'
 import styles from './MapSurface.module.css'
 
@@ -10,6 +11,14 @@ export interface MapSurfaceProps {
   me: Party
   /** Drill-down handler — clicking a TreeCard navigates to the Detail surface. */
   onOpenIntent?: (intent: Intent) => void
+  /** Known sources (registry from `src/lib/sources.ts`). When provided
+   *  alongside `enabledSources` and `onToggleSource`, the source picker
+   *  chip cluster renders in the top row; when omitted, no picker. */
+  knownSources?: ReadonlyArray<SourceEntry>
+  /** Currently-enabled source IDs. */
+  enabledSources?: ReadonlySet<string>
+  /** Click handler for a source chip — toggles that source on/off. */
+  onToggleSource?: (sourceId: string) => void
 }
 
 type RootKind =
@@ -39,7 +48,14 @@ const ROOT_KINDS: ReadonlySet<RootKind> = new Set([
  *  - Backgrounded section.
  *  - Per-kind grouping toggle.
  */
-export function MapSurface({ workspace, me, onOpenIntent }: MapSurfaceProps) {
+export function MapSurface({
+  workspace,
+  me,
+  onOpenIntent,
+  knownSources,
+  enabledSources,
+  onToggleSource,
+}: MapSurfaceProps) {
   const [awaitingOnly, setAwaitingOnly] = useState(false)
 
   // Pair root intents with their states; non-root kinds (iterations, attempts,
@@ -129,6 +145,35 @@ export function MapSurface({ workspace, me, onOpenIntent }: MapSurfaceProps) {
           </Chip>
         </div>
       </header>
+
+      {knownSources && enabledSources && onToggleSource && (
+        <div
+          className={styles.sourcePicker}
+          role="group"
+          aria-label="data sources"
+          data-testid="source-picker"
+        >
+          <span className={styles.sourcePickerLabel}>sources</span>
+          {knownSources.map((source) => {
+            const enabled = enabledSources.has(source.id)
+            return (
+              <button
+                key={source.id}
+                type="button"
+                onClick={() => onToggleSource(source.id)}
+                data-source={source.id}
+                data-enabled={enabled ? 'true' : undefined}
+                style={{ all: 'unset', cursor: 'pointer' }}
+                aria-pressed={enabled}
+              >
+                <Chip mono tone={enabled ? 'sage' : 'mute'} dot={enabled}>
+                  {source.label}
+                </Chip>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <SectionLabel hint={`${filteredPairs.length} of ${rootIntentPairs.length}`}>
         forest

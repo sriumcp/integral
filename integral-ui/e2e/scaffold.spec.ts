@@ -27,7 +27,7 @@ const SKIP_LANDING_INIT =
 
 test.describe('Landing flow', () => {
   test('landing loads with glyph, peek, and enter button', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await expect(page.locator('main[data-surface="landing"]')).toBeVisible()
     await expect(page.getByRole('img', { name: /integral/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Integral' })).toBeVisible()
@@ -41,7 +41,7 @@ test.describe('Landing flow', () => {
   })
 
   test('clicking enter navigates to Map and AppHeader appears', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /enter/i }).click()
     // AppHeader is hidden on Landing; visible on Map.
     await expect(page.locator('header[data-surface="map"]')).toBeVisible()
@@ -49,7 +49,7 @@ test.describe('Landing flow', () => {
   })
 
   test('clicking the AppHeader logo from Map returns to Landing', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
     await page.getByRole('button', { name: /enter/i }).click()
     await expect(page.locator('header[data-surface="map"]')).toBeVisible()
     // Logo (glyph + wordmark) is a button — wired to clear the session
@@ -69,7 +69,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('map loads with active and draft campaigns', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // 4 active + 2 draft = 6 root cards.
     const cards = page.locator('button[data-kind]')
@@ -81,7 +81,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('every root kind renders via KindBadge', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // Root kinds = N (nous-campaign), C (coral-optimization),
     //              F (feature-campaign), P (paper-campaign).
@@ -91,7 +91,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('awaiting-me chip on the gated Nous campaign', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // The fixture's nous-campaign is gated awaiting `sri`, so exactly one
     // TreeCard carries data-awaiting="true" — the data-* contract is the
@@ -102,7 +102,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('awaiting-me filter narrows to awaiting trees', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     await page.getByText(/^awaiting me · /).click()
     // After filtering, only the one awaiting tree remains.
@@ -111,7 +111,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('clicking a TreeCard navigates to the Detail surface', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     await page.getByRole('button', { name: /coral-optimization/ }).first().click()
     // The Detail surface's own header exposes data-kind for the focused intent.
@@ -124,7 +124,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('zoom toggle changes Detail body — overview collapses children list', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     await page.getByRole('button', { name: /nous-campaign/ }).first().click()
     await expect(page.locator('header[data-kind="nous-campaign"]')).toBeVisible()
@@ -144,7 +144,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('clicking a child within Detail drills further', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     await page.getByRole('button', { name: /nous-campaign/ }).first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
@@ -152,7 +152,7 @@ test.describe('Map + Detail (post-landing)', () => {
   })
 
   test('clicking an evidence edge navigates cross-tree', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     await page.getByRole('button', { name: /paper-campaign/ }).first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
@@ -167,7 +167,7 @@ test.describe('Map + Detail (post-landing)', () => {
   test('workspace activity strip renders critical event and click navigates', async ({ page }) => {
     // Strip is visible at >=1280px; the test viewport defaults to 1280x720.
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // Critical fixture event: ci-status-changed: passing → failing on feature-pr.
     const criticalRow = page.locator('button[data-event][data-significance="critical"]')
@@ -178,7 +178,7 @@ test.describe('Map + Detail (post-landing)', () => {
 
   test('clicking a draft TreeCard routes to ShapingSurface (not Detail)', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // The fully-resolved Nous draft has its own TreeCard on the Map.
     // Scope to TreeCard buttons (data-kind) — the new activity-strip
@@ -200,7 +200,7 @@ test.describe('Map + Detail (post-landing)', () => {
 
   test('activity strip remains visible on Detail and routine bucket toggles', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // Open any tree to reach Detail; the strip is still rendered alongside.
     await page.locator('button[data-kind="coral-optimization"][data-status="active"]').click()
@@ -217,9 +217,35 @@ test.describe('Map + Detail (post-landing)', () => {
     await expect(page.getByText(/section-status-changed/)).toBeVisible()
   })
 
+  test('source picker chip cluster renders with fixture chip enabled', async ({ page }) => {
+    await page.goto('/?sources=fixture')
+    const picker = page.getByTestId('source-picker')
+    await expect(picker).toBeVisible()
+    // Both chips render in the picker.
+    await expect(picker.locator('button[data-source="fixture"]')).toBeVisible()
+    await expect(picker.locator('button[data-source="nous"]')).toBeVisible()
+    // Fixture is enabled, nous is not (per the URL).
+    await expect(
+      picker.locator('button[data-source="fixture"][data-enabled="true"]')
+    ).toBeVisible()
+    await expect(
+      picker.locator('button[data-source="nous"][data-enabled="true"]')
+    ).not.toBeVisible()
+  })
+
+  test('TreeCards expose a "via" source chip', async ({ page }) => {
+    await page.goto('/?sources=fixture')
+    // Every fixture intent is decorated with provenance.source = 'fixture'
+    // by the loader; TreeCards render a small "via fixture" chip.
+    const viaChips = page.locator('button[data-kind] >> text=via fixture')
+    await expect(viaChips.first()).toBeVisible()
+    // At least 6 of them — one per visible TreeCard.
+    expect(await viaChips.count()).toBeGreaterThanOrEqual(6)
+  })
+
   test('activity strip can be hidden and shown via the toggle', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/')
+    await page.goto('/?sources=fixture')
 
     // Default: strip is visible, hide toggle is in the header.
     await expect(

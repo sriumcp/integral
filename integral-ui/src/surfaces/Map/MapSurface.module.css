@@ -42,6 +42,23 @@
   flex-wrap: wrap;
 }
 
+.sourcePicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.sourcePickerLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--mute);
+  margin-right: 2px;
+}
+
 .forest {
   display: grid;
   grid-template-columns: 1fr;

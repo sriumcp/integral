@@ -30,6 +30,32 @@ export function nousAdapterPlugin(): Plugin {
     name: 'nous-adapter',
     apply: 'serve',
     configureServer(server) {
+      // Expose `/api/sources` so the UI can confirm which adapters
+      // are configured. v0.1 lists only Nous (the fixture is loaded
+      // statically by the client and isn't an adapter).
+      server.middlewares.use('/api/sources', async (req, res) => {
+        if (req.method && req.method !== 'GET') {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        res.statusCode = 200
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('cache-control', 'no-store')
+        res.end(
+          JSON.stringify({
+            sources: [
+              {
+                id: 'nous',
+                label: 'nous campaigns',
+                kind: 'adapter',
+                path: defaultSourcePath,
+              },
+            ],
+          })
+        )
+      })
+
       server.middlewares.use('/api/workspace', async (req, res) => {
         try {
           const url = new URL(req.url ?? '', 'http://localhost')

@@ -181,10 +181,16 @@ export const DecompositionSchema = z.object({
 })
 
 // ─── Provenance ────────────────────────────────────────────────────────────
+// `source` is the v0.1.0 additive amendment that records which workspace
+// data source (a registered fixture or adapter, see `src/lib/sources.ts`)
+// produced this intent. Optional because pre-amendment fixtures and
+// hand-written test data don't carry it; the loader decorates each
+// workspace with its source ID at fetch time.
 export const ProvenanceSchema = z.object({
   declared_by: PartySchema,
   declared_at: TimestampSchema,
   motivated_by: z.array(ReferenceSchema),
+  source: z.string().min(1).optional(),
 })
 
 // ─── Declaration ───────────────────────────────────────────────────────────

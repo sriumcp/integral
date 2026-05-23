@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   WorkspaceSchema,
   type Intent,
   type IntentState,
   type Workspace,
 } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
 import { shapingFor } from '@/fixtures/shaping'
 import { AppHeader, type Crumb } from '@/components'
 import { MapSurface } from '@/surfaces/Map'
@@ -14,113 +13,100 @@ import { LandingSurface } from '@/surfaces/Landing'
 import { ShapingSurface } from '@/surfaces/Shaping'
 import { WorkspaceActivityStrip } from '@/surfaces/Activity'
 import { HoveredIntentProvider } from '@/lib/hovered-intent'
+import {
+  KNOWN_SOURCES,
+  loadEnabledSources,
+  parseSourcesFromUrl,
+  serializeSourcesToUrl,
+} from '@/lib/sources'
 import styles from './App.module.css'
 
 const ME = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
 const LANDING_SEEN_KEY = 'integral.landing-seen'
 const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
 
-type DataSource = 'fixture' | 'nous'
-
-function readDataSource(): DataSource {
-  if (typeof window === 'undefined') return 'fixture'
-  const params = new URLSearchParams(window.location.search)
-  const source = params.get('source')
-  if (source === 'nous') return 'nous'
-  return 'fixture'
-}
-
 /**
- * Root. Validates the fixture against `WorkspaceSchema` at load and gates
- * downstream rendering on success — when the fixture fails, only the error
- * banner renders, not stale data. This is the same discipline adapters will
- * follow at v0.2.
+ * Root. Loads workspace data from one or more sources (fixture, adapters)
+ * per the `?sources=` URL contract — see `src/lib/sources.ts`. Default is
+ * "all known sources merged" so the user gets the widest possible view by
+ * default; toggling sources via the Map's picker chip cluster narrows or
+ * widens the workspace and updates the URL.
  *
- * v0.1 routing is in-memory only. Landing is the default first paint per
- * session; subsequent navigation back from Map skips it. The `AppHeader`
- * chrome renders above Map / Detail / Shaping. Drafts route to Shaping;
- * everything else routes to Detail. Commit transitions the draft to active
- * in the live workspace state (in-memory only — fixture is not rewritten).
+ * Validation is fail-closed: every fetched source is decorated with its
+ * source ID, the merged workspace is validated against `WorkspaceSchema`,
+ * and surfaces only render on `safeParse.success`.
  */
 function App() {
-  const dataSource = readDataSource()
-  if (dataSource === 'nous') {
-    return <NousAdapterApp />
-  }
-  // Default: render the fixture (existing behavior).
-  const result = WorkspaceSchema.safeParse(fixtureWorkspace)
-  if (!result.success) {
-    return <SchemaErrorBanner issues={result.error.issues} />
-  }
-  return (
-    <HoveredIntentProvider>
-      <Router initialWorkspace={result.data} />
-    </HoveredIntentProvider>
+  // Enabled-source set derives from URL (query string `sources=a,b`).
+  // History-aware: toggling updates URL, which keeps the bookmarkable
+  // contract honest. Initial state is parsed once at mount.
+  const [enabledSources, setEnabledSources] = useState<Set<string>>(() =>
+    parseSourcesFromUrl(typeof window !== 'undefined' ? window.location.search : '')
   )
-}
 
-/**
- * `NousAdapterApp` — boot path when `?source=nous` is in the URL.
- *
- * Fetches `/api/workspace?source=nous` (served by the Vite plugin in
- * `vite-plugin-nous-adapter/`) and validates the response against
- * `WorkspaceSchema` before handing it to the surfaces. Schema-validation
- * gating is the same discipline the fixture path uses — never render
- * unvalidated data.
- *
- * Loading + error states are minimal and aesthetically aligned with the
- * SchemaErrorBanner. v0.1.1 will refine these when the workspace refresh
- * affordances land.
- */
-function NousAdapterApp() {
-  const [state, setState] = useState<
+  const [loadState, setLoadState] = useState<
     | { kind: 'loading' }
     | { kind: 'error'; message: string }
-    | { kind: 'ready'; workspace: Workspace; sourceLabel: string }
+    | { kind: 'ready'; workspace: Workspace; failures: string[] }
   >({ kind: 'loading' })
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/workspace?source=nous')
-      .then(async (res) => {
-        const body = await res.json()
-        if (cancelled) return
-        if (!res.ok) {
-          setState({
-            kind: 'error',
-            message: body?.error ?? `HTTP ${res.status}`,
-          })
-          return
-        }
-        const parsed = WorkspaceSchema.safeParse(body.workspace)
-        if (!parsed.success) {
-          setState({
-            kind: 'error',
-            message:
-              'WorkspaceSchema rejected adapter output:\n' +
-              JSON.stringify(parsed.error.issues, null, 2),
-          })
-          return
-        }
-        setState({
-          kind: 'ready',
-          workspace: parsed.data,
-          sourceLabel: body.source?.label ?? 'nous',
-        })
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setState({
+  const reload = useCallback(async (sources: Set<string>) => {
+    setLoadState({ kind: 'loading' })
+    try {
+      const { workspace, failures } = await loadEnabledSources(sources)
+      const parsed = WorkspaceSchema.safeParse(workspace)
+      if (!parsed.success) {
+        setLoadState({
           kind: 'error',
-          message: err instanceof Error ? err.message : String(err),
+          message:
+            'WorkspaceSchema rejected merged workspace:\n' +
+            JSON.stringify(parsed.error.issues, null, 2),
         })
+        return
+      }
+      setLoadState({
+        kind: 'ready',
+        workspace: parsed.data,
+        failures: failures.map((f) => `${f.sourceId}: ${f.error}`),
       })
-    return () => {
-      cancelled = true
+    } catch (err) {
+      setLoadState({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      })
     }
   }, [])
 
-  if (state.kind === 'loading') {
+  useEffect(() => {
+    void reload(enabledSources)
+  }, [enabledSources, reload])
+
+  const toggleSource = useCallback((sourceId: string) => {
+    setEnabledSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(sourceId)) {
+        next.delete(sourceId)
+      } else {
+        next.add(sourceId)
+      }
+      // Reflect in URL so the state is bookmarkable + survives reload.
+      try {
+        const params = new URLSearchParams(window.location.search)
+        params.set('sources', serializeSourcesToUrl(next))
+        const search = params.toString()
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${search ? '?' + search : ''}${window.location.hash}`
+        )
+      } catch {
+        // history.replaceState may fail in restricted contexts; fall through.
+      }
+      return next
+    })
+  }, [])
+
+  if (loadState.kind === 'loading') {
     return (
       <main
         style={{
@@ -131,20 +117,26 @@ function NousAdapterApp() {
           color: 'var(--mute)',
         }}
       >
-        loading nous workspace…
+        loading workspace…
       </main>
     )
   }
-  if (state.kind === 'error') {
+  if (loadState.kind === 'error') {
     return (
       <SchemaErrorBanner
-        issues={[{ message: state.message, path: ['nous-adapter'] }]}
+        issues={[{ message: loadState.message, path: ['sources'] }]}
       />
     )
   }
+
   return (
     <HoveredIntentProvider>
-      <Router initialWorkspace={state.workspace} />
+      <Router
+        initialWorkspace={loadState.workspace}
+        enabledSources={enabledSources}
+        onToggleSource={toggleSource}
+        sourceFailures={loadState.failures}
+      />
     </HoveredIntentProvider>
   )
 }
@@ -177,12 +169,30 @@ function initialStripCollapsed(): boolean {
   }
 }
 
-function Router({ initialWorkspace }: { initialWorkspace: Workspace }) {
+interface RouterProps {
+  initialWorkspace: Workspace
+  enabledSources: Set<string>
+  onToggleSource: (sourceId: string) => void
+  sourceFailures: string[]
+}
+
+function Router({
+  initialWorkspace,
+  enabledSources,
+  onToggleSource,
+  sourceFailures: _sourceFailures,
+}: RouterProps) {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace)
   const [view, setView] = useState<View>(initialView)
   const [stripCollapsed, setStripCollapsed] = useState<boolean>(
     initialStripCollapsed
   )
+
+  // Keep workspace in sync when source selection (and therefore the
+  // initialWorkspace prop) changes.
+  useEffect(() => {
+    setWorkspace(initialWorkspace)
+  }, [initialWorkspace])
 
   const toggleStrip = () => {
     setStripCollapsed((v) => {
@@ -315,7 +325,14 @@ function Router({ initialWorkspace }: { initialWorkspace: Workspace }) {
       <div className={styles.body}>
         <div>
           {view.kind === 'map' ? (
-            <MapSurface workspace={workspace} me={ME} onOpenIntent={openIntent} />
+            <MapSurface
+              workspace={workspace}
+              me={ME}
+              onOpenIntent={openIntent}
+              knownSources={KNOWN_SOURCES}
+              enabledSources={enabledSources}
+              onToggleSource={onToggleSource}
+            />
           ) : (
             <DetailSurface
               workspace={workspace}
@@ -379,7 +396,7 @@ function SchemaErrorBanner({
           fontSize: 12,
         }}
       >
-        schema rejected fixture · downstream rendering halted
+        schema rejected workspace · downstream rendering halted
       </p>
       <section
         style={{
@@ -390,7 +407,7 @@ function SchemaErrorBanner({
           color: 'var(--rose-fg)',
         }}
       >
-        <strong>✗ WorkspaceSchema rejected the fixture</strong>
+        <strong>✗ Workspace failed validation</strong>
         <ul
           style={{
             marginTop: 10,

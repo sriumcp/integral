@@ -109,18 +109,19 @@ Done:
 1. ✓ **Schema: `Operation` type** + activity classification widening + fixture ops + workspace strip rendering.
 2. ✓ **Operation log surface unification** — folded per-intent activity into `WorkspaceActivityStrip` via scope filter; deleted the separate `IntentActivityStrip`.
 3. ✓ **Hide/show on the unified strip** (collapse rail, sessionStorage persistence).
-4. ✓ **Adapter #1 — Nous, Phase 1.** Transport/interpreter split (`NousSource` abstract; `FilesystemNousSource` impl). `buildNousWorkspace` reads `campaign-X.yaml` + `.nous/<run>/state.json` → typed `nous-campaign` Intents. Vite plugin exposes `/api/workspace?source=nous`. UI fetches when `?source=nous` query param is present; default keeps fixture. Smoke test: 20 real campaigns from `~/Documents/Projects/inference-sim/` produced + `WorkspaceSchema.safeParse` green.
+4. ✓ **Adapter #1 — Nous, Phase 1.** Transport/interpreter split (`NousSource` abstract; `FilesystemNousSource` impl). `buildNousWorkspace` reads `campaign-X.yaml` + `.nous/<run>/state.json` → typed `nous-campaign` Intents. Vite plugin exposes `/api/workspace?source=nous`. Smoke test: 20 real campaigns from `~/Documents/Projects/inference-sim/`.
+5. ✓ **Multi-source data plane** — `Provenance.source` v0.1.0 additive schema amendment; `src/lib/sources.ts` registry + URL parsing + workspace merging; `App.tsx` fetches all enabled sources and merges; `MapSurface` source-picker chip cluster (URL-synced via `history.replaceState`); `TreeCard` + `DetailHeader` carry a `via <source>` attribution chip. Default URL behavior: all known sources merged. Existing tests scoped to `?sources=fixture` for determinism.
 
 Remaining (in suggested order):
-5. **Adapter #1 — Nous, Phase 2.** Read `.nous/<run>/ledger.json` → produce `nous-iteration` child intents with `hypothesis_bundle` + `prediction_errors` + `principles_emitted`. Wire into the campaign's `decomposition.children`. Surface gaps to `gaps.md`.
-6. **Adapter #1 — Nous, Phase 3.** Read `principles.json` → emit `KnowledgeRef`s (lossy per `gaps.md` G-N-2; principles graph deferred to v0.2).
-7. **Adapter #1 — Nous, Phase 4.** Emit `Operation`s from observed transitions (gate-resolved, iteration-completed, principle-extracted, etc.).
-8. **Refresh affordances** (workspace + per-intent buttons in the chrome; staleness chip on projections). Now meaningful since the API endpoint is live.
-9. **Filter / group / sort on Map** (UI-only, can run in parallel with adapter work).
-10. **Adapter #2 — Paper.**
-11. **Adapter #3 — Coral.**
-12. **Adapter #4 — Feature.**
-13. **Visual baseline regen** after each chrome change.
+6. **Adapter #1 — Nous, Phase 2.** Read `.nous/<run>/ledger.json` → produce `nous-iteration` child intents with `hypothesis_bundle` + `prediction_errors` + `principles_emitted`. Wire into the campaign's `decomposition.children`. Surface gaps to `gaps.md`.
+7. **Adapter #1 — Nous, Phase 3.** Read `principles.json` → emit `KnowledgeRef`s (lossy per `gaps.md` G-N-2; principles graph deferred to v0.2).
+8. **Adapter #1 — Nous, Phase 4.** Emit `Operation`s from observed transitions (gate-resolved, iteration-completed, principle-extracted, etc.).
+9. **Refresh affordances** (workspace + per-intent buttons in the chrome; staleness chip on projections). Now meaningful since the API endpoint is live.
+10. **Filter / group / sort on Map** (UI-only, can run in parallel with adapter work).
+11. **Adapter #2 — Paper.**
+12. **Adapter #3 — Coral.**
+13. **Adapter #4 — Feature.**
+14. **Visual baseline regen** after each chrome change.
 
 Verification triple after every item: `test:run` + `typecheck` + `build` + `test:e2e` (and `test:e2e:visual` after chrome changes).
 

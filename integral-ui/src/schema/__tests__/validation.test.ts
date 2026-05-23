@@ -352,6 +352,38 @@ describe('OperationSchema — fixture coverage + per-kind falsification', () => 
   })
 })
 
+describe('Provenance.source — v0.1.0 additive amendment', () => {
+  it('accepts intents without provenance.source (back-compat)', () => {
+    const intent = fixtureWorkspace.intents[0]!
+    // Fixture intents don't currently carry provenance.source — the
+    // loader decorates them at fetch time. Schema must accept either.
+    const result = WorkspaceSchema.safeParse(fixtureWorkspace)
+    expect(result.success).toBe(true)
+    expect(intent.provenance.source).toBeUndefined()
+  })
+
+  it('accepts intents with provenance.source set to a non-empty string', () => {
+    const intent = fixtureWorkspace.intents[0]!
+    const decorated = {
+      ...intent,
+      provenance: { ...intent.provenance, source: 'nous' },
+    }
+    const result = IntentSchema.safeParse(decorated)
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects intents with provenance.source as an empty string', () => {
+    const intent = fixtureWorkspace.intents[0]!
+    const decorated = {
+      ...intent,
+      provenance: { ...intent.provenance, source: '' },
+    }
+    const result = IntentSchema.safeParse(decorated)
+    // z.string().min(1) — empty strings are not valid sources.
+    expect(result.success).toBe(false)
+  })
+})
+
 describe('isIntentOfKind — type narrowing helper', () => {
   it('narrows a Nous campaign to its extension shape', () => {
     const intent = fixtureWorkspace.intents.find(

@@ -134,6 +134,7 @@ export function interpretCampaign(
       declared_by: PROJECTOR_AGENT,
       declared_at: declaredAt,
       motivated_by: [],
+      source: 'nous',
     },
     knowledge_refs: [],
     tags: [],
