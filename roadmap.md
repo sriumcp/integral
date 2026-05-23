@@ -48,8 +48,12 @@ Sequential. Each item depends on the prior.
 **A1. Nous Phase 4 — Operations from observed transitions. ✓ DONE.**
 Generic `diffWorkspaces(prior, current, by, at) → Operation[]` engine in `src/lib/workspace-diff.ts` — adapter-agnostic; reused by Coral/GH later. Schema-exhaustive over `OperationKindSchema.options` via a `KIND_DISPOSITIONS` map. Specialized ops (`satisfy`/`gate`/`revoke`) win over generic `advance`. Deterministic op ids (`op:<kind>:<target>:<at>`) for refresh idempotency. `buildNousWorkspace(source, { prior, at })` consumes the diff and includes ops in the returned workspace. Smoke against `inference-sim/` with synthesized prior: 59 Operations across 3 kinds (declare 20 + decompose 20 + satisfy 19), validates clean. New gap: G-N-12 (principle-extraction events have no canonical op kind — emit nothing in v0.1).
 
-**A2. Projection generator (S-1) — kind-pluggable.**
-Implements `read-at-zoom-level(intentId, zoom) → Projection` (CLAUDE.md § Operating conventions). LLM-driven prose at structure (≤800 chars) and detail (unbounded). Architecture: per-kind plugin pattern; kinds without a registered plugin fall back to today's raw-field rendering automatically. Nous kinds (campaign + iteration) get plugins first; Coral and feature-campaign get default rendering until their plugins land.
+**A2. Projection generator (S-1) — kind-pluggable, indexed by `(kind, zoom)`.**
+Implements `read-at-zoom-level(intentId, zoom) → Projection` (CLAUDE.md § Operating conventions). Projections sit on a 2D matrix: kind dictates *what to talk about*; zoom dictates *how much / what context*. v0.1 A2 ships **4 LLM-driven cells** — nous-campaign × {structure, detail} + nous-iteration × {structure, detail}. Overview stays structural (today's TreeCard rendering) across all kinds. Other kinds fall back to raw-field rendering at structure/detail until their plugins land in v0.2.
+
+Plugin shape: `KindProjectionPlugin<K extends IntentKind>` with optional `structure?` / `detail?` methods. Missing methods → raw-field fallback. Architecture is intentionally revisitable; v0.2 may reshape once Coral/GH/Paper plugin requirements surface.
+
+LLM call lives server-side in the Vite plugin (Anthropic API key in env, never in browser). In-memory LRU cache keyed on `hash(intent + state + linked-knowledge + zoom)` for refresh idempotency. API-key-missing case degrades gracefully to raw-field fallback (no errors).
 
 **A3. Refresh affordances + staleness.**
 Workspace-level refresh button in AppHeader (replaces the placeholder `reversibility · 24h` chip). Per-intent refresh in DetailHeader (small `↻`). "Synced X ago" chip on projections, goes amber past `stale_after`. Implementation: clicking refresh re-runs the adapter pipeline + projection generator for the targeted scope.

@@ -36,7 +36,16 @@ The `read-at-zoom-level(intentId, zoom) → Projection` operation is the substra
 
 The budgets are *constraints*, not suggestions. If a generator can't fit at a given zoom, the intent likely needs re-decomposing — the budget is a diagnostic.
 
-**v0.1 commitment:** none. Surfaces show raw fields. Generator implementation is the first v0.2 deliverable that *is not* an adapter.
+**The two axes.** Projections are indexed by `(intent.kind, zoom)`. The two axes ask *different questions*:
+
+- **Kind** dictates *what to talk about* — a campaign's projection talks about the research arc and accumulated principles; an iteration's talks about hypothesis + measurement + learning. Different prompt templates per kind.
+- **Zoom** dictates *how much, and what context to include* — structure stays close ("what's happening now"); detail widens ("full narrative — arc, what was learned, current state, what's next"). Different prompts AND different context bundles per zoom.
+
+The matrix has one cell per `(kind, zoom)` pair. v0.1 A2 ships **4 LLM-driven cells** (nous-campaign × {structure, detail}, nous-iteration × {structure, detail}). Other cells fall back to today's raw-field rendering. Overview stays structural across all kinds — the Map is a scan surface, and LLM prose at overview slows first paint without changing the scan semantics. Promoting overview to LLM is a v0.2 question.
+
+The matrix is *deliberately revisitable*. As Coral / GH issues / Paper adapters land, the projection requirements per kind may differ enough that the plugin shape needs reshaping. v0.1's plugin pattern is "good enough to ship two Nous kinds"; v0.2 may collapse, split, or restructure the matrix once the cross-kind patterns are visible.
+
+**v0.1 commitment (revised):** A2 ships kind-pluggable engine + Nous plugins (campaign + iteration) + structure/detail prose. Other kinds fall back to raw fields until their plugins land.
 
 ### S-2. Status grammar
 
