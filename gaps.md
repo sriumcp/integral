@@ -74,6 +74,31 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
 - **Loss:** `DONE` maps to `satisfied` — fine for the campaign-level state. But the *intra-iteration phases* (DESIGN/EXECUTE/ANALYZE) are richer and currently get flattened into `gate_status.current_gate`.
 - **v0.2 candidate:** Either expand `StatusSchema` (probably wrong — those are domain-specific), or formalize the gate vocabulary so per-kind phases compose with the universal status.
 
+### G-N-8. Campaign `success_criterion` has no source in the YAML
+
+- **Evidence (Phase 1 ingestion):** Real `campaign-X.yaml` files don't carry an explicit success criterion. The schema requires `Declaration.success_criterion: string (max 2000)` (allows empty), so the adapter currently emits `''`.
+- **v0.1 schema:** `Declaration.success_criterion: z.string().min(0).max(2000)`.
+- **Loss:** The Detail header's "success" line is empty for every adapter-emitted nous-campaign. Users can't see what would constitute satisfaction without reading the YAML's `research_question` (which is closer to a question than a criterion).
+- **v0.2 candidate:** Either (a) extract success criteria from the campaign declaration LLM-side as part of projection, (b) add a `success_criterion` field to the Nous YAML schema upstream, or (c) make `success_criterion` optional on `Declaration` so its absence is visible rather than rendered as a blank chip.
+
+### G-N-9. Iteration runtime fields with no schema home
+
+- **Evidence (Phase 2 ledger ingestion):** Every `ledger.json` entry carries `candidate_id` (the human-readable handle, e.g., `iter-2`), `ablation_results: Record<string, "CONFIRMED" | "REFUTED" | …>` (per-ablation outcomes keyed by ablation id), `control_result` (a `HypothesisResult`-like string for the negative control), `robustness_result` (similarly for the robustness check), and `frontier_update` (covered separately by G-N-5).
+- **v0.1 schema:** `NousIterationExtension` has `hypothesis_bundle.h_main` + `h_ablation[]` + `h_control_negative?` + `h_robustness?[]`. The ledger's `*_result` fields could *in principle* attach to the matching `Hypothesis.result`, but the v0.1 phase-2 adapter takes the lossy mapping `h_main_result → h_main.result` and **drops `ablation_results`, `control_result`, `robustness_result`** on the floor. `candidate_id` collapses into the iteration's intent id suffix (used as the parent-scoped suffix in `nous:<source>:<run>:<candidate>`).
+- **Loss:** Hypothesis bars on Detail show only `h_main`'s outcome; the ablation/control/robustness hypotheses come back empty. Side-by-side comparison of "main confirmed but ablations refuted" cases is invisible.
+- **v0.2 candidates:**
+  - Either: synthesize `Hypothesis` records inside `h_ablation` / `h_control_negative` / `h_robustness` from the ledger's `*_result` fields (requires the adapter to fabricate `statement` / `prediction` strings — bad).
+  - Or: relax `Hypothesis` to allow `result`-only entries with optional `statement` / `prediction`, so bare outcome rows can survive ingestion.
+  - Or: split `HypothesisOutcome` from `Hypothesis` — outcomes are runtime-emitted from the ledger; full hypotheses come from the campaign's design phase. The schema currently fuses them.
+- **Severity:** Low for chrome rendering, high for analysis fidelity. Two of three iteration-level signals (control + robustness) are silently dropped.
+
+### G-N-10. `principles_extracted` actions don't map to a typed lifecycle
+
+- **Evidence (Phase 2):** Each `LedgerEntry.principles_extracted: [{ id, action }]` carries an `action` field — observed values: `INSERT`, `UPDATE`, (likely also `SUPERSEDE`, `RETRACT` per the principles ledger machinery). v0.1's lossy mapping shoves `action` into `Reference.note` as `"action=INSERT"`.
+- **v0.1 schema:** `Reference = { kind, target, note? }` — `note` is free-form prose.
+- **Loss:** The action becomes opaque metadata. UI can't filter "show only iterations that *introduced* new principles vs. iterations that *updated* existing ones" without re-parsing the prose note.
+- **v0.2 candidate:** Closely tied to G-N-2 (principles graph). If principles become first-class typed objects, the action becomes a typed `OperationKind` over them (`principle-insert`, `principle-update`, `principle-supersede`).
+
 ---
 
 ## Cross-cutting observations

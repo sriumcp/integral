@@ -694,6 +694,7 @@ export type Declaration = z.infer<typeof DeclarationSchema>
 
 export type Hypothesis = z.infer<typeof HypothesisSchema>
 export type HypothesisBundle = z.infer<typeof HypothesisBundleSchema>
+export type HypothesisResult = z.infer<typeof HypothesisResultSchema>
 export type PredictionError = z.infer<typeof PredictionErrorSchema>
 
 export type NousCampaignExtension = z.infer<typeof NousCampaignExtensionSchema>

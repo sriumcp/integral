@@ -223,3 +223,226 @@ describe('buildNousWorkspace', () => {
     expect(workspace.operations).toEqual([])
   })
 })
+
+// ─── Phase 2: ledger-driven nous-iteration child intents ───────────────────
+
+const LEDGER_THREE_ITERS = JSON.stringify({
+  iterations: [
+    {
+      iteration: 0,
+      family: 'baseline',
+      timestamp: '1970-01-01T00:00:00Z',
+      candidate_id: 'baseline',
+      h_main_result: null,
+      principles_extracted: [],
+    },
+    {
+      iteration: 1,
+      family: 'pilot',
+      timestamp: '2026-05-19T20:40:02Z',
+      candidate_id: 'iter-1',
+      h_main_result: 'PARTIALLY_CONFIRMED',
+      principles_extracted: [{ id: 'RP-1', action: 'INSERT' }],
+    },
+    {
+      iteration: 2,
+      family: 'pilot',
+      timestamp: '2026-05-19T22:00:00Z',
+      candidate_id: 'iter-2',
+      h_main_result: 'REFUTED',
+      principles_extracted: [{ id: 'RP-2', action: 'INSERT' }],
+    },
+  ],
+})
+
+const LEDGER_BASELINE_ONLY = JSON.stringify({
+  iterations: [
+    {
+      iteration: 0,
+      family: 'baseline',
+      timestamp: '1970-01-01T00:00:00Z',
+      candidate_id: 'baseline',
+      h_main_result: null,
+      principles_extracted: [],
+    },
+  ],
+})
+
+const LEDGER_ONE_INFLIGHT = JSON.stringify({
+  iterations: [
+    {
+      iteration: 0,
+      family: 'baseline',
+      timestamp: '1970-01-01T00:00:00Z',
+      candidate_id: 'baseline',
+      h_main_result: null,
+    },
+    {
+      iteration: 1,
+      family: 'pilot',
+      timestamp: '2026-05-22T15:00:00Z',
+      candidate_id: 'iter-1',
+      h_main_result: null, // in-flight
+    },
+  ],
+})
+
+describe('buildNousWorkspace — Phase 2 (ledger → iterations)', () => {
+  it('emits nous-iteration intents from a ledger, skipping iter-0 baseline', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const result = WorkspaceSchema.safeParse(workspace)
+    if (!result.success) {
+      throw new Error(
+        'workspace rejected:\n' +
+          JSON.stringify(result.error.issues, null, 2)
+      )
+    }
+    const iterations = workspace.intents.filter(
+      (i) => i.kind === 'nous-iteration'
+    )
+    expect(iterations.length).toBe(2) // iter-1 + iter-2; baseline skipped
+    expect(iterations.every((i) => i.id.includes(':iter-'))).toBe(true)
+  })
+
+  it('wires iteration ids into parent campaign decomposition.children', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    expect(campaign.decomposition.children.length).toBe(2)
+    // children must reference real intents in the workspace
+    const idsInWorkspace = new Set(workspace.intents.map((i) => i.id))
+    for (const childId of campaign.decomposition.children) {
+      expect(idsInWorkspace.has(childId)).toBe(true)
+    }
+  })
+
+  it('sets extension.current_iteration to the most-recent non-baseline iteration', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    if (campaign.extension.kind === 'nous-campaign') {
+      // iter-2 is most recent
+      expect(campaign.extension.current_iteration).toBeDefined()
+      expect(campaign.extension.current_iteration).toContain(':iter-2')
+    }
+  })
+
+  it('produces a 1:1 Intent↔IntentState bijection for each iteration', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    expect(workspace.intents.length).toBe(workspace.states.length)
+    for (const intent of workspace.intents) {
+      expect(workspace.states.some((s) => s.intent_id === intent.id)).toBe(true)
+    }
+  })
+
+  it('emits no iteration intents when ledger has only the baseline', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_BASELINE_ONLY,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const iterations = workspace.intents.filter(
+      (i) => i.kind === 'nous-iteration'
+    )
+    expect(iterations.length).toBe(0)
+    const campaign = workspace.intents.find((i) => i.kind === 'nous-campaign')!
+    expect(campaign.decomposition.children).toEqual([])
+  })
+
+  it('emits no iteration intents when ledger is absent (Phase 1 still works)', async () => {
+    const source = staticSource({
+      run: { campaignYaml: MIN_CAMPAIGN_YAML, state: STATE_DONE },
+    })
+    const workspace = await buildNousWorkspace(source)
+    expect(
+      workspace.intents.filter((i) => i.kind === 'nous-iteration').length
+    ).toBe(0)
+  })
+
+  it('tolerates malformed ledger JSON without crashing the campaign', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: '@@ not json @@',
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    // Campaign still produced, no iterations.
+    expect(workspace.intents.length).toBe(1)
+    expect(workspace.intents[0]?.kind).toBe('nous-campaign')
+  })
+
+  it('handles in-flight iterations (h_main_result=null) — status=active', async () => {
+    const source = staticSource({
+      run: {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_ONE_INFLIGHT,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const iter = workspace.intents.find((i) => i.kind === 'nous-iteration')!
+    const iterState = workspace.states.find((s) => s.intent_id === iter.id)!
+    expect(iterState.status).toBe('active')
+  })
+
+  it('emits multiple campaigns in parallel, each with their own iteration trees', async () => {
+    const source = staticSource({
+      'run-a': {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_THREE_ITERS,
+      },
+      'run-b': {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_ACTIVE,
+        ledger: LEDGER_BASELINE_ONLY,
+      },
+    })
+    const workspace = await buildNousWorkspace(source)
+    const result = WorkspaceSchema.safeParse(workspace)
+    if (!result.success) {
+      throw new Error(
+        'multi-campaign rejected:\n' +
+          JSON.stringify(result.error.issues, null, 2)
+      )
+    }
+    // 2 campaigns + 2 iterations from run-a + 0 from run-b = 4 intents
+    expect(workspace.intents.length).toBe(4)
+    // run-a's iteration ids must be parent-scoped to run-a
+    const iterations = workspace.intents.filter(
+      (i) => i.kind === 'nous-iteration'
+    )
+    expect(iterations.every((i) => i.id.includes(':run-a:'))).toBe(true)
+  })
+})

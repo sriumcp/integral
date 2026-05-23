@@ -13,6 +13,7 @@ import type {
   ParsedCampaignYaml,
   ParsedNousState,
 } from './types'
+import { interpretIteration, parseLedger, type LedgerEntry } from './ledger'
 
 /**
  * Nous adapter interpreter — pure function from a `NousSource` to a typed
@@ -63,7 +64,45 @@ export async function buildNousWorkspace(source: NousSource): Promise<Workspace>
     }
     const result = interpretCampaign(runId, files, source.id)
     if (!result) continue
-    intents.push(result.intent)
+
+    // Phase 2: parse ledger.json (if present) → child nous-iteration intents.
+    // The baseline iter (iteration === 0, family === 'baseline') is a
+    // synthetic seed Nous emits for every campaign — we skip it so the Map
+    // doesn't show a fake first child.
+    const ledgerEntries: LedgerEntry[] = files.ledger
+      ? parseLedger(files.ledger).filter(
+          (e) => !(e.iteration === 0 && e.family === 'baseline')
+        )
+      : []
+
+    const childIds: string[] = []
+    let mostRecentIterId: string | undefined
+    for (const entry of ledgerEntries) {
+      const iter = interpretIteration({
+        runId,
+        parentIntentId: result.intent.id,
+        entry,
+        sourceId: source.id,
+      })
+      intents.push(iter.intent)
+      states.push(iter.state)
+      childIds.push(iter.intent.id)
+      mostRecentIterId = iter.intent.id
+    }
+
+    // Wire iteration ids into the parent campaign's decomposition + extension.
+    const wiredIntent: Intent = {
+      ...result.intent,
+      decomposition: { children: childIds },
+      extension:
+        result.intent.extension.kind === 'nous-campaign' && mostRecentIterId
+          ? {
+              ...result.intent.extension,
+              current_iteration: mostRecentIterId,
+            }
+          : result.intent.extension,
+    }
+    intents.push(wiredIntent)
     states.push(result.state)
   }
 
