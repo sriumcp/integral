@@ -1,4 +1,3 @@
-import * as os from 'node:os'
 import * as path from 'node:path'
 import type { Plugin } from 'vite'
 import { buildNousWorkspace } from '../src/adapters/nous'
@@ -16,35 +15,41 @@ import {
   readPersistedProjection,
   writePersistedProjection,
 } from './projection-cache'
+import {
+  loadSourcesConfig,
+  type ConfiguredSource,
+} from './sources-config'
 
 /**
- * Vite plugin that exposes the Nous adapter as `/api/workspace`.
+ * Vite plugin that exposes the Nous adapter as `/api/workspace` and
+ * `/api/projection`.
  *
- * The plugin wraps `FilesystemNousSource` (Node-only) and serves the
- * resulting typed `Workspace` as JSON. The browser app fetches this on
- * mount + on the refresh button. The Node-only filesystem code never
- * ships to the client.
+ * Sources are read from `integral.config.json` at startup (see
+ * `sources-config.ts`). The default config (one Nous source pointing at
+ * `~/Documents/Projects/inference-sim/`) is used when the file is absent
+ * so existing dev environments keep working without a config file.
  *
- * Source path: hardcoded to `~/Documents/Projects/inference-sim/` for
- * v0.1 per `roadmap.md`. v0.1.1 will accept a query param.
- *
- * Usage from the UI:
- *   GET /api/workspace?source=nous
+ * Endpoints:
+ *   GET /api/sources                               — list configured sources
+ *   GET /api/workspace?source=<id>                 — adapter output for one source
+ *   GET /api/projection?intent_id=X&zoom=Y         — LLM projection (cached on disk)
+ *   GET /api/projection?intent_id=X&zoom=Y&refresh=true
+ *                                                   — bypass cache, regenerate
  */
 export function nousAdapterPlugin(): Plugin {
-  const defaultSourcePath = path.join(
-    os.homedir(),
-    'Documents',
-    'Projects',
-    'inference-sim'
-  )
+  // Configured sources are loaded asynchronously when the dev server
+  // starts. Until they're loaded, all middleware awaits this promise.
+  let sourcesPromise: Promise<ConfiguredSource[]> | null = null
+  const ensureSourcesLoaded = (cwd: string): Promise<ConfiguredSource[]> => {
+    if (!sourcesPromise) sourcesPromise = loadSourcesConfig(cwd)
+    return sourcesPromise
+  }
 
-  // Server-side state. The cached workspace is consulted by the projection
-  // endpoint so it doesn't need to re-read .nous/<run>/ on every projection
-  // request. Caching is per-source-path. v0.1 keeps it in-memory; refresh
-  // affordances (A3) will invalidate. (Projections are cached on disk —
-  // see `projection-cache.ts`.)
-  let cachedWorkspace: Workspace | null = null
+  // Server-side workspace cache, keyed by source id. The projection
+  // endpoint consults this so it doesn't re-read filesystem state on
+  // every projection request.
+  const workspaceCache = new Map<string, Workspace>()
+
   const projectionPlugins: PluginRegistry = {
     'nous-campaign': nousCampaignPlugin,
     'nous-iteration': nousIterationPlugin,
@@ -66,28 +71,37 @@ export function nousAdapterPlugin(): Plugin {
     name: 'nous-adapter',
     apply: 'serve',
     configureServer(server) {
-      // Expose `/api/sources` so the UI can confirm which adapters
-      // are configured. v0.1 lists only Nous (the fixture is loaded
-      // statically by the client and isn't an adapter).
+      const cwd = server.config.root ?? process.cwd()
+      // Eagerly start config load so the first request doesn't pay the
+      // file-read latency. (No-op if it fails; ensureSourcesLoaded retries.)
+      void ensureSourcesLoaded(cwd).then((srcs) => {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[integral] configured sources (${srcs.length}): ${srcs
+            .map((s) => `${s.id} → ${s.path}`)
+            .join(', ')}`
+        )
+      })
+
       server.middlewares.use('/api/sources', async (req, res) => {
         if (req.method && req.method !== 'GET') {
           res.statusCode = 405
           res.end()
           return
         }
+        const sources = await ensureSourcesLoaded(cwd)
         res.statusCode = 200
         res.setHeader('content-type', 'application/json')
         res.setHeader('cache-control', 'no-store')
         res.end(
           JSON.stringify({
-            sources: [
-              {
-                id: 'nous',
-                label: 'nous campaigns',
-                kind: 'adapter',
-                path: defaultSourcePath,
-              },
-            ],
+            sources: sources.map((s) => ({
+              id: s.id,
+              label: s.label,
+              kind: 'adapter' as const,
+              path: s.path,
+              adapter_kind: s.kind,
+            })),
           })
         )
       })
@@ -96,31 +110,46 @@ export function nousAdapterPlugin(): Plugin {
         try {
           const url = new URL(req.url ?? '', 'http://localhost')
           const sourceKey = url.searchParams.get('source')
-          if (sourceKey !== 'nous') {
+          if (!sourceKey) {
             res.statusCode = 400
             res.setHeader('content-type', 'application/json')
             res.end(
               JSON.stringify({
-                error: `unsupported source: ${sourceKey ?? '(none)'}`,
-                supported: ['nous'],
+                error: '?source=<id> query param is required',
               })
             )
             return
           }
 
-          const sourcePath = url.searchParams.get('path') ?? defaultSourcePath
-          const source = new FilesystemNousSource(sourcePath)
+          const sources = await ensureSourcesLoaded(cwd)
+          const configured = sources.find((s) => s.id === sourceKey)
+          if (!configured) {
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(
+              JSON.stringify({
+                error: `unsupported source: ${sourceKey}`,
+                supported: sources.map((s) => s.id),
+              })
+            )
+            return
+          }
+
+          const source = new FilesystemNousSource(configured.path)
           const workspace = await buildNousWorkspace(source)
-          // Cache for the projection endpoint so it doesn't need to re-read
-          // every campaign on every request.
-          cachedWorkspace = workspace
+          workspaceCache.set(configured.id, workspace)
 
           res.statusCode = 200
           res.setHeader('content-type', 'application/json')
           res.setHeader('cache-control', 'no-store')
           res.end(
             JSON.stringify({
-              source: { id: source.id, label: source.label, kind: 'nous' },
+              source: {
+                id: configured.id,
+                label: configured.label,
+                kind: 'nous',
+                path: configured.path,
+              },
               workspace,
             })
           )
@@ -136,18 +165,6 @@ export function nousAdapterPlugin(): Plugin {
       })
 
       // ─── /api/projection ───────────────────────────────────────────────
-      // Returns the LLM-generated projection for a single intent at a
-      // given zoom level. The chrome (DetailSurface) hits this on mount.
-      //
-      // Contract:
-      //   GET /api/projection?intent_id=X&zoom={overview|structure|detail}
-      //   200 { content: string, source: 'llm' | 'fallback' }
-      //   400 if params missing
-      //   404 if intent_id not in cached workspace
-      //
-      // Graceful degradation: if no ANTHROPIC_API_KEY in env, the engine
-      // falls back to raw-field rendering (source='fallback'). The chrome
-      // sees the same shape either way; no errors propagate.
       server.middlewares.use('/api/projection', async (req, res) => {
         try {
           const url = new URL(req.url ?? '', 'http://localhost')
@@ -176,28 +193,48 @@ export function nousAdapterPlugin(): Plugin {
           }
           const zoom: ZoomLevel = zoomParam
 
-          // Hydrate the cached workspace if missing — the chrome may hit
-          // /api/projection before /api/workspace if the user deep-links.
-          if (!cachedWorkspace) {
-            const source = new FilesystemNousSource(defaultSourcePath)
-            cachedWorkspace = await buildNousWorkspace(source)
+          // Resolve the intent across all configured sources. We hydrate
+          // workspaces lazily — the first projection request after a fresh
+          // server start may pay a filesystem walk per source.
+          const sources = await ensureSourcesLoaded(cwd)
+          let resolvedSource: ConfiguredSource | null = null
+          let resolvedWorkspace: Workspace | null = null
+
+          // Intent id convention from the Nous adapter:
+          //   nous:fs-<slug-of-source-path>:<run>:<iter>?
+          // We attempt to find the intent in cached workspaces first;
+          // fall back to hydrating one source at a time on miss.
+          for (const candidate of sources) {
+            let ws = workspaceCache.get(candidate.id)
+            if (!ws) {
+              ws = await buildNousWorkspace(
+                new FilesystemNousSource(candidate.path)
+              )
+              workspaceCache.set(candidate.id, ws)
+            }
+            if (ws.intents.some((i) => i.id === intentId)) {
+              resolvedSource = candidate
+              resolvedWorkspace = ws
+              break
+            }
           }
 
-          const intent = cachedWorkspace.intents.find((i) => i.id === intentId)
-          const state = cachedWorkspace.states.find(
-            (s) => s.intent_id === intentId
-          )
-          if (!intent || !state) {
+          if (!resolvedSource || !resolvedWorkspace) {
             res.statusCode = 404
             res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ error: `intent not found: ${intentId}` }))
+            res.end(
+              JSON.stringify({ error: `intent not found: ${intentId}` })
+            )
             return
           }
 
-          // Disk cache check (unless ?refresh=true). Cache key triple:
-          // (intent_id, zoom, state.last_advanced_at). State-driven
-          // invalidation is automatic — when state advances, the key
-          // misses and the LLM is called fresh.
+          const intent = resolvedWorkspace.intents.find(
+            (i) => i.id === intentId
+          )!
+          const state = resolvedWorkspace.states.find(
+            (s) => s.intent_id === intentId
+          )!
+
           const refresh = url.searchParams.get('refresh') === 'true'
           if (!refresh) {
             const cached = await readPersistedProjection({
@@ -217,19 +254,12 @@ export function nousAdapterPlugin(): Plugin {
           const projection = await generateProjection({
             intent,
             state,
-            workspace: cachedWorkspace,
+            workspace: resolvedWorkspace,
             zoom,
             plugins: projectionPlugins,
-            // If no API key, the engine receives a stub LLMClient that
-            // throws on call → engine catches → fallback. Cleaner than
-            // branching at this layer.
             llm: llm ?? noKeyLLMStub,
           })
 
-          // Persist to disk so next dev-server start (or the user's next
-          // visit to this intent) doesn't re-hit the LLM. Only persist
-          // llm-source projections — fallbacks are cheap to recompute and
-          // caching them would mask future plugin / API-key fixes.
           let response: object = projection
           if (projection.source === 'llm') {
             const persisted = await writePersistedProjection({
@@ -264,12 +294,15 @@ function isZoomLevel(s: string): s is ZoomLevel {
   return s === 'overview' || s === 'structure' || s === 'detail'
 }
 
-/** Stub LLM client used when no ANTHROPIC_API_KEY is in env. Throws on
- *  call so generateProjection's error path falls back to raw fields. */
+/** Stub LLM client used when no API key is in env. Throws on call so
+ *  generateProjection's error path falls back to raw fields. */
 const noKeyLLMStub = {
   async generate(): Promise<string> {
     throw new Error(
-      'no ANTHROPIC_API_KEY in env — projection engine falling back to raw fields'
+      'no LLM provider configured — projection engine falling back to raw fields'
     )
   },
 }
+
+// Suppress unused-import warning when path isn't otherwise referenced.
+void path

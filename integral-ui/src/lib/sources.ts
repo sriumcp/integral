@@ -3,13 +3,15 @@ import { fixtureWorkspace } from '@/fixtures/workspace'
 
 /**
  * Source registry — knows about all data sources the v0.1 substrate can
- * load workspaces from. Currently:
- *  - `'fixture'` — the hand-crafted demo data bundled with the app.
- *  - `'nous'` — Nous campaign adapter (Phase 1) reading
- *    `~/Documents/Projects/inference-sim/` via `/api/workspace`.
+ * load workspaces from.
  *
- * As more adapters land (Coral, Paper, Feature) they slot in here. The
- * URL contract `?sources=a,b` filters; missing param means "all known."
+ * The fixture source is statically registered (`FIXTURE_SOURCE`) since
+ * it's bundled with the app. Adapter sources are **discovered dynamically**
+ * from `/api/sources` at startup so multiple Nous workspaces (or other
+ * adapter kinds in v0.2) can be configured via `integral.config.json`.
+ *
+ * The URL contract `?sources=a,b` filters; missing param means "all
+ * registered" (fixture + every configured adapter source).
  */
 
 export type SourceKind = 'fixture' | 'adapter'
@@ -24,23 +26,49 @@ export interface SourceEntry {
   kind: SourceKind
 }
 
-export const KNOWN_SOURCES: ReadonlyArray<SourceEntry> = [
-  { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
-  { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
-]
-
-const KNOWN_IDS: ReadonlySet<string> = new Set(KNOWN_SOURCES.map((s) => s.id))
+export const FIXTURE_SOURCE: SourceEntry = {
+  id: 'fixture',
+  label: 'demo fixture',
+  kind: 'fixture',
+}
 
 /**
- * Parse the `?sources=...` query string. Comma-separated source IDs;
- * unknown IDs are silently dropped. A *missing* param returns the
- * default (all known sources). An *empty* param (`?sources=`) returns
- * an empty set — corner case, surfaces as an empty workspace.
+ * Fetch the dynamic source registry from `/api/sources` and merge with
+ * the static fixture source. Returns the fixture-only registry on fetch
+ * failure so the app stays usable in test/preview environments.
  */
-export function parseSourcesFromUrl(search: string): Set<string> {
+export async function fetchSourceRegistry(): Promise<ReadonlyArray<SourceEntry>> {
+  try {
+    const res = await fetch('/api/sources')
+    if (!res.ok) return [FIXTURE_SOURCE]
+    const body = (await res.json()) as {
+      sources?: Array<{ id: string; label: string; kind: SourceKind }>
+    }
+    const adapters: SourceEntry[] = (body.sources ?? [])
+      .filter((s) => s && typeof s.id === 'string' && typeof s.label === 'string')
+      .map((s) => ({ id: s.id, label: s.label, kind: 'adapter' as const }))
+    return [FIXTURE_SOURCE, ...adapters]
+  } catch {
+    return [FIXTURE_SOURCE]
+  }
+}
+
+/**
+ * Parse the `?sources=...` query string against a known registry.
+ *
+ * Comma-separated source IDs; unknown IDs are silently dropped. A
+ * *missing* param returns the default (all registered sources). An
+ * *empty* param (`?sources=`) returns an empty set — corner case,
+ * surfaces as an empty workspace.
+ */
+export function parseSourcesFromUrl(
+  search: string,
+  registry: ReadonlyArray<SourceEntry>
+): Set<string> {
   const params = new URLSearchParams(search)
+  const knownIds = new Set(registry.map((s) => s.id))
   if (!params.has('sources')) {
-    return new Set(KNOWN_SOURCES.map((s) => s.id))
+    return new Set(registry.map((s) => s.id))
   }
   const raw = params.get('sources') ?? ''
   if (raw.length === 0) return new Set()
@@ -48,19 +76,20 @@ export function parseSourcesFromUrl(search: string): Set<string> {
     raw
       .split(',')
       .map((s) => s.trim())
-      .filter((s) => s.length > 0 && KNOWN_IDS.has(s))
+      .filter((s) => s.length > 0 && knownIds.has(s))
   )
 }
 
 /**
- * Render a Set<sourceId> back into the URL query value.
- *
- * Used by the picker chip cluster to update history without a reload.
- * Returns the value to assign to the `sources` param (no leading `?`).
- * Empty set returns `''` (corner case representable as `?sources=`).
+ * Render a Set<sourceId> back into the URL query value, in the registry's
+ * canonical order.
  */
-export function serializeSourcesToUrl(enabled: Set<string>): string {
-  return KNOWN_SOURCES.filter((s) => enabled.has(s.id))
+export function serializeSourcesToUrl(
+  enabled: Set<string>,
+  registry: ReadonlyArray<SourceEntry>
+): string {
+  return registry
+    .filter((s) => enabled.has(s.id))
     .map((s) => s.id)
     .join(',')
 }
@@ -164,21 +193,24 @@ export async function loadSource(entry: SourceEntry): Promise<Workspace> {
  * just because the Nous adapter can't find its source directory.
  */
 export async function loadEnabledSources(
-  enabled: Set<string>
+  enabled: Set<string>,
+  registry: ReadonlyArray<SourceEntry>
 ): Promise<{ workspace: Workspace; failures: { sourceId: string; error: string }[] }> {
   const failures: { sourceId: string; error: string }[] = []
   const workspaces: Workspace[] = []
   await Promise.all(
-    KNOWN_SOURCES.filter((s) => enabled.has(s.id)).map(async (entry) => {
-      try {
-        workspaces.push(await loadSource(entry))
-      } catch (err) {
-        failures.push({
-          sourceId: entry.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    })
+    registry
+      .filter((s) => enabled.has(s.id))
+      .map(async (entry) => {
+        try {
+          workspaces.push(await loadSource(entry))
+        } catch (err) {
+          failures.push({
+            sourceId: entry.id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      })
   )
   return { workspace: mergeWorkspaces(workspaces), failures }
 }

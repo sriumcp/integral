@@ -1,0 +1,17 @@
+{
+  "_comment": "Source configuration for the Nous adapter. Copy this file to `integral.config.json` (sibling) to override the default. The Vite plugin reads `integral.config.json` at startup; if absent, it falls back to a single 'inference-sim' source pointing at ~/Documents/Projects/inference-sim. Add multiple Nous workspaces by adding entries to the `sources` array. v0.1 only supports `kind: \"nous\"`; coral/feature/paper kinds land in v0.2 alongside their adapters.",
+  "sources": [
+    {
+      "id": "inference-sim",
+      "kind": "nous",
+      "label": "inference-sim",
+      "path": "~/Documents/Projects/inference-sim"
+    },
+    {
+      "id": "another-nous-workspace",
+      "kind": "nous",
+      "label": "another workspace",
+      "path": "~/Documents/Projects/something-else"
+    }
+  ]
+}

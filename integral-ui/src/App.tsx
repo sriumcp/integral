@@ -14,10 +14,12 @@ import { ShapingSurface } from '@/surfaces/Shaping'
 import { WorkspaceActivityStrip } from '@/surfaces/Activity'
 import { HoveredIntentProvider } from '@/lib/hovered-intent'
 import {
-  KNOWN_SOURCES,
+  fetchSourceRegistry,
+  FIXTURE_SOURCE,
   loadEnabledSources,
   parseSourcesFromUrl,
   serializeSourcesToUrl,
+  type SourceEntry,
 } from '@/lib/sources'
 import styles from './App.module.css'
 
@@ -37,12 +39,45 @@ const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
  * and surfaces only render on `safeParse.success`.
  */
 function App() {
-  // Enabled-source set derives from URL (query string `sources=a,b`).
-  // History-aware: toggling updates URL, which keeps the bookmarkable
-  // contract honest. Initial state is parsed once at mount.
+  // Source registry is dynamic — fetched from /api/sources on mount —
+  // so multiple Nous workspaces (or other adapter kinds in v0.2) can be
+  // configured via integral.config.json without a code change. Until
+  // the registry resolves, we render with [FIXTURE_SOURCE] only so the
+  // fixture is always available even if the API is offline.
+  const [registry, setRegistry] = useState<ReadonlyArray<SourceEntry>>([
+    FIXTURE_SOURCE,
+  ])
+
+  // Enabled-source set derives from URL + registry. We re-parse whenever
+  // the registry resolves so unknown ids in the URL are dropped against
+  // the actual configured set.
   const [enabledSources, setEnabledSources] = useState<Set<string>>(() =>
-    parseSourcesFromUrl(typeof window !== 'undefined' ? window.location.search : '')
+    parseSourcesFromUrl(
+      typeof window !== 'undefined' ? window.location.search : '',
+      [FIXTURE_SOURCE]
+    )
   )
+
+  // Fetch dynamic registry once; merge with the static fixture.
+  useEffect(() => {
+    let cancelled = false
+    void fetchSourceRegistry().then((next) => {
+      if (cancelled) return
+      setRegistry(next)
+      // Re-parse URL against the resolved registry — initial parse used
+      // [FIXTURE_SOURCE] only, so adapter ids in the URL would have been
+      // dropped. This re-includes them.
+      setEnabledSources(
+        parseSourcesFromUrl(
+          typeof window !== 'undefined' ? window.location.search : '',
+          next
+        )
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const [loadState, setLoadState] = useState<
     | { kind: 'loading' }
@@ -53,7 +88,11 @@ function App() {
   const [refreshing, setRefreshing] = useState(false)
 
   const reload = useCallback(
-    async (sources: Set<string>, opts?: { isRefresh?: boolean }) => {
+    async (
+      sources: Set<string>,
+      reg: ReadonlyArray<SourceEntry>,
+      opts?: { isRefresh?: boolean }
+    ) => {
       const isRefresh = opts?.isRefresh ?? false
       if (isRefresh) {
         setRefreshing(true)
@@ -61,7 +100,7 @@ function App() {
         setLoadState({ kind: 'loading' })
       }
       try {
-        const { workspace, failures } = await loadEnabledSources(sources)
+        const { workspace, failures } = await loadEnabledSources(sources, reg)
         const parsed = WorkspaceSchema.safeParse(workspace)
         if (!parsed.success) {
           setLoadState({
@@ -91,37 +130,40 @@ function App() {
   )
 
   useEffect(() => {
-    void reload(enabledSources)
-  }, [enabledSources, reload])
+    void reload(enabledSources, registry)
+  }, [enabledSources, registry, reload])
 
   const onRefresh = useCallback(() => {
-    void reload(enabledSources, { isRefresh: true })
-  }, [enabledSources, reload])
+    void reload(enabledSources, registry, { isRefresh: true })
+  }, [enabledSources, registry, reload])
 
-  const toggleSource = useCallback((sourceId: string) => {
-    setEnabledSources((prev) => {
-      const next = new Set(prev)
-      if (next.has(sourceId)) {
-        next.delete(sourceId)
-      } else {
-        next.add(sourceId)
-      }
-      // Reflect in URL so the state is bookmarkable + survives reload.
-      try {
-        const params = new URLSearchParams(window.location.search)
-        params.set('sources', serializeSourcesToUrl(next))
-        const search = params.toString()
-        window.history.replaceState(
-          null,
-          '',
-          `${window.location.pathname}${search ? '?' + search : ''}${window.location.hash}`
-        )
-      } catch {
-        // history.replaceState may fail in restricted contexts; fall through.
-      }
-      return next
-    })
-  }, [])
+  const toggleSource = useCallback(
+    (sourceId: string) => {
+      setEnabledSources((prev) => {
+        const next = new Set(prev)
+        if (next.has(sourceId)) {
+          next.delete(sourceId)
+        } else {
+          next.add(sourceId)
+        }
+        // Reflect in URL so the state is bookmarkable + survives reload.
+        try {
+          const params = new URLSearchParams(window.location.search)
+          params.set('sources', serializeSourcesToUrl(next, registry))
+          const search = params.toString()
+          window.history.replaceState(
+            null,
+            '',
+            `${window.location.pathname}${search ? '?' + search : ''}${window.location.hash}`
+          )
+        } catch {
+          // history.replaceState may fail in restricted contexts; fall through.
+        }
+        return next
+      })
+    },
+    [registry]
+  )
 
   if (loadState.kind === 'loading') {
     return (
@@ -156,6 +198,7 @@ function App() {
         syncedAt={loadState.syncedAt}
         onRefresh={onRefresh}
         refreshing={refreshing}
+        registry={registry}
       />
     </HoveredIntentProvider>
   )
@@ -197,6 +240,7 @@ interface RouterProps {
   syncedAt: string
   onRefresh: () => void
   refreshing: boolean
+  registry: ReadonlyArray<SourceEntry>
 }
 
 function Router({
@@ -207,6 +251,7 @@ function Router({
   syncedAt,
   onRefresh,
   refreshing,
+  registry,
 }: RouterProps) {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace)
   const [view, setView] = useState<View>(initialView)
@@ -358,7 +403,7 @@ function Router({
               workspace={workspace}
               me={ME}
               onOpenIntent={openIntent}
-              knownSources={KNOWN_SOURCES}
+              knownSources={registry}
               enabledSources={enabledSources}
               onToggleSource={onToggleSource}
             />

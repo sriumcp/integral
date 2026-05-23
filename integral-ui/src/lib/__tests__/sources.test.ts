@@ -12,60 +12,85 @@ import { describe, expect, it } from 'vitest'
 import { WorkspaceSchema, type Workspace } from '@/schema'
 import { fixtureWorkspace } from '@/fixtures/workspace'
 import {
-  KNOWN_SOURCES,
   attributeSource,
+  FIXTURE_SOURCE,
   mergeWorkspaces,
   parseSourcesFromUrl,
   serializeSourcesToUrl,
+  type SourceEntry,
 } from '../sources'
+
+// Synthetic registry for tests. Mirrors what the runtime resolves from
+// /api/sources at app startup.
+const REGISTRY: ReadonlyArray<SourceEntry> = [
+  FIXTURE_SOURCE,
+  { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
+]
 
 describe('parseSourcesFromUrl', () => {
   it('returns all known sources when the param is missing', () => {
-    const result = parseSourcesFromUrl('')
-    for (const s of KNOWN_SOURCES) {
+    const result = parseSourcesFromUrl('', REGISTRY)
+    for (const s of REGISTRY) {
       expect(result.has(s.id)).toBe(true)
     }
   })
 
   it('returns the requested subset', () => {
-    expect(parseSourcesFromUrl('?sources=nous')).toEqual(new Set(['nous']))
-    expect(parseSourcesFromUrl('?sources=fixture')).toEqual(new Set(['fixture']))
-    expect(parseSourcesFromUrl('?sources=fixture,nous')).toEqual(
+    expect(parseSourcesFromUrl('?sources=nous', REGISTRY)).toEqual(
+      new Set(['nous'])
+    )
+    expect(parseSourcesFromUrl('?sources=fixture', REGISTRY)).toEqual(
+      new Set(['fixture'])
+    )
+    expect(parseSourcesFromUrl('?sources=fixture,nous', REGISTRY)).toEqual(
       new Set(['fixture', 'nous'])
     )
   })
 
   it('drops unknown source IDs', () => {
-    const result = parseSourcesFromUrl('?sources=nous,bogus,fixture,unknown')
+    const result = parseSourcesFromUrl(
+      '?sources=nous,bogus,fixture,unknown',
+      REGISTRY
+    )
     expect(result).toEqual(new Set(['fixture', 'nous']))
   })
 
   it('returns an empty set for ?sources= (corner case)', () => {
-    expect(parseSourcesFromUrl('?sources=').size).toBe(0)
+    expect(parseSourcesFromUrl('?sources=', REGISTRY).size).toBe(0)
   })
 
   it('tolerates whitespace around comma-separated values', () => {
-    expect(parseSourcesFromUrl('?sources= nous , fixture ')).toEqual(
+    expect(parseSourcesFromUrl('?sources= nous , fixture ', REGISTRY)).toEqual(
       new Set(['fixture', 'nous'])
     )
+  })
+
+  it('honors a multi-Nous registry (more than one adapter source)', () => {
+    const multiRegistry: ReadonlyArray<SourceEntry> = [
+      FIXTURE_SOURCE,
+      { id: 'inference-sim', label: 'inference-sim', kind: 'adapter' },
+      { id: 'experiments', label: 'experiments', kind: 'adapter' },
+    ]
+    const result = parseSourcesFromUrl('', multiRegistry)
+    expect(result).toEqual(new Set(['fixture', 'inference-sim', 'experiments']))
   })
 })
 
 describe('serializeSourcesToUrl', () => {
   it('renders sources in registry order, comma-separated', () => {
-    expect(serializeSourcesToUrl(new Set(['nous', 'fixture']))).toBe(
-      'fixture,nous'
-    )
+    expect(
+      serializeSourcesToUrl(new Set(['nous', 'fixture']), REGISTRY)
+    ).toBe('fixture,nous')
   })
 
   it('renders an empty string for an empty set', () => {
-    expect(serializeSourcesToUrl(new Set())).toBe('')
+    expect(serializeSourcesToUrl(new Set(), REGISTRY)).toBe('')
   })
 
   it('drops unknown ids silently', () => {
-    expect(serializeSourcesToUrl(new Set(['fixture', 'phantom']))).toBe(
-      'fixture'
-    )
+    expect(
+      serializeSourcesToUrl(new Set(['fixture', 'phantom']), REGISTRY)
+    ).toBe('fixture')
   })
 })
 
