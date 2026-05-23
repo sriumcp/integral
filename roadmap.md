@@ -1,6 +1,18 @@
 # Roadmap
 
-Tracks what's done, what's in flight, and what's deferred. Companion file to `goals.md` (polish pass — done) and `gaps.md` (v0.2 schema candidates).
+Tracks what's done, what's in flight, and what's deferred. Companion file to `goals.md` (chrome polish — done), `gaps.md` (schema-fit issues found during adapter work), and `semantics-v0.1.md` (semantic model commitments + open questions).
+
+---
+
+## The original purpose
+
+Integral exists to do three things:
+
+1. **Specify intent declaratively** (with the system's help) — Shaping surface; in v0.1 this is in-memory; v0.1 expansion adds a real writeback path.
+2. **Let harnesses act on it** — adapters read what harnesses produce; v0.1 expansion lets one harness (Nous) round-trip from declaration through execution.
+3. **Sensibly interpret and act on results** — projections + activity log + user-fired operations let humans (and eventually agents) understand and steer in-flight work.
+
+This roadmap is checked against those three at every revision. If a planned item doesn't move at least one of them forward, it's parked.
 
 ---
 
@@ -13,138 +25,145 @@ Tracks what's done, what's in flight, and what's deferred. Companion file to `go
 4. ShapingSurface (two-pane drafts, in-memory commit).
 5. Visual regression baselines (15 PNGs locked).
 
-**v0.1 expansion (Path 2) — partial:** Item A done, parts of D done. Items B, C, E remain.
+**v0.1 expansion (Path 2) — in flight.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3 shipped. Round-trip work, projection layer, breadth adapters all remaining (see Track A / Track B / Track C below).
 
-Verification at this commit: 410 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
+Verification at this commit: 411 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
-**v0.1 substrate is descriptive only.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output; the user navigates; nothing mutates persistent state outside the in-memory shaping commit. Adapter #1 (Nous) ships in Phases 1+2+3 — campaign declarations, iteration ledger, and principles.json all flow through the chrome.
+**v0.1 substrate is descriptive only today.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output; the user navigates; nothing mutates persistent state outside the in-memory shaping commit. **v0.1 expansion changes this** — the round-trip on Nous (Track A items A4 + A5) lands real writeback + at least one user-fired operation. After v0.1 expansion, "descriptive only" no longer holds.
 
 ---
 
-## v0.1 expansion: Path 2 (current focus)
+## v0.1 expansion (Path 2) — current focus
 
-**Decision recorded** (2026-05-22): expand v0.1 to include typed operation records + four adapters + surface query layer, **but not user-fired operations**. The "intent calculus" becomes visible in the type system but not yet executable from the UI side.
+**Decision recorded** (2026-05-22, revised 2026-05-23): expand v0.1 along two parallel tracks rather than serial-falsification.
 
-The framing from the conversation that landed this:
+The original Path 2 framing ("typed operation signatures, no execution; build four adapters in sequence") was too read-heavy. It optimized for schema falsification at the cost of the round-trip the original purpose demands. The revised Path 2 keeps falsification (now via two more adapters, not three) and adds the full round-trip on one harness so v0.1 ships a tool that closes the loop, not just a library that displays types.
 
-> *Path 2 — typed operation signatures, no execution. Adapters emit operations when they read state changes (e.g., a Nous iter completing → emits `satisfy(iter-2)`). The UI renders the operation log but doesn't fire operations from the user side. This adds calculus expressiveness without writeback.*
+The two tracks share the schema and the chrome. Otherwise they're independent and run in parallel.
 
-### A. Schema: typed `Operation` records — ✓ DONE
+### Track A — Nous round-trip (depth)
 
-Shipped in `integral-ui/src/schema/zod.ts`:
-- `OperationKindSchema` enum over all 16 op kinds (9 lifecycle + 7 shaping).
-- `OperationSchema` discriminated union over `kind` with shared base fields (`id`, `at`, `by`, `target_intent_id`, `cause`) and kind-specific payloads (e.g., `decompose.children`, `gate.gate` + `awaiting_party`, `reframe.from_kind` + `to_kind`).
-- `WorkspaceSchema.operations: Operation[]` — required collection alongside `evidence_links`.
-- 22 schema falsification tests, parameterized over `OperationKindSchema.options` so a v0.2 op addition fails the suite until acknowledged.
-- `src/lib/activity.ts` extended with `classifyOperation(op): Significance` (schema-exhaustive switch over the 16 kinds) and `deriveEvents(workspace)` widened to combine transitions + operations + synthetic markers under a single `ActivityEvent` shape with a `source: 'transition' | 'operation' | 'synthetic'` discriminator.
-- 10 representative operations added to `src/fixtures/workspace.ts` covering 8 of 16 kinds (`declare`, `probe`, `clarify`, `decompose`, `gate`, `propose-transition`, `accept-proposal`, `commit`).
+Sequential. Each item depends on the prior.
 
-### B. Adapter contract
+**A1. Nous Phase 4 — Operations from observed transitions.**
+The adapter compares prior runtime state to current and emits typed `Operation`s. Examples: an iteration completing → `satisfy(iter-N)`; a principle extracted → `declare-knowledge-ref(<uri>)`; a gate resolving → `accept-proposal`. Activity strip shows real ops, not just transitions.
 
-Each adapter is a function `Workspace.from(externalSource) → Workspace`. It produces:
-- `intents: Intent[]` (declarations from source files like `campaign-X.yaml`)
-- `states: IntentState[]` (1:1 with intents per the bijection refine)
-- `evidence_links: EvidenceLink[]` (cross-tree provenance)
-- `operations: Operation[]` (emitted from observed state transitions)
+**A2. Projection generator (S-1) — kind-pluggable.**
+Implements `read-at-zoom-level(intentId, zoom) → Projection` (CLAUDE.md § Operating conventions). LLM-driven prose at structure (≤800 chars) and detail (unbounded). Architecture: per-kind plugin pattern; kinds without a registered plugin fall back to today's raw-field rendering automatically. Nous kinds (campaign + iteration) get plugins first; Coral and feature-campaign get default rendering until their plugins land.
 
-The v0.1-normative operation is still `read-at-zoom-level(intentId, zoom) → Projection`. Operation emission is the new addition: when the adapter sees a state change in source data, it emits the corresponding typed operation.
+**A3. Refresh affordances + staleness.**
+Workspace-level refresh button in AppHeader (replaces the placeholder `reversibility · 24h` chip). Per-intent refresh in DetailHeader (small `↻`). "Synced X ago" chip on projections, goes amber past `stale_after`. Implementation: clicking refresh re-runs the adapter pipeline + projection generator for the targeted scope.
 
-### C. Four adapters (the v0.1 falsification path)
+**A4. Shaping → Nous writeback.**
+Commit-to-active on a Nous draft writes a real `campaign-X.yaml` to a configurable target dir. Schema-from-Intent serializer must round-trip: an intent the adapter reads back must equal the intent that wrote it (modulo runtime fields). This is **the first true mutation** of state outside the in-memory shaping commit.
 
-In implementation order — each adapter validates the schema against a real workflow before the next one starts:
+**A5. One user-fired Operation on Nous.**
+Pick one operation that closes the calculus loop end-to-end. Recommendation: `revoke` on a `nous-iteration` (lowest blast radius — flips state, doesn't touch the harness's running execution). Wire button in DetailHeader → API endpoint → adapter writes a `revoked` marker → next refresh shows status flipped. Proves the user → harness → user round-trip.
 
-1. **Nous campaign adapter.** `integral-ui/src/adapters/nous/`. Read `campaign-X.yaml` (declaration) + `.nous/X/` (state) for an existing Nous workspace (`~/Documents/Projects/inference-sim/` is the canonical test target — ~30 campaigns). Refresh button manual; auto-watch v0.1.1.
-2. **Paper writing adapter.** Read `papers/<name>/draft.md` + `refs.bib` + cross-references to upstream Nous campaigns the paper draws claims from.
-3. **Coral optimization adapter.** Read `.coral/attempts/*.json` and `.coral/notes/`; tests competitive parallelism (many sibling child intents).
-4. **Feature dev (git) adapter.** Read git log + GitHub PR API + repo-scoped `CLAUDE.md`; most expensive integration, runs last so it benefits from the schema lessons of (1)+(2)+(3).
+### Track B — Schema breadth (falsification)
 
-Adapters land *separately* — verify and commit between each. **A gap discovered in adapter N is not silently fixed in v0.1; it goes to `gaps.md`** and the lossy mapping is taken (per the discipline at the top of `gaps.md`).
+Parallel internally. Each adapter can land independent of the other.
 
-### D. Surface query layer
+**B1. Adapter #2 — Coral optimization.**
+Read `.coral/attempts/*.json` and `.coral/notes/`. Map to typed `coral-optimization` + `coral-attempt` intents. Tests competitive parallelism (many sibling child intents under one parent). Surfaces structural questions about decomposition pattern (parallel vs. sequence — see `semantics-v0.1.md` S-3). Phases 1+2 minimum (read declarations + scored attempts); operations + writeback v0.2.
 
-Pure UI, no schema or adapter dependency. Subitems track separately.
+**B2. Adapter #3 — GitHub issues (as feature-campaign).**
+Read GitHub issues + comments via `gh` CLI or REST API for a configurable repo. Issues become `feature-campaign` declarations: title → `declaration.title`, body → `declaration.summary`, labels → `tags`, assignees → `holder.parties`, comments → activity. Sub-issues / linked PRs / commits / CI status are deferred (full feature-dev integration is v0.2). This is the lighter stand-in for the original "feature-campaign with git log + GitHub PR API + repo-scoped CLAUDE.md" — same kind, thinner read scope.
 
-**D1. Workspace operation feed — ✓ DONE.** `WorkspaceActivityStrip` buckets operations alongside transitions. Operation rows expose `data-source="operation"` and a small mono `Chip` showing the op kind; significance comes from `classifyOperation`.
+### Track C — Cross-cutting UI (parallel with both tracks)
 
-**D2. Per-intent operation log — ✓ DONE (via unification).** The previous `IntentActivityStrip` was deleted (Detail's right-aside column with synthetic + history + filtered-ops); per-intent activity now lives inside `WorkspaceActivityStrip` via the **`focusedIntentId` prop + scope filter chip** (`scope · this intent` / `scope · all`). Defaults to `this intent` on Detail surface; resets each time the focused intent changes.
+**C1. Filter / group / sort on Map.**
+Beyond "awaiting me," add filters: kind (multi-select), tag, holder mode, status, source (already shipped — extend the cluster). Group toggle: by-kind / by-holder / by-source / no-grouping. Sort: recency / awaiting / status / alphabetical. Filter+group+sort live in `MapSurface.topRow`'s chip cluster.
 
-**D3. Hide/show on the strip — ✓ DONE (chrome refinement).** `›` toggle in the strip header collapses to a 36 px vertical rail with the non-routine event count and a `‹` expand chevron. State persists per session via `sessionStorage['integral.strip-collapsed']`. App body grid auto-narrows the aside column when collapsed.
-
-**D4. Filter chips on Map — pending.** Beyond the existing "awaiting me," add filters for: kind (multi-select), tag, holder mode, status. Filter chip cluster lives next to the existing one in `MapSurface.topRow`.
-
-**D5. Group toggle — pending.** Group-by-kind / group-by-holder / no-grouping. Surfaces existing TreeCards under section headers.
-
-**D6. Sort — pending.** Recency, awaiting, status, alphabetical. Toggle in the filter cluster.
-
-### E. Refresh affordances
-
-- **Workspace-level refresh button** in AppHeader (replaces or co-locates with the placeholder `reversibility · 24h` chip).
-- **Per-intent refresh** in the Detail header (small `↻` next to the kind badge).
-- **Staleness indicator** on every projection: "synced X ago"; goes amber past `stale_after`.
-
-Implementation: clicking refresh re-runs the adapter pipeline for the targeted scope. Auto-watch is v0.1.1.
-
-### F. Visual baseline updates
-
-Every chrome change in items C-E regenerates the 15 baselines via `npm run test:e2e:visual:update`. New baseline candidates as the operation log + filter chips land:
+**C2. Visual baseline regen.**
+Every chrome-affecting item (A2, A3, A5, B1, B2, C1) regenerates the 15 baselines via `npm run test:e2e:visual:update`. New baseline candidates as features land:
 - Map with filter chips active
-- Detail with operation log section
+- Detail with operation log section + projection prose
 - AppHeader showing the workspace refresh affordance
+- TreeCards rendering Coral + GitHub-issue intents
 
 ---
 
-## Deferred to v0.2 (do not silently pull forward)
+## Done so far (chronological, in v0.1 expansion)
 
-- **User-fired operations.** Any operation that mutates persistent state (declare/archive/satisfy/fork/etc. fired by the user, persisted to disk, and consumed by the harness). This is **Scenario B writeback** from the conversation; deferred explicitly.
-- **Writeback / `campaign.yaml` generation from typed Intent.** Same scope as user-fired ops.
-- **Filesystem auto-watch.** Refresh-button-driven for v0.1; watcher in v0.1.1 or v0.2.
-- **The intent calculus reduction rules.** v0.1 expresses operations as typed terms; v0.2 may add operation semantics (when can op X fire? what does it produce? composition theorems). Resist formalizing prematurely.
-- **Schema-fit issues.** All entries in `gaps.md` are v0.2 candidates. Adapters take lossy mappings against v0.1 deliberately — that's the falsification signal.
+1. ✓ **Schema: typed `Operation` records** — `OperationKindSchema` (16 kinds), discriminated union over `kind`, `WorkspaceSchema.operations: Operation[]`, schema-exhaustive falsification tests, `classifyOperation` significance heuristic, fixture ops covering 8 kinds.
+2. ✓ **Operation log surface unification** — folded per-intent activity into `WorkspaceActivityStrip` via `focusedIntentId` + scope filter chip; deleted the separate `IntentActivityStrip`.
+3. ✓ **Hide/show on the unified strip** — `›`/`‹` toggle, 36 px collapse rail, sessionStorage persistence.
+4. ✓ **Adapter #1 — Nous, Phase 1** — Transport/interpreter split (`NousSource` abstract; `FilesystemNousSource` impl). `buildNousWorkspace` reads `campaign-X.yaml` + `.nous/<run>/state.json` → typed `nous-campaign` Intents. Vite plugin exposes `/api/workspace?source=nous`. Smoke: 20 real `inference-sim/` campaigns.
+5. ✓ **Multi-source data plane** — `Provenance.source` v0.1.0 additive amendment; source registry; URL contract `?sources=a,b`; merge + validate; source-picker chip cluster; `via <source>` attribution chips on TreeCards + DetailHeader.
+6. ✓ **Adapter #1 — Nous, Phase 2** — `ledger.ts`: tolerant `parseLedger`, schema-exhaustive `mapHmainResultToHypothesisResult`, `interpretIteration` (parent-scoped ids for refresh-idempotent decomposition). Filter synthetic iter-0 baselines; wire iteration ids into `decomposition.children` + `extension.current_iteration`. Lossy mappings recorded as G-N-1, G-N-2, G-N-3, G-N-9, G-N-10. Smoke: 47 iterations from 20 campaigns.
+7. ✓ **Adapter #1 — Nous, Phase 3** — `principles.ts`: `parsePrinciples`, stable `nous-principle://<runId>/<id>` URI scheme, `interpretPrinciplesAsKnowledgeRefs` (campaign-scoped + iteration-scoped grouped by `extraction_iteration`). Lossy mapping per G-N-2; `version='v0.1-lossy'` marker recorded in G-N-11. Smoke: 157 campaign-scope + 157 iteration-scope principle refs from 20 campaigns.
+8. ✓ **KnowledgeRefsSection — collapse to count rows** — opaque URIs were a tease without dereferencing (G-N-2 keeps full content out of the schema). Per-`(scope, role)` count rows replace the URI list; inherited refs still surface their `inherited_from`. Click-through restored in v0.2 once principles get a real schema home.
+9. ✓ **`semantics-v0.1.md` drafted** — names the five layers (source / types / chrome / calculus / semantic), catalogs nine semantic components (S-1 through S-9), eight cross-layer couplings (C-1 through C-8), the two-audiences contract (humans need interpretability, agents need actionability), eight open questions, and seven non-goals. Wired into CLAUDE.md as a canonical reference. Unblocks A2 (projection generator) by giving it a documented design surface.
 
----
-
-## Implementation order
-
-Done:
-1. ✓ **Schema: `Operation` type** + activity classification widening + fixture ops + workspace strip rendering.
-2. ✓ **Operation log surface unification** — folded per-intent activity into `WorkspaceActivityStrip` via scope filter; deleted the separate `IntentActivityStrip`.
-3. ✓ **Hide/show on the unified strip** (collapse rail, sessionStorage persistence).
-4. ✓ **Adapter #1 — Nous, Phase 1.** Transport/interpreter split (`NousSource` abstract; `FilesystemNousSource` impl). `buildNousWorkspace` reads `campaign-X.yaml` + `.nous/<run>/state.json` → typed `nous-campaign` Intents. Vite plugin exposes `/api/workspace?source=nous`. Smoke test: 20 real campaigns from `~/Documents/Projects/inference-sim/`.
-5. ✓ **Multi-source data plane** — `Provenance.source` v0.1.0 additive schema amendment; `src/lib/sources.ts` registry + URL parsing + workspace merging; `App.tsx` fetches all enabled sources and merges; `MapSurface` source-picker chip cluster (URL-synced via `history.replaceState`); `TreeCard` + `DetailHeader` carry a `via <source>` attribution chip. Default URL behavior: all known sources merged. Existing tests scoped to `?sources=fixture` for determinism.
-6. ✓ **Adapter #1 — Nous, Phase 2.** `src/adapters/nous/ledger.ts` adds `parseLedger` (tolerant JSON), `mapHmainResultToHypothesisResult` (schema-exhaustive falsification over `HypothesisResultSchema.options`), and `interpretIteration` (parent-scoped intent ids `nous:<source>:<run>:<candidate>` so refresh is idempotent). `buildNousWorkspace` filters synthetic iter-0 baselines, emits one `nous-iteration` per non-baseline ledger entry, wires ids into parent `decomposition.children` and `extension.current_iteration` (most-recent). Lossy mappings: `PARTIALLY_CONFIRMED → inconclusive` (G-N-1), `principles_extracted: [{id, action}]` → `Reference[]` with kind=observation (G-N-2/G-N-10), `family` → `tags` (G-N-3), runtime ledger fields without a schema home dropped (G-N-9). Smoke test: 47 iteration intents from 20 real `inference-sim/` campaigns, validates clean.
-7. ✓ **Adapter #1 — Nous, Phase 3.** `src/adapters/nous/principles.ts` adds `parsePrinciples` (tolerant JSON), `principleUri` (stable `nous-principle://<runId>/<id>` scheme), and `interpretPrinciplesAsKnowledgeRefs` (splits into campaign-scoped + iteration-scoped grouped by `extraction_iteration`). Each emitted `KnowledgeRef` carries `role='principles'` + `version='v0.1-lossy'` (the version field is the machine-readable signal that the rich principle structure was dropped per G-N-2). `buildNousWorkspace` attaches the full set at campaign scope (every principle on parent campaign) and per-iteration refs only on the iteration whose number matches `extraction_iteration` (synthetic iter-0 owners flow to campaign only). Smoke test: 157 campaign-scope + 157 iteration-scope principle refs from 20 real campaigns, validates clean.
-
-Remaining (in suggested order):
-8. **Adapter #1 — Nous, Phase 4.** Emit `Operation`s from observed transitions (gate-resolved, iteration-completed, principle-extracted, etc.).
-9. **Refresh affordances** (workspace + per-intent buttons in the chrome; staleness chip on projections). Now meaningful since the API endpoint is live.
-10. **Filter / group / sort on Map** (UI-only, can run in parallel with adapter work).
-11. **Adapter #2 — Paper.**
-12. **Adapter #3 — Coral.**
-13. **Adapter #4 — Feature.**
-14. **Visual baseline regen** after each chrome change.
-
-**Semantic-model work** (deliberately *not* slotted in the v0.1 expansion order — see `semantics-v0.1.md`). Items below are v0.2 candidates that surface as the four adapters land. They are listed for visibility, not commitment:
-
-- **S-1 Projection generators** (zoom-level prose at `read-at-zoom-level`). Currently raw fields render. Largest single semantic gap.
-- **S-2 Per-kind status grammars** explicit (hover tooltips on status chips; a `Kind × Status → Meaning` table consumed by chrome and generator).
-- **S-4 Evidence narratives** — one-line generated narrative per `EvidenceLink` in the chrome.
-- **S-5 Principles-as-typed-objects** (G-N-2 promotion). Unblocks click-through on `KnowledgeRef`s.
-- **C-4 Adapter-side vs generator-side projections.** Architectural decision; recommended generator-side.
-- **Two-audiences contract** — documented agent API surface (`/api/intents/<id>?zoom=...` returning structured projection); operation endpoints symmetric with chrome buttons.
-
-Verification triple after every item: `test:run` + `typecheck` + `build` + `test:e2e` (and `test:e2e:visual` after chrome changes).
+Verification triple after every item: `npm run test:run` + `npm run typecheck` + `npm run build` + `npm run test:e2e` (and `npm run test:e2e:visual` after chrome changes).
 
 ---
 
 ## Stop conditions for v0.1 expansion
 
-The v0.1 expansion is done when:
-- All four adapters can read their canonical real-data targets and produce typed `Workspace` snapshots that validate against `WorkspaceSchema`.
-- Operation log renders for any intent with observed transitions.
-- Filter/group/sort work on Map with all four adapter outputs.
-- Refresh button works workspace-wide and per-intent.
-- Test counts updated in CLAUDE.md "Current state."
-- All four verification commands exit 0 from a clean run.
-- `gaps.md` has been updated with any new schema-fit issues found during adapter work.
+The expansion is done when **all** of the following hold:
 
-After v0.1 expansion: regroup, design v0.2 (writeback + reduction rules + auto-watch + schema bumps from `gaps.md`).
+1. **Round-trip closed on Nous** — A1 + A2 + A3 + A4 + A5 shipped. A user can shape a Nous draft, commit it, see Nous pick it up (manual today; auto-watch v0.2), see iterations come back through the adapter, see at least one user-fired operation flow back to the harness.
+2. **Schema breadth proven on three more kinds** — Coral (B1) + GitHub-issue feature-campaign (B2) produce schema-validating Workspaces from real data. Together with Nous, this is three of the four canonical kinds with at least minimum-viable adapters. (Paper is the remaining kind, deliberately deferred — see v0.2.)
+3. **Map is queryable** — C1 filter+group+sort works across all three adapter outputs.
+4. **All five verification commands exit 0** — `test:run`, `typecheck`, `build`, `test:e2e`, `test:e2e:visual`.
+5. **`gaps.md` updated** — every schema-fit issue surfaced during expansion is recorded; v0.2 starts from a known list.
+6. **`semantics-v0.1.md` updated** — any S-component that changed status (e.g., S-1 promoted from "not implemented" to "implemented for Nous kinds") reflects in the doc.
+7. **CLAUDE.md "Current state" reflects ship state** — test counts, current adapters, current operations.
+
+After v0.1 expansion: regroup, design v0.2 (schema bump + writeback hardening + Paper adapter + full feature-dev + semantic-model promotion).
+
+---
+
+## v0.2 — schema bump + writeback hardening + last adapter
+
+Promoted from "Deferred" — v0.2 has explicit scope now, not just a non-goals list.
+
+**Schema bump (the v0.2 schema design pass).**
+Promote candidates from `gaps.md`. Current list at v0.1 expansion start: G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), G-N-9 (control/robustness/ablation outcomes), G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload). Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
+
+**Writeback hardening.**
+Generalize Track A's writeback (A4) beyond Nous. Each adapter declares its writeback schema; UI affords commit/declare/refine for every kind, not just Nous. Filesystem auto-watch replaces the refresh button (the v0.1.1 ambition realized later than planned).
+
+**Adapter #4 — Paper.**
+The original 4th-of-4 in the v0.1 plan. Read `papers/<name>/draft.md` + `refs.bib` + cross-references to upstream Nous campaigns. Tests cross-tree provenance via `EvidenceLink` (paper-claim → nous-iteration). The structural test that's been deferred from v0.1 expansion.
+
+**Full feature-development adapter.**
+Promote the GitHub-issues stand-in (B2) to the full feature-dev story: git log + PR API + CI status + repo-scoped `CLAUDE.md` as a scoped knowledge corpus. Most expensive integration; benefits from schema lessons of three other adapters.
+
+**Semantic-model promotion.**
+- S-2 per-kind status grammars made explicit (hover tooltips on status chips; `Kind × Status → Meaning` table).
+- S-4 evidence narratives (one-line generated narrative per `EvidenceLink`).
+- S-5 principles-as-typed-objects (depends on G-N-2 schema bump).
+- C-4 architectural decision: adapter-side vs. generator-side projections. Recommended generator-side; v0.2 commits.
+- Two-audiences API surface: documented `/api/intents/<id>?zoom=...` endpoints; operation endpoints symmetric with chrome buttons.
+
+**Calculus semantics (cautious).**
+v0.1 declares operation signatures; v0.2 may add per-kind validity (when can `gate` fire on a `paper-claim`? When does `decompose` make sense for `coral-attempt`?). Reduction rules / composition theorems only if a pattern is forced by real adapter behavior. **Resist formalizing prematurely.**
+
+---
+
+## v0.3+ — collaboration tier
+
+High-level only. Not actionable today; listed so future sessions know it exists.
+
+- **Multi-agent collaboration semantics.** Two agents working the same intent (or disagreeing); proposal/acceptance flows extended for agent-vs-agent.
+- **Personalized projections.** Different prose per consumer; a junior collaborator and a senior reviewer see the same intent rendered differently.
+- **Trustworthiness scoring** on LLM-generated projections — provenance chain visible per claim.
+- **Real-time collaborative cursors** on the Map and Detail surfaces.
+- **Agent-fired structural operations** — agents can propose `fork` / `merge` / `reframe`; humans confirm. (v0.1 explicitly forbids agent-initiated structural ops.)
+
+---
+
+## Cross-references
+
+These files are normative together. Cross-references between them are load-bearing.
+
+- `intent-schema-v0.1.md` — typed object model. Inputs to adapters and projections.
+- `intent-ux-sketch-v0.1.md` — UX surfaces. Where projections render.
+- `intents-and-harnesses.md` (v2) — harness catalog. What the substrate generalizes across.
+- `semantics-v0.1.md` — semantic model. The matrix between the four plumbing layers.
+- `gaps.md` — schema-fit issues found while sizing adapters. Drives v0.2 schema bump.
+- `goals.md` — chrome polish spec (done). Kept for reference.
+- `CLAUDE.md` — operating conventions + resolved surface decisions + per-session memory.

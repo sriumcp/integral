@@ -2,7 +2,11 @@
 
 ## Project phase
 
-Integral is at **v0.1 prototype, all five surfaces landed**. Schema + atom + AppHeader + Landing + Map + Detail + Workspace Activity Strip + Shaping + visual regression baseline all green. Adapters and the typed activity model are the v0.2 roadmap. Three canonical design documents are authoritative for everything below. Read them before writing or proposing changes.
+Integral is at **v0.1 expansion in flight (Path 2)**. Chrome stack landed; typed `Operation` log shipped; multi-source data plane shipped; Adapter #1 (Nous) Phases 1+2+3 shipped (read-only). The substrate is currently descriptive only — no writeback yet.
+
+**v0.1 expansion (revised 2026-05-23)** runs two parallel tracks: Track A closes the Nous round-trip (writeback + projections + one user-fired Operation); Track B falsifies the schema across two more kinds (Coral, GitHub-issue feature-campaign). Paper adapter and full feature-dev integration are now v0.2.
+
+Four canonical design documents are authoritative for everything below. Read them before writing or proposing changes.
 
 ## Current state (as of last session)
 
@@ -21,16 +25,23 @@ Integral is at **v0.1 prototype, all five surfaces landed**. Schema + atom + App
 - **Tests**: 410 Vitest tests + 17 Playwright behavioral E2E + 15 Playwright visual baselines; all passing; TS strict clean; build clean.
 - **Live dev**: `npm run dev` from `integral-ui/` → `http://localhost:5173/`.
 
-## Next milestone: v0.1 expansion (Path 2)
+## Next milestone: v0.1 expansion (Path 2, revised)
 
-The chrome polish from `goals.md` is done. The next phase **expands v0.1 with typed operation records, four adapters, and a surface query layer** — without pulling writeback forward (writeback stays v0.2).
+The chrome polish from `goals.md` is done. The next phase runs **two parallel tracks**:
 
-**Authoritative tracker: `roadmap.md`.** Read it before starting any new work. It lists items in scope (operation schema, adapters, filter/group/sort, refresh affordances, visual baseline regen), what's deliberately deferred to v0.2, and the implementation order.
+- **Track A (depth) — close the Nous round-trip.** Phase 4 operations from observed transitions, projection generator (kind-pluggable, S-1 from `semantics-v0.1.md`), refresh affordances, Shaping → real `campaign-X.yaml` writeback, one user-fired Operation. After Track A: the substrate is no longer descriptive only.
+- **Track B (breadth) — falsify the schema across two more kinds.** Coral (`.coral/attempts/*.json`) + GitHub-issues-as-`feature-campaign`. Each ships its minimum-viable read-only adapter.
+- **Track C (cross-cutting) — make the Map queryable.** Filter / group / sort on Map; visual baseline regen as chrome shifts.
+
+Paper adapter and full feature-dev integration (git+PR+CI) are now **v0.2**, alongside the schema bump from `gaps.md` and semantic-model promotion (S-2/S-4/S-5/C-4).
+
+**Authoritative tracker: `roadmap.md`.** Read it before starting any new work. It lists per-item acceptance criteria, the v0.1 stop conditions, and the v0.2 plan.
 
 The v0.1 chrome stack (Landing + Header + Map + Detail + Activity + Shaping) is stable enough to consume real adapter output without surface drift; visual baselines in `e2e/visual/` lock the chrome so adapter-induced data changes don't silently change the look.
 
 **Companion files:**
-- `roadmap.md` — Path 2 scope + implementation order + stop conditions for v0.1 expansion.
+- `roadmap.md` — two-track Path 2 scope + per-item acceptance + stop conditions for v0.1 expansion + v0.2 + v0.3 outline.
+- `semantics-v0.1.md` — semantic model commitments (S-1..S-9 components, C-1..C-8 couplings, two-audiences contract).
 - `gaps.md` — schema-fit issues uncovered while sizing adapters; v0.2 candidates only, do not silently fix in v0.1.
 - `goals.md` — chrome polish spec (done); kept for reference.
 
@@ -68,14 +79,17 @@ Cross-references between these documents are normative. If a code change require
 
 ## Implementation order
 
-The plan is to validate the v0.1 schema against four adapters, in this order, with each adapter's *minimum* form (just enough to prove the intent shape fits — not a full integration).
+**Authoritative source: `roadmap.md`.** That file owns the order, the acceptance criteria per item, and the v0.1 → v0.2 → v0.3 promotion plan. This section captures only the *framing* — read `roadmap.md` for the live state.
 
-1. **Nous campaign.** Read existing campaign files; describe campaign + iteration + experiment as typed objects; render at three zoom levels. File-shaped, read-only, smallest path to a real signal against a canonical workflow.
-2. **Paper writing.** Read a markdown draft + a bibtex file + (where present) Nous campaigns the paper draws claims from; describe paper + sections + claims with `EvidenceLink`s pointing at upstream evidence. Lowest external-integration cost; stresses provenance chains in a fundamentally different way.
-3. **Coral optimization.** Read `.coral/attempts/*.json` and `.coral/notes/`; describe campaign + attempts + worktree-state; render scored attempts in a population view. Tests competitive parallelism and the schema's capacity for many sibling child intents.
-4. **Feature development in git.** Read git log + GitHub PR API + repo-scoped CLAUDE.md; describe feature campaign with PRs as child intents and repo conventions as a *scoped* knowledge corpus. Most expensive integration; runs last so the schema lessons from the prior three protect this adapter from being rebuilt.
+v0.1 expansion runs **two parallel tracks** (revised 2026-05-23):
 
-The temptation to do (4) earlier is real and should be resisted — its integration cost is high, and the schema lessons from (1)+(2)+(3) save it from being rebuilt twice.
+- **Track A (depth)** — close the round-trip on Nous: Phase 4 operations from observed transitions, projection generator (kind-pluggable), refresh affordances, Shaping → `campaign-X.yaml` writeback, one user-fired Operation.
+- **Track B (breadth)** — falsify the schema against two more kinds: Coral (`.coral/attempts/*.json`) and GitHub-issues-as-feature-campaign. Each ships its minimum-viable read-only adapter.
+- **Track C (cross-cutting)** — filter/group/sort on Map; visual baseline regen as chrome shifts.
+
+The v0.2 plan is now explicit (see `roadmap.md § v0.2`): schema bump from `gaps.md` candidates, writeback hardening across adapters, the Paper adapter (cross-tree provenance test), full feature-dev (git+PR+CI), semantic-model promotion (S-2/S-4/S-5/C-4 from `semantics-v0.1.md`), and cautious calculus semantics.
+
+**Why two tracks instead of four-adapters-in-sequence.** The original plan optimized for schema falsification at the cost of the round-trip the substrate exists to enable (declare → execute → interpret → act). The revised plan keeps the falsification signal (Coral + GH issues) and adds the round-trip on Nous so v0.1 ships a tool that closes the loop, not just a library that displays types. Paper + full feature-dev move to v0.2.
 
 ## Adapter conventions
 
