@@ -98,6 +98,9 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
   const generatedAtRel = projection.generated_at
     ? humanRelTime(projection.generated_at)
     : null
+  const stale = projection.generated_at
+    ? Date.now() - new Date(projection.generated_at).getTime() > 60 * 60 * 1000
+    : false
 
   return (
     <section className={styles.section}>
@@ -119,7 +122,10 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
             <span className={styles.regeneratingText}>regenerating…</span>
           ) : (
             generatedAtRel && (
-              <span className={styles.timestamp}>
+              <span
+                className={styles.timestamp}
+                data-stale={stale ? 'true' : undefined}
+              >
                 generated {generatedAtRel} ago
                 {projection.model ? ` · ${projection.model}` : ''}
               </span>

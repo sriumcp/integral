@@ -52,6 +52,39 @@
   margin-left: auto;
 }
 
+.refreshButton {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--mute);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background: var(--paper-2);
+  color: var(--ink-2);
+}
+
+.refreshButton:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
 .title {
   font-family: var(--serif);
   font-size: 28px;

@@ -8,6 +8,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { SCHEMA_VERSION } from '@/schema'
 import { sri, nousPlanner } from '@/fixtures/workspace'
@@ -70,12 +71,103 @@ describe('AppHeader', () => {
     ).toBeInTheDocument()
   })
 
-  it('reversibility chip is display-only with a v0.2 tooltip', () => {
+  it('renders a refresh button when onRefresh is provided', () => {
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={() => {}}
+        lastSyncedAt={new Date().toISOString()}
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: /refresh workspace/i })
+    ).toBeInTheDocument()
+  })
+
+  it('refresh button shows "synced <time> ago"', () => {
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={() => {}}
+        lastSyncedAt={new Date(Date.now() - 5 * 60_000).toISOString()}
+      />
+    )
+    expect(screen.getByText(/synced 5m ago/i)).toBeInTheDocument()
+  })
+
+  it('refresh button is amber when stale (past 60min)', () => {
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={() => {}}
+        lastSyncedAt={new Date(Date.now() - 90 * 60_000).toISOString()}
+      />
+    )
+    const button = screen.getByRole('button', { name: /refresh workspace/i })
+    expect(button.getAttribute('data-stale')).toBe('true')
+  })
+
+  it('refresh button is not amber when fresh', () => {
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={() => {}}
+        lastSyncedAt={new Date().toISOString()}
+      />
+    )
+    const button = screen.getByRole('button', { name: /refresh workspace/i })
+    expect(button.getAttribute('data-stale')).toBeNull()
+  })
+
+  it('clicking refresh fires the onRefresh callback', async () => {
+    const user = userEvent.setup()
+    const onRefresh = vi.fn()
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={onRefresh}
+        lastSyncedAt={new Date().toISOString()}
+      />
+    )
+    await user.click(
+      screen.getByRole('button', { name: /refresh workspace/i })
+    )
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('refresh button is disabled while refreshing', () => {
+    render(
+      <AppHeader
+        surface="map"
+        breadcrumbs={MAP_CRUMBS}
+        me={sri}
+        onRefresh={() => {}}
+        lastSyncedAt={new Date().toISOString()}
+        refreshing
+      />
+    )
+    const button = screen.getByRole('button', {
+      name: /refresh workspace/i,
+    }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+  })
+
+  it('falls back to legacy reversibility chip when onRefresh is absent', () => {
+    // Backwards compat for tests that don't pass onRefresh — the v0.1
+    // fixture-only render path used in visual baselines doesn't need
+    // refresh affordances.
     render(<AppHeader surface="map" breadcrumbs={MAP_CRUMBS} me={sri} />)
-    const chip = screen.getByText(/reversibility · 24h/).closest('span')!
-    expect(chip.getAttribute('title')).toMatch(/v0\.2/)
-    // Not a button — there's no click affordance in v0.1.
-    expect(chip.tagName.toLowerCase()).not.toBe('button')
+    expect(screen.getByText(/reversibility · 24h/)).toBeInTheDocument()
   })
 
   it('renders the current Party display name in the me chip', () => {

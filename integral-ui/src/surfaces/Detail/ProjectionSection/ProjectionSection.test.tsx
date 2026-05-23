@@ -183,6 +183,38 @@ describe('ProjectionSection', () => {
     })
   })
 
+  it('marks the timestamp amber when the projection is stale (past 60min)', async () => {
+    mockFetchOnce({
+      content: 'old prose',
+      source: 'llm',
+      generated_at: new Date(Date.now() - 90 * 60_000).toISOString(),
+    })
+    const { container } = render(
+      <ProjectionSection intentId="c1" zoom="structure" />
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/old prose/)).toBeInTheDocument()
+    })
+    const stamp = container.querySelector('[data-stale]')
+    expect(stamp?.getAttribute('data-stale')).toBe('true')
+  })
+
+  it('does not mark the timestamp stale when fresh (under 60min)', async () => {
+    mockFetchOnce({
+      content: 'fresh prose',
+      source: 'llm',
+      generated_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    })
+    const { container } = render(
+      <ProjectionSection intentId="c1" zoom="structure" />
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/fresh prose/)).toBeInTheDocument()
+    })
+    const stamp = container.querySelector('[data-stale="true"]')
+    expect(stamp).toBeNull()
+  })
+
   it('does not show the generated-at hint when generated_at is missing (fallback case)', async () => {
     mockFetchOnce({ content: 'fallback prose', source: 'fallback' })
     render(<ProjectionSection intentId="c1" zoom="structure" />)

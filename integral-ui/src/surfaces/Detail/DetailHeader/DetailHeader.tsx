@@ -21,6 +21,13 @@ export interface DetailHeaderProps {
   onBack: () => void
   /** Optional current user — drives the awaiting-me chip in the header right. */
   me?: Party
+  /** Optional refresh callback. When provided, a small ↻ button appears in
+   *  the meta row. v0.1 piggy-backs on the workspace-level refresh — there
+   *  is no per-intent re-read endpoint yet (the Nous adapter reads all
+   *  campaigns at once). v0.2 may add finer-grained refresh. */
+  onRefresh?: () => void
+  /** When true, the refresh button is disabled. */
+  refreshing?: boolean
 }
 
 /**
@@ -40,6 +47,8 @@ export function DetailHeader({
   onZoomChange,
   onBack,
   me,
+  onRefresh,
+  refreshing,
 }: DetailHeaderProps) {
   const awaiting = me ? isAwaitingMe(intent, state, me) : false
   const declaredBy = intent.provenance.declared_by
@@ -70,6 +79,18 @@ export function DetailHeader({
           {intent.lifetime.kind}
         </Chip>
         <IdPill id={intent.id} />
+        {onRefresh && (
+          <button
+            type="button"
+            className={styles.refreshButton}
+            onClick={onRefresh}
+            disabled={refreshing}
+            aria-label="refresh intent"
+            title="refresh"
+          >
+            ↻
+          </button>
+        )}
         <span className={styles.metaRight}>
           {awaiting ? (
             <Chip tone="amber" mono dot>

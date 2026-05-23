@@ -65,6 +65,10 @@
   color: var(--mute);
 }
 
+.timestamp[data-stale='true'] {
+  color: var(--amber, #b45309);
+}
+
 .regenerateButton {
   appearance: none;
   background: transparent;

@@ -47,38 +47,55 @@ function App() {
   const [loadState, setLoadState] = useState<
     | { kind: 'loading' }
     | { kind: 'error'; message: string }
-    | { kind: 'ready'; workspace: Workspace; failures: string[] }
+    | { kind: 'ready'; workspace: Workspace; failures: string[]; syncedAt: string }
   >({ kind: 'loading' })
 
-  const reload = useCallback(async (sources: Set<string>) => {
-    setLoadState({ kind: 'loading' })
-    try {
-      const { workspace, failures } = await loadEnabledSources(sources)
-      const parsed = WorkspaceSchema.safeParse(workspace)
-      if (!parsed.success) {
+  const [refreshing, setRefreshing] = useState(false)
+
+  const reload = useCallback(
+    async (sources: Set<string>, opts?: { isRefresh?: boolean }) => {
+      const isRefresh = opts?.isRefresh ?? false
+      if (isRefresh) {
+        setRefreshing(true)
+      } else {
+        setLoadState({ kind: 'loading' })
+      }
+      try {
+        const { workspace, failures } = await loadEnabledSources(sources)
+        const parsed = WorkspaceSchema.safeParse(workspace)
+        if (!parsed.success) {
+          setLoadState({
+            kind: 'error',
+            message:
+              'WorkspaceSchema rejected merged workspace:\n' +
+              JSON.stringify(parsed.error.issues, null, 2),
+          })
+          return
+        }
+        setLoadState({
+          kind: 'ready',
+          workspace: parsed.data,
+          failures: failures.map((f) => `${f.sourceId}: ${f.error}`),
+          syncedAt: new Date().toISOString(),
+        })
+      } catch (err) {
         setLoadState({
           kind: 'error',
-          message:
-            'WorkspaceSchema rejected merged workspace:\n' +
-            JSON.stringify(parsed.error.issues, null, 2),
+          message: err instanceof Error ? err.message : String(err),
         })
-        return
+      } finally {
+        if (isRefresh) setRefreshing(false)
       }
-      setLoadState({
-        kind: 'ready',
-        workspace: parsed.data,
-        failures: failures.map((f) => `${f.sourceId}: ${f.error}`),
-      })
-    } catch (err) {
-      setLoadState({
-        kind: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }, [])
+    },
+    []
+  )
 
   useEffect(() => {
     void reload(enabledSources)
+  }, [enabledSources, reload])
+
+  const onRefresh = useCallback(() => {
+    void reload(enabledSources, { isRefresh: true })
   }, [enabledSources, reload])
 
   const toggleSource = useCallback((sourceId: string) => {
@@ -136,6 +153,9 @@ function App() {
         enabledSources={enabledSources}
         onToggleSource={toggleSource}
         sourceFailures={loadState.failures}
+        syncedAt={loadState.syncedAt}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
       />
     </HoveredIntentProvider>
   )
@@ -174,6 +194,9 @@ interface RouterProps {
   enabledSources: Set<string>
   onToggleSource: (sourceId: string) => void
   sourceFailures: string[]
+  syncedAt: string
+  onRefresh: () => void
+  refreshing: boolean
 }
 
 function Router({
@@ -181,6 +204,9 @@ function Router({
   enabledSources,
   onToggleSource,
   sourceFailures: _sourceFailures,
+  syncedAt,
+  onRefresh,
+  refreshing,
 }: RouterProps) {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace)
   const [view, setView] = useState<View>(initialView)
@@ -294,6 +320,9 @@ function Router({
           ]}
           me={ME}
           onLogoClick={onLogoClick}
+          onRefresh={onRefresh}
+          lastSyncedAt={syncedAt}
+          refreshing={refreshing}
         />
         <ShapingSurface
           intent={view.intent}
@@ -340,6 +369,8 @@ function Router({
               me={ME}
               onOpenIntent={openIntent}
               onBack={goMap}
+              onRefresh={onRefresh}
+              refreshing={refreshing}
             />
           )}
         </div>

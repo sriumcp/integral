@@ -135,3 +135,49 @@
   flex: none;
   margin-left: auto;
 }
+
+.refreshButton {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease, border-color 80ms ease;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background: var(--paper-2);
+  color: var(--ink-2);
+  border-color: var(--line-strong, var(--line));
+}
+
+.refreshButton:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.refreshButton[data-stale='true'] {
+  color: var(--amber, #b45309);
+  border-color: var(--amber, #b45309);
+}
+
+.refreshIcon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.refreshLabel {
+  white-space: nowrap;
+}

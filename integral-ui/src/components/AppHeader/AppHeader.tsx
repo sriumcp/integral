@@ -25,7 +25,20 @@ export interface AppHeaderProps {
    *  the left cluster renders as a button — typically wired to return to
    *  the Landing surface. */
   onLogoClick?: () => void
+  /** Click handler for the refresh button. When provided, the right
+   *  cluster renders a refresh affordance instead of the legacy
+   *  "reversibility · 24h" placeholder chip. The button shows
+   *  "↻ synced <relative-time> ago" and goes amber past the staleness
+   *  threshold (60min) to flag that the workspace data may be old. */
+  onRefresh?: () => void
+  /** Timestamp of the last successful workspace fetch. Drives the
+   *  "synced X ago" hint and the amber-when-stale state. ISO 8601. */
+  lastSyncedAt?: string
+  /** When true, the refresh button is disabled and shows "refreshing…". */
+  refreshing?: boolean
 }
+
+const STALE_AFTER_MS = 60 * 60 * 1000
 
 /**
  * AppHeader — sticky-top chrome bar across every surface (after Landing).
@@ -44,6 +57,9 @@ export function AppHeader({
   breadcrumbs,
   me,
   onLogoClick,
+  onRefresh,
+  lastSyncedAt,
+  refreshing,
 }: AppHeaderProps) {
   const left = (
     <>
@@ -107,11 +123,72 @@ export function AppHeader({
         <Chip mono tone="mute" dot={'var(--sage)'}>
           schema v{SCHEMA_VERSION}
         </Chip>
-        <Chip mono tone="mute" title="v0.2 — audit log">
-          reversibility · 24h
-        </Chip>
+        {onRefresh ? (
+          <RefreshButton
+            onClick={onRefresh}
+            lastSyncedAt={lastSyncedAt}
+            refreshing={refreshing}
+          />
+        ) : (
+          <Chip mono tone="mute" title="v0.2 — audit log">
+            reversibility · 24h
+          </Chip>
+        )}
         <PartyChip party={me} />
       </div>
     </header>
   )
+}
+
+interface RefreshButtonProps {
+  onClick: () => void
+  lastSyncedAt: string | undefined
+  refreshing: boolean | undefined
+}
+
+function RefreshButton({
+  onClick,
+  lastSyncedAt,
+  refreshing,
+}: RefreshButtonProps) {
+  const ageMs = lastSyncedAt ? Date.now() - new Date(lastSyncedAt).getTime() : 0
+  const stale = lastSyncedAt ? ageMs > STALE_AFTER_MS : false
+  const ageLabel = lastSyncedAt ? humanRelTime(lastSyncedAt) : ''
+
+  return (
+    <button
+      type="button"
+      className={styles.refreshButton}
+      onClick={onClick}
+      disabled={refreshing}
+      aria-label="refresh workspace"
+      data-stale={stale ? 'true' : undefined}
+      title={
+        refreshing
+          ? 'refreshing…'
+          : lastSyncedAt
+            ? `last synced ${new Date(lastSyncedAt).toLocaleString()}`
+            : 'refresh workspace'
+      }
+    >
+      <span className={styles.refreshIcon} aria-hidden="true">
+        ↻
+      </span>
+      <span className={styles.refreshLabel}>
+        {refreshing ? 'refreshing…' : `synced ${ageLabel} ago`}
+      </span>
+    </button>
+  )
+}
+
+function humanRelTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 0) return 'just now'
+  if (ms < 60_000) return 'just now'
+  const m = Math.round(ms / 60_000)
+  if (m < 60) return `${m}m`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h`
+  const d = Math.round(h / 24)
+  return `${d}d`
 }

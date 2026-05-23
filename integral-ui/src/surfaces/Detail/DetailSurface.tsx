@@ -15,6 +15,11 @@ export interface DetailSurfaceProps {
   onOpenIntent: (intent: Intent) => void
   /** Back to the Map surface. */
   onBack: () => void
+  /** Optional refresh callback — when provided, DetailHeader renders a
+   *  small ↻ button next to the id pill. Wires to the workspace-level
+   *  refresh in v0.1 (no per-intent re-read endpoint yet). */
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 /**
@@ -37,6 +42,8 @@ export function DetailSurface({
   me,
   onOpenIntent,
   onBack,
+  onRefresh,
+  refreshing,
 }: DetailSurfaceProps) {
   const [zoom, setZoom] = useState<ZoomLevel>('structure')
 
@@ -54,6 +61,8 @@ export function DetailSurface({
         zoom={zoom}
         onZoomChange={setZoom}
         onBack={onBack}
+        {...(onRefresh && { onRefresh })}
+        {...(refreshing !== undefined && { refreshing })}
       />
       <ProjectionSection intentId={intent.id} zoom={zoom} />
       <ChildrenSection
