@@ -1,0 +1,52 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 22px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.row:has(.textarea) {
+  align-items: start;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute);
+  line-height: 1.4;
+}
+
+.input,
+.textarea {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper-2, var(--paper));
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 5px 8px;
+  appearance: none;
+}
+
+.input:focus,
+.textarea:focus {
+  outline: 2px solid var(--blue, #2c6bff);
+  outline-offset: 0;
+}
+
+.textarea {
+  font-family: var(--sans);
+  font-size: 13px;
+  resize: vertical;
+  min-height: 38px;
+}

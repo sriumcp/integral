@@ -6,11 +6,22 @@
  * the resolved-vs-pending split is verified end-to-end.
  */
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fixtureWorkspace, DRAFT_NOUS_ID, DRAFT_CORAL_ID } from '@/fixtures/workspace'
 import { shapingFor } from '@/fixtures/shaping'
+import type { SourceEntry } from '@/lib/sources'
 import { ShapingSurface } from './ShapingSurface'
+
+const REGISTRY: ReadonlyArray<SourceEntry> = [
+  { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
+  { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
+]
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 function intentById(id: string) {
   const found = fixtureWorkspace.intents.find((i) => i.id === id)
@@ -174,5 +185,178 @@ describe('ShapingSurface', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /^← map$/ }))
     expect(onBack).toHaveBeenCalled()
+  })
+
+  // ─── A4: Nous writeback integration ────────────────────────────────────
+
+  it('renders WritebackForm when the Nous draft has a writeback_template + registry is provided', () => {
+    const intent = intentById(DRAFT_NOUS_ID)
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={() => {}}
+        onWriteback={async () => ({ ok: true })}
+        onBack={() => {}}
+      />
+    )
+    // The form's section label "target" is rendered when active.
+    expect(screen.getByLabelText(/target source/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/max iterations/i)).toBeInTheDocument()
+  })
+
+  it('does NOT render WritebackForm when registry is absent (backwards compat)', () => {
+    const intent = intentById(DRAFT_NOUS_ID)
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        onCommit={() => {}}
+        onBack={() => {}}
+      />
+    )
+    expect(screen.queryByLabelText(/target source/i)).not.toBeInTheDocument()
+    // commit-to-active still enabled (in-memory-only path).
+    expect(
+      screen.getByRole('button', { name: /commit to active/i })
+    ).not.toBeDisabled()
+  })
+
+  it('does NOT render WritebackForm for drafts without a writeback_template (Coral backwards compat)', () => {
+    const intent = intentById(DRAFT_CORAL_ID)
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={() => {}}
+        onWriteback={async () => ({ ok: true })}
+        onBack={() => {}}
+      />
+    )
+    // Coral fixture has no writeback_template — form is hidden even though
+    // registry is provided.
+    expect(screen.queryByLabelText(/target source/i)).not.toBeInTheDocument()
+  })
+
+  it('clicking commit fires onWriteback then onCommit (same-button: writeback + in-memory flip)', async () => {
+    const user = userEvent.setup()
+    const intent = intentById(DRAFT_NOUS_ID)
+    const onCommit = vi.fn()
+    const onWriteback = vi.fn().mockResolvedValue({ ok: true })
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={onCommit}
+        onWriteback={onWriteback}
+        onBack={() => {}}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /commit to active/i }))
+    await waitFor(() => {
+      expect(onWriteback).toHaveBeenCalledTimes(1)
+      expect(onCommit).toHaveBeenCalledWith(intent.id)
+    })
+    const arg = onWriteback.mock.calls[0]?.[0] as {
+      intentId: string
+      sourceId: string
+      config: { max_iterations: number }
+    }
+    expect(arg.intentId).toBe(intent.id)
+    expect(arg.sourceId).toBe('nous')
+    expect(arg.config.max_iterations).toBe(5)
+  })
+
+  it('does NOT fire onCommit when writeback fails', async () => {
+    const user = userEvent.setup()
+    const intent = intentById(DRAFT_NOUS_ID)
+    const onCommit = vi.fn()
+    const onWriteback = vi
+      .fn()
+      .mockResolvedValue({ ok: false, error: 'overwrite refused' })
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={onCommit}
+        onWriteback={onWriteback}
+        onBack={() => {}}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /commit to active/i }))
+    await waitFor(() => {
+      expect(onWriteback).toHaveBeenCalled()
+      expect(screen.getByText(/overwrite refused/i)).toBeInTheDocument()
+    })
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it('clicking commit fires onCommit when no writeback (backwards compat)', () => {
+    const intent = intentById(DRAFT_NOUS_ID)
+    const onCommit = vi.fn()
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        onCommit={onCommit}
+        onBack={() => {}}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /commit to active/i }))
+    expect(onCommit).toHaveBeenCalledWith(intent.id)
+  })
+
+  it('disables commit while a writeback is in flight', async () => {
+    const user = userEvent.setup()
+    const intent = intentById(DRAFT_NOUS_ID)
+    let resolve: (v: { ok: true }) => void = () => {}
+    const onWriteback = vi.fn(
+      () => new Promise<{ ok: true }>((r) => (resolve = r))
+    )
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={() => {}}
+        onWriteback={onWriteback}
+        onBack={() => {}}
+      />
+    )
+    const button = screen.getByRole('button', {
+      name: /commit to active/i,
+    }) as HTMLButtonElement
+    await user.click(button)
+    await waitFor(() => {
+      expect(button.disabled).toBe(true)
+    })
+    resolve({ ok: true })
+  })
+
+  it('shows the error message when writeback fails (e.g., 409 overwrite)', async () => {
+    const user = userEvent.setup()
+    const intent = intentById(DRAFT_NOUS_ID)
+    const onWriteback = vi.fn().mockResolvedValue({
+      ok: false,
+      error: 'campaign-evaluator-aware-mutation-study.yaml already exists',
+    })
+    render(
+      <ShapingSurface
+        intent={intent}
+        shape={shapingFor(intent.id)!}
+        registry={REGISTRY}
+        onCommit={() => {}}
+        onWriteback={onWriteback}
+        onBack={() => {}}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /commit to active/i }))
+    await waitFor(() => {
+      expect(screen.getByText(/already exists/i)).toBeInTheDocument()
+    })
   })
 })

@@ -9,6 +9,7 @@
  */
 
 import type { Party } from '@/schema'
+import type { NousWritebackConfig } from '@/adapters/nous/writeback'
 import {
   DRAFT_CORAL_ID,
   DRAFT_NOUS_ID,
@@ -23,6 +24,14 @@ export interface DialogTurn {
   at: string
 }
 
+/**
+ * Adapter-private writeback template a Nous draft surfaces in the
+ * Shaping form. Pre-fills sensible defaults; the user can override
+ * before commit. Drafts whose kind has no v0.1 writeback (Coral) leave
+ * this undefined — those drafts commit in-memory only.
+ */
+export type WritebackTemplate = Partial<NousWritebackConfig>
+
 export interface DraftShape {
   /** Dot-separated field paths the dialog has confirmed. Anything missing
    *  here surfaces in the IntentDraftPane as `⚠ pending`. */
@@ -32,6 +41,10 @@ export interface DraftShape {
    *  shape. v0.2 will replace this with schema introspection. */
   requiredFields: ReadonlyArray<string>
   dialog: ReadonlyArray<DialogTurn>
+  /** Optional pre-fill for the writeback form. Present for kinds that
+   *  support v0.1 writeback (currently nous-campaign); absent for kinds
+   *  that don't (currently coral-optimization). */
+  writeback_template?: WritebackTemplate
 }
 
 const NOUS_FIELDS = [
@@ -57,6 +70,15 @@ export const SHAPING_BY_ID: Record<string, DraftShape> = {
   [DRAFT_NOUS_ID]: {
     requiredFields: [...NOUS_FIELDS],
     resolvedFields: new Set(NOUS_FIELDS),
+    writeback_template: {
+      max_iterations: 5,
+      target_system: {
+        name: 'inference-sim',
+        description:
+          'Discrete-event LLM inference simulator with multi-tenant scheduling.',
+        repo_path: '~/Documents/Projects/inference-sim',
+      },
+    },
     dialog: [
       {
         speaker: sri,

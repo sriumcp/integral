@@ -19,6 +19,7 @@ import {
   loadSourcesConfig,
   type ConfiguredSource,
 } from './sources-config'
+import { handleWriteback, readJsonBody } from './writeback-handler'
 
 /**
  * Vite plugin that exposes the Nous adapter as `/api/workspace` and
@@ -151,6 +152,64 @@ export function nousAdapterPlugin(): Plugin {
                 path: configured.path,
               },
               workspace,
+            })
+          )
+        } catch (err) {
+          res.statusCode = 500
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error: err instanceof Error ? err.message : String(err),
+            })
+          )
+        }
+      })
+
+      // ─── /api/nous/writeback ───────────────────────────────────────────
+      // Shaping commit on a Nous draft posts here. Writes a real
+      // campaign-<run_id>.yaml under the configured source's path.
+      // Refuse-overwrite: returns 409 if the file already exists.
+      // Schema-validates the intent + writeback config payloads.
+      server.middlewares.use('/api/nous/writeback', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'POST required' }))
+          return
+        }
+        try {
+          const body = (await readJsonBody(req)) as {
+            sourceId?: unknown
+            intent?: unknown
+            config?: unknown
+          }
+          const sources = await ensureSourcesLoaded(cwd)
+          const result = await handleWriteback(
+            {
+              sourceId: typeof body?.sourceId === 'string' ? body.sourceId : '',
+              intent: body?.intent,
+              config: body?.config,
+            },
+            sources
+          )
+          if (!result.ok) {
+            res.statusCode = result.status
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: result.error }))
+            return
+          }
+          // Invalidate the workspace cache for this source so the next
+          // /api/workspace?source=<id> fetch re-reads from disk and the
+          // newly-written campaign appears.
+          workspaceCache.delete(result.path) // by path (no-op; harmless)
+          workspaceCache.delete(body!.sourceId as string) // by id
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              ok: true,
+              path: result.path,
+              run_id: result.run_id,
             })
           )
         } catch (err) {

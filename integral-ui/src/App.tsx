@@ -328,6 +328,50 @@ function Router({
     setView({ kind: 'map' })
   }
 
+  /** A4: Nous writeback handler. POSTs to /api/nous/writeback; on
+   *  success, the caller (ShapingSurface) fires onCommit to flip the
+   *  in-memory state. After writeback, also triggers a workspace refresh
+   *  so the newly-written campaign appears as a real Intent in the
+   *  registered source. */
+  const onShapingWriteback = useCallback(
+    async (args: {
+      intentId: string
+      sourceId: string
+      config: import('@/adapters/nous/writeback').NousWritebackConfig
+    }): Promise<{ ok: boolean; error?: string; path?: string; run_id?: string }> => {
+      try {
+        const intent = workspace.intents.find((i) => i.id === args.intentId)
+        if (!intent) return { ok: false, error: 'intent not found in workspace' }
+        const res = await fetch('/api/nous/writeback', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: args.sourceId,
+            intent,
+            config: args.config,
+          }),
+        })
+        const body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          return { ok: false, error: body.error ?? `HTTP ${res.status}` }
+        }
+        // Trigger a workspace refresh upstream so the new campaign appears.
+        onRefresh()
+        return {
+          ok: true,
+          path: body.path,
+          run_id: body.run_id,
+        }
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }
+      }
+    },
+    [workspace, onRefresh]
+  )
+
   if (view.kind === 'landing') {
     return <LandingSurface workspace={workspace} me={ME} onEnter={onEnter} />
   }
@@ -374,6 +418,8 @@ function Router({
           shape={shape}
           onCommit={onCommitDraft}
           onBack={goMap}
+          registry={registry}
+          onWriteback={onShapingWriteback}
         />
       </>
     )

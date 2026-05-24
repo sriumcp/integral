@@ -113,3 +113,24 @@
   font-size: 11px;
   opacity: 0.8;
 }
+
+/* Right column — hosts the IntentDraftPane and (optionally) the
+   WritebackForm stacked below. */
+.rightCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.writebackError {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--rose-fg, #b91c1c);
+  background: var(--rose-soft, rgba(254, 226, 226, 0.6));
+  border: 1px solid var(--rose-border, #fca5a5);
+  border-radius: 3px;
+  padding: 4px 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
