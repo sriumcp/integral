@@ -74,6 +74,7 @@ Cross-references between these documents are normative. If a code change require
 - **Tags are free-form, user-controlled.** System-generated tags are v0.2.
 - **Bi-actor by default.** Every operation accepts either a human or an agent. The schema does not privilege one.
 - **Shaping is a typed phase with mutable declaration.** While `Status == draft`, declaration fields are mutable; shaping operations (refine / decompose / fork / merge / reframe / probe / clarify / commit) are first-class. On `commit`, declaration freezes.
+- **Tests never call real LLMs (NON-NEGOTIABLE).** Every test layer — unit, integration, e2e, visual — mocks LLMs. Tests must not spend token budget. New code paths that introduce LLM calls land with a mock injection seam or they don't land. Real LLM clients live in `vite-plugin-nous-adapter/` (outside `src/`); the architectural barrier is load-bearing. See `## Test discipline` for the audit-grep checklist and the smoke-test escape hatch.
 
 ## Meta-rules for schema/UX evolution
 
@@ -114,6 +115,7 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
   - `npm run test:run` — Vitest single run (use this for CI / hooks)
   - `npm run test:e2e` — Playwright E2E (auto-starts dev server)
   - `npm run typecheck` — strict TS check, no emit
+  - **None of these commands consume LLM tokens.** Vitest, Playwright behavioral, and visual regression all run with mocked LLMs. Tests that consume real models are smoke tests — manual, separate, and never wired into the canonical scripts. See `## Test discipline § LLM isolation`.
 - **Schema layer**: `integral-ui/src/schema/zod.ts` is the source of truth. zod schemas first; TS types inferred via `z.infer`. Adding a new schema field is a single edit there; types and validators stay in sync.
 - **Schema_version literal**: every `Intent` / `IntentState` MUST carry `schema_version: '0.1.0'`. The constant lives at `integral-ui/src/schema/zod.ts:SCHEMA_VERSION`. Adapters MUST reject objects with mismatched versions (enforced by `IntentSchema`).
 - **Fixture discipline**: `integral-ui/src/fixtures/workspace.ts` is the falsification fixture — must validate against `WorkspaceSchema` for every `IntentKind` v0.1 supports. Adding a kind in v0.2 means adding an example here; the test in `src/schema/__tests__/validation.test.ts` will fail until the schema accepts it.
@@ -128,7 +130,13 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
 - **Component layer (when surfaces land)**: React Testing Library — assert user-visible behavior, never implementation details. Behavioral tests for: zoom toggle changes content, proposal accept fires the right callback, activity event scrolls to target, shaping commit gates correctly.
 - **E2E (Playwright)**: installed; smoke test at `integral-ui/e2e/scaffold.spec.ts` proves the schema-validation + atom-rendering pipeline works in a real browser. Add one critical-flow test per surface as they land.
 - **Visual regression**: Playwright screenshot diffs against the `ccdesign/` baseline so the cognitive-instrument aesthetic doesn't silently drift to Linear/Jira shape during refactors. Land with the first surface.
-- **LLM isolation**: tests **never** call real LLMs. The projection engine accepts an injected `LLMClient`; tests inject a mock that returns canned strings. The real Anthropic / OpenAI clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they're unreachable from the Vitest runner by construction. Any test that wants to verify LLM behavior against a real model is a **smoke test** — manual, runs outside `npm test*`, documented as such.
+- **LLM isolation (NON-NEGOTIABLE)**: tests **never** call real LLMs — at any level. Unit (Vitest), integration (Vitest with multi-module fixtures), e2e (Playwright behavioral), visual (Playwright screenshots) — all four layers mock LLMs. **Tests must never spend token budget.** This is an operating principle, not a guideline.
+  - The projection engine accepts an injected `LLMClient`; tests inject a mock that returns canned strings.
+  - The shape handler (`vite-plugin-nous-adapter/shape-handler.ts`) is exercised by tests via the same injected-client seam — never by hitting `/api/shape` against a live server.
+  - The real Anthropic / OpenAI clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they're **architecturally unreachable** from the Vitest runner by construction. **Treat this barrier as load-bearing — never `import` a real client into `src/`** (not even for type-only imports that pull the module side-effects).
+  - Any test that wants to verify LLM behavior against a real model is a **smoke test** — manual, runs outside `npm test*`, documented as such (e.g. file in a `smoke/` dir or a `.smoke.ts` suffix; not picked up by the canonical glob).
+  - **New code paths that introduce LLM calls MUST land alongside a mock injection seam.** If you can't make the seam, the design is wrong — refactor before merging.
+  - **Audit grep** before claiming verification: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `tryCreateLLMClient`, `api.openai.com`, `api.anthropic.com`, `@anthropic-ai`, `from 'openai'` — all should return zero hits in `*.test.*` and `*.spec.*` files.
 - **Skills to invoke**:
   - `superpowers:test-driven-development` — when implementing logic with correctness criteria (schema validators, projection budget enforcers, adapter readers).
   - `superpowers:verification-before-completion` — before claiming any milestone done; run `npm run test:run` + `npm run typecheck` + `npm run build` and report exit codes, not assertions.
@@ -177,6 +185,7 @@ These are decisions that future sessions will be tempted to revisit. They are no
 - **Do not embed `EvidenceLink`s inside intent extensions.** They live in a separate edge collection so cross-cutting queries don't traverse intent objects.
 - **Do not let the four UX surfaces drift in chrome.** Per-kind specialization is allowed in the structural body content; the surrounding chrome (header, activity strip, navigation) stays uniform across kinds. This is what keeps the substrate identity intact.
 - **Do not propose `fork` / `merge` / `reframe` from agents in v0.1.** Agents probe; humans (or agents at human direction) restructure. Suggestions are v0.2.
+- **Do not let any test — unit, integration, e2e, or visual — touch a real LLM.** Tests must not spend token budget. The `vite-plugin-nous-adapter/` boundary is load-bearing: real Anthropic / OpenAI clients live there and must never be imported into `src/`. Tests inject `LLMClient` mocks. Smokes against real models are manual, run outside `npm test*`, and never share fixture or harness paths with the canonical suite. See `## Test discipline` for the audit-grep checklist.
 
 ## Conversation history note
 
