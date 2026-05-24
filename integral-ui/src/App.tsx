@@ -5,7 +5,7 @@ import {
   type IntentState,
   type Workspace,
 } from '@/schema'
-import { shapingFor } from '@/fixtures/shaping'
+import { shapingFor, blankNousDraftShape } from '@/fixtures/shaping'
 import { AppHeader, type Crumb } from '@/components'
 import { MapSurface } from '@/surfaces/Map'
 import { DetailSurface } from '@/surfaces/Detail'
@@ -328,6 +328,111 @@ function Router({
     setView({ kind: 'map' })
   }
 
+  /** A4.6: Create a blank Nous draft + navigate to the Shaping surface.
+   *  The draft has no scripted dialog (DraftShape's `dialog` is empty),
+   *  which signals the ShapingSurface to use the LLM-driven ShapingChat
+   *  instead of the legacy ShapingDialog. */
+  const onNewNousDraft = useCallback(() => {
+    const draftId = `draft-nous-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const now = new Date().toISOString()
+    const blank: Intent = {
+      id: draftId,
+      schema_version: '0.1.0',
+      kind: 'nous-campaign',
+      declaration: {
+        title: 'untitled campaign',
+        summary: '',
+        success_criterion: '',
+      },
+      holder: { mode: 'jointly-held', parties: [ME] },
+      lifetime: { kind: 'campaign', started_at: now },
+      decomposition: { children: [] },
+      provenance: {
+        declared_by: ME,
+        declared_at: now,
+        motivated_by: [],
+        source: 'fixture',
+      },
+      knowledge_refs: [],
+      tags: [],
+      state_ref: `${draftId}-STATE`,
+      extension: {
+        kind: 'nous-campaign',
+        research_question: '(to be shaped)',
+        open_hypothesis_bundles: [],
+        gate_status: { current_gate: 'design' },
+      },
+    }
+    const blankState: IntentState = {
+      id: `${draftId}-STATE`,
+      intent_id: draftId,
+      schema_version: '0.1.0',
+      status: 'draft',
+      last_advanced_at: now,
+      last_advanced_by: ME,
+      history: [],
+      external_anchors: [],
+    }
+    setWorkspace((prev) => ({
+      ...prev,
+      intents: [...prev.intents, blank],
+      states: [...prev.states, blankState],
+    }))
+    setView({ kind: 'shaping', intent: blank })
+  }, [])
+
+  /** A4.6: LLM-driven shaping handler. POSTs to /api/shape with the
+   *  current draft + conversation history + user message. The Vite
+   *  plugin's shape-handler runs the LLM and returns a structured
+   *  reply + patch + status. ShapingSurface applies the patch to the
+   *  live draft and renders the reply as a new turn. */
+  const onShapeMessage = useCallback(
+    async (args: {
+      draft: import('@/adapters/nous/shape-patch').DraftState
+      history: ReadonlyArray<{ speaker: 'user' | 'shaper'; body: string; at: string }>
+      user_message: string
+    }): Promise<{
+      reply: string
+      patch: import('@/adapters/nous/shape-patch').ShapePatch | null
+      status: 'shaping' | 'ready-to-commit' | 'kind-mismatch'
+      concerns: ReadonlyArray<string>
+      kind_suggestion?: string
+    }> => {
+      const draftPayload = {
+        intent: {
+          kind: args.draft.intent.kind,
+          declaration: args.draft.intent.declaration,
+          extension: {
+            kind: args.draft.intent.extension.kind,
+            ...(args.draft.intent.extension.kind === 'nous-campaign'
+              ? {
+                  research_question:
+                    args.draft.intent.extension.research_question,
+                }
+              : {}),
+          },
+          tags: args.draft.intent.tags ?? [],
+        },
+        writeback: args.draft.writeback,
+      }
+      const res = await fetch('/api/shape', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          draft: draftPayload,
+          history: args.history.map((t) => ({
+            speaker: t.speaker,
+            body: t.body,
+          })),
+          user_message: args.user_message,
+        }),
+      })
+      const body = await res.json()
+      return body
+    },
+    []
+  )
+
   /** A4: Nous writeback handler. POSTs to /api/nous/writeback; on
    *  success, the caller (ShapingSurface) fires onCommit to flip the
    *  in-memory state. After writeback, also triggers a workspace refresh
@@ -338,9 +443,13 @@ function Router({
       intentId: string
       sourceId: string
       config: import('@/adapters/nous/writeback').NousWritebackConfig
+      /** A4.6: live intent (with LLM-shaped fields). Falls back to the
+       *  workspace lookup when not provided (legacy fixture-draft path). */
+      intent?: Intent
     }): Promise<{ ok: boolean; error?: string; path?: string; run_id?: string }> => {
       try {
-        const intent = workspace.intents.find((i) => i.id === args.intentId)
+        const intent =
+          args.intent ?? workspace.intents.find((i) => i.id === args.intentId)
         if (!intent) return { ok: false, error: 'intent not found in workspace' }
         const res = await fetch('/api/nous/writeback', {
           method: 'POST',
@@ -377,9 +486,15 @@ function Router({
   }
 
   if (view.kind === 'shaping') {
-    const shape = shapingFor(view.intent.id)
+    // A4.6: drafts created via "+ new nous campaign" have no fixture
+    // entry — fall back to a blank shape that triggers the LLM-driven
+    // ShapingChat instead of the scripted dialog.
+    const shape =
+      shapingFor(view.intent.id) ??
+      (view.intent.kind === 'nous-campaign' ? blankNousDraftShape() : undefined)
     if (!shape) {
-      // Defensive — drafts without shaping data shouldn't exist in v0.1.
+      // Defensive — non-nous-campaign drafts without shaping data
+      // shouldn't exist in v0.1.
       return (
         <>
           <AppHeader
@@ -420,6 +535,7 @@ function Router({
           onBack={goMap}
           registry={registry}
           onWriteback={onShapingWriteback}
+          onShapeMessage={onShapeMessage}
         />
       </>
     )
@@ -452,6 +568,7 @@ function Router({
               knownSources={registry}
               enabledSources={enabledSources}
               onToggleSource={onToggleSource}
+              onNewNousDraft={onNewNousDraft}
             />
           ) : (
             <DetailSurface

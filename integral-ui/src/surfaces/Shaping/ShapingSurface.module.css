@@ -134,3 +134,24 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+.readyHint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--sage-fg, #166534);
+  background: var(--sage-soft, rgba(220, 252, 231, 0.5));
+  border: 1px solid var(--sage-border, #86efac);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+
+.kindSuggestion {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--amber-fg, #92400e);
+  background: var(--amber-soft, rgba(254, 243, 199, 0.5));
+  border: 1px solid var(--amber-border, #fcd34d);
+  border-radius: 3px;
+  padding: 8px 10px;
+  line-height: 1.4;
+}

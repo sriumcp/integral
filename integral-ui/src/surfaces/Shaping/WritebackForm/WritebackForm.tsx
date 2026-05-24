@@ -68,6 +68,32 @@ export function WritebackForm({
     run_id: template.run_id ?? '',
   }))
 
+  // A4.6: when the parent's `template` changes (LLM patches arrive
+  // during shaping), sync the form's internal state for any field the
+  // user hasn't already started editing into a non-empty value. This
+  // gives the user the "form auto-fills as conversation progresses"
+  // experience without clobbering typing-in-progress.
+  useEffect(() => {
+    setState((prev) => {
+      const next: FormState = { ...prev }
+      const tsName = template.target_system?.name ?? ''
+      const tsDesc = template.target_system?.description ?? ''
+      const tsRepo = template.target_system?.repo_path ?? ''
+      // Only update fields that are still empty in the form state.
+      // This protects the user's in-flight edits.
+      if (prev.ts_name === '' && tsName !== '') next.ts_name = tsName
+      if (prev.ts_description === '' && tsDesc !== '') next.ts_description = tsDesc
+      if (prev.ts_repo_path === '' && tsRepo !== '') next.ts_repo_path = tsRepo
+      if (template.max_iterations !== undefined && prev.max_iterations === '5') {
+        next.max_iterations = String(template.max_iterations)
+      }
+      if (template.run_id !== undefined && prev.run_id === '') {
+        next.run_id = template.run_id
+      }
+      return next
+    })
+  }, [template])
+
   // Re-emit validated config whenever fields change. Pure derivation
   // from `state` so the parent gets a stable signal each render.
   useEffect(() => {

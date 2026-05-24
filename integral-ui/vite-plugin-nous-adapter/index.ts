@@ -20,6 +20,7 @@ import {
   type ConfiguredSource,
 } from './sources-config'
 import { handleWriteback, readJsonBody } from './writeback-handler'
+import { handleShape, type ShapeRequest } from './shape-handler'
 
 /**
  * Vite plugin that exposes the Nous adapter as `/api/workspace` and
@@ -154,6 +155,43 @@ export function nousAdapterPlugin(): Plugin {
               workspace,
             })
           )
+        } catch (err) {
+          res.statusCode = 500
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error: err instanceof Error ? err.message : String(err),
+            })
+          )
+        }
+      })
+
+      // ─── /api/shape ────────────────────────────────────────────────────
+      // LLM-driven shaping conversation. Takes the current draft +
+      // conversation history + user message; returns the LLM's reply,
+      // a patch to apply to the draft, a status signal, and concerns.
+      // Falls back gracefully when no LLM provider is configured (the
+      // chrome continues to work in manual-edit-only mode).
+      server.middlewares.use('/api/shape', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'POST required' }))
+          return
+        }
+        try {
+          const body = (await readJsonBody(req)) as ShapeRequest
+          if (!body || typeof body !== 'object') {
+            res.statusCode = 400
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: 'malformed request body' }))
+            return
+          }
+          const result = await handleShape(body, llm)
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json')
+          res.setHeader('cache-control', 'no-store')
+          res.end(JSON.stringify(result))
         } catch (err) {
           res.statusCode = 500
           res.setHeader('content-type', 'application/json')

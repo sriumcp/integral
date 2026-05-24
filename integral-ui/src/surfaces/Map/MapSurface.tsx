@@ -19,6 +19,12 @@ export interface MapSurfaceProps {
   enabledSources?: ReadonlySet<string>
   /** Click handler for a source chip — toggles that source on/off. */
   onToggleSource?: (sourceId: string) => void
+  /** Click handler for "+ new nous campaign". When provided, the
+   *  topRow renders a "+ new" button that creates a blank Nous draft +
+   *  navigates to the Shaping surface. Without it, the button is
+   *  hidden — preserves backwards compat for tests / preview where
+   *  draft creation isn't wired. */
+  onNewNousDraft?: () => void
 }
 
 type RootKind =
@@ -55,6 +61,7 @@ export function MapSurface({
   knownSources,
   enabledSources,
   onToggleSource,
+  onNewNousDraft,
 }: MapSurfaceProps) {
   const [awaitingOnly, setAwaitingOnly] = useState(false)
 
@@ -143,6 +150,16 @@ export function MapSurface({
           <Chip tone="mute" mono>
             last 24h
           </Chip>
+          {onNewNousDraft && (
+            <button
+              type="button"
+              className={styles.newDraftButton}
+              onClick={onNewNousDraft}
+              aria-label="new nous campaign"
+            >
+              + new nous campaign
+            </button>
+          )}
         </div>
       </header>
 

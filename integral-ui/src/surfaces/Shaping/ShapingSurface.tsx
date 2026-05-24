@@ -1,8 +1,17 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Intent } from '@/schema'
 import type { DraftShape } from '@/fixtures/shaping'
+import {
+  applyShapePatch,
+  type DraftState,
+} from '@/adapters/nous/shape-patch'
+import type { NousWritebackConfig } from '@/adapters/nous/writeback'
 import type { SourceEntry } from '@/lib/sources'
 import { ShapingDialog } from './ShapingDialog'
+import {
+  ShapingChat,
+  type ShapingChatTurn,
+} from './ShapingChat/ShapingChat'
 import { IntentDraftPane } from './IntentDraftPane'
 import {
   WritebackForm,
@@ -23,52 +32,88 @@ export interface WritebackArgs {
   intentId: string
   sourceId: string
   config: WritebackFormChange['config']
+  /** A4.6: pass the *live* intent (with LLM-shaped fields) so the
+   *  writeback uses the user's latest values, not the stale prop. */
+  intent: Intent
+}
+
+export interface ShapeMessageArgs {
+  draft: DraftState
+  history: ReadonlyArray<ShapingChatTurn>
+  user_message: string
+}
+
+export interface ShapeMessageResult {
+  reply: string
+  patch: import('@/adapters/nous/shape-patch').ShapePatch | null
+  status: 'shaping' | 'ready-to-commit' | 'kind-mismatch'
+  concerns: ReadonlyArray<string>
+  kind_suggestion?: string
 }
 
 export interface ShapingSurfaceProps {
   intent: Intent
   shape: DraftShape
-  /** Fires with the intent id when commit is clicked, the draft is fully
-   *  resolved, AND there's no writeback active. The in-memory-only
-   *  backwards-compat path. */
+  /** Fires with the intent id when commit is clicked; flips state from
+   *  draft to active. */
   onCommit: (intentId: string) => void
-  /** Back to the Map surface. */
   onBack: () => void
-  /** When provided AND the draft has a `writeback_template`, the
-   *  WritebackForm is rendered and commit-to-active POSTs the writeback
-   *  before flipping the draft state. Without this prop, ShapingSurface
-   *  falls back to the in-memory-only `onCommit` path. */
+  /** Source registry; when provided alongside a `writeback_template`,
+   *  the WritebackForm renders. */
   registry?: ReadonlyArray<SourceEntry>
-  /** Async writeback handler. ShapingSurface awaits the result; on `ok:
-   *  true` it fires `onCommit` to flip the in-memory state. On `ok:
-   *  false` it shows `error` inline and leaves the draft in place so
-   *  the user can fix and retry. */
+  /** A4 writeback handler. */
   onWriteback?: (args: WritebackArgs) => Promise<WritebackResult>
+  /** A4.6 LLM-shaping handler. When provided AND the draft has an
+   *  empty scripted dialog, ShapingChat replaces ShapingDialog and
+   *  the surface drives an interactive LLM clarification flow. */
+  onShapeMessage?: (args: ShapeMessageArgs) => Promise<ShapeMessageResult>
 }
 
 const RESTRUCTURE_OPS = ['decompose', 'fork', 'merge', 'reframe'] as const
 type RestructureOp = (typeof RESTRUCTURE_OPS)[number]
 
+/** Default writeback config used as the live state seed when the
+ *  draft's `writeback_template` is absent or partial. */
+function defaultWritebackConfig(): NousWritebackConfig {
+  return {
+    max_iterations: 5,
+    target_system: { name: '', description: '', repo_path: '' },
+  }
+}
+
+function seedWritebackConfig(
+  template: DraftShape['writeback_template']
+): NousWritebackConfig {
+  const base = defaultWritebackConfig()
+  if (!template) return base
+  return {
+    ...base,
+    ...(template.max_iterations !== undefined
+      ? { max_iterations: template.max_iterations }
+      : {}),
+    target_system: { ...base.target_system, ...(template.target_system ?? {}) },
+    ...(template.run_id !== undefined ? { run_id: template.run_id } : {}),
+  }
+}
+
 /**
  * ShapingSurface — two-pane shaping mode for `Status: 'draft'` intents.
  *
- * Composes `ShapingDialog` (left, scripted clarification turns) and
- * `IntentDraftPane` (right, live typed draft with `⚠ pending` markers
- * for unresolved fields). Restructure operations render inert in v0.1
- * (CLAUDE.md § What NOT to do — agents probe, humans restructure, and
- * the wire-level shape is deferred to v0.2).
+ * **Two operating modes:**
+ *  - **Scripted (existing fixture drafts):** `shape.dialog` has canned
+ *    turns; resolvedFields baked into the fixture. Renders ShapingDialog
+ *    on the left, IntentDraftPane (showing the prop intent) on the right.
+ *    Commit gates on `requiredFields.every(f => resolvedFields.has(f))`.
+ *  - **LLM-driven (new drafts via "+ new"):** `shape.dialog` is empty
+ *    AND `onShapeMessage` is provided. Renders ShapingChat on the left;
+ *    user messages POST to /api/shape; LLM replies + emits a typed
+ *    patch that fills the live draft (right pane auto-updates).
+ *    Resolved-fields are computed from the live draft. Commit gates on
+ *    all required fields having non-trivial values.
  *
- * Commit is gated on `shape.requiredFields.every(f => shape.resolvedFields.has(f))`.
- * The discipline keeps "shaping outputs an executable intent" honest:
- * users can't ship a half-shaped object.
- *
- * **Writeback (A4):** when the draft has a `writeback_template` and a
- * `registry` is provided, ShapingSurface renders `WritebackForm` in the
- * right pane and gates commit additionally on form validity. Commit
- * triggers `onWriteback` (writes a real `campaign-<run_id>.yaml`); on
- * success, `onCommit` flips the in-memory state. Without writeback,
- * the legacy in-memory-only path runs (Coral drafts, registry-less
- * environments).
+ * Both modes feed the same WritebackForm + commit-to-active button.
+ * The same-button A4 contract still holds: commit posts writeback, on
+ * success flips in-memory state.
  */
 export function ShapingSurface({
   intent,
@@ -77,18 +122,80 @@ export function ShapingSurface({
   onBack,
   registry,
   onWriteback,
+  onShapeMessage,
 }: ShapingSurfaceProps) {
+  // ── Live state (LLM-driven mode) ─────────────────────────────────────────
+  // For scripted drafts, liveDraft is initialized once from the prop and
+  // never changes (LLM-shaping isn't active, so no patches arrive). For
+  // LLM drafts, liveDraft mutates as the LLM emits patches.
+  const [liveDraft, setLiveDraft] = useState<DraftState>(() => ({
+    intent,
+    writeback: seedWritebackConfig(shape.writeback_template),
+  }))
+  const [liveTurns, setLiveTurns] = useState<ReadonlyArray<ShapingChatTurn>>(
+    () =>
+      shape.dialog.map((t) => ({
+        speaker: t.speaker.id === 'sri' ? 'user' : 'shaper',
+        body: t.body,
+        at: t.at,
+      }))
+  )
+  const [concerns, setConcerns] = useState<ReadonlyArray<string>>([])
+  const [llmStatus, setLlmStatus] = useState<
+    'shaping' | 'ready-to-commit' | 'kind-mismatch'
+  >('shaping')
+  const [kindSuggestion, setKindSuggestion] = useState<string | undefined>()
+  const [llmLoading, setLlmLoading] = useState(false)
+
+  const llmShapingActive =
+    shape.dialog.length === 0 && Boolean(onShapeMessage)
+
+  // ── Resolved-fields ──────────────────────────────────────────────────────
+  // Scripted drafts: use the fixture's set as-is. LLM drafts: derive from
+  // the live draft's field values being non-trivial.
+  const dynamicResolvedFields = useMemo(() => {
+    if (!llmShapingActive) return shape.resolvedFields
+    const set = new Set<string>()
+    if (liveDraft.intent.declaration.title.trim().length > 0) {
+      set.add('declaration.title')
+    }
+    if (liveDraft.intent.declaration.summary.trim().length > 0) {
+      set.add('declaration.summary')
+    }
+    if (liveDraft.intent.declaration.success_criterion.trim().length > 0) {
+      set.add('declaration.success_criterion')
+    }
+    if (
+      liveDraft.intent.extension.kind === 'nous-campaign' &&
+      liveDraft.intent.extension.research_question.trim().length > 0 &&
+      liveDraft.intent.extension.research_question !== '(to be shaped)'
+    ) {
+      set.add('extension.research_question')
+    }
+    // Scripted drafts include `holder` / `knowledge_refs` in required —
+    // those aren't shaped via the LLM in v0.1 but their default values
+    // (jointly-held + empty) count as resolved for ship purposes.
+    set.add('holder')
+    set.add('knowledge_refs')
+    return set
+  }, [llmShapingActive, shape.resolvedFields, liveDraft.intent])
+
+  const liveShape: DraftShape = useMemo(
+    () => ({
+      ...shape,
+      resolvedFields: dynamicResolvedFields,
+    }),
+    [shape, dynamicResolvedFields]
+  )
+
   const allResolved = shape.requiredFields.every((f) =>
-    shape.resolvedFields.has(f)
+    dynamicResolvedFields.has(f)
   )
   const pendingCount = shape.requiredFields.filter(
-    (f) => !shape.resolvedFields.has(f)
+    (f) => !dynamicResolvedFields.has(f)
   ).length
 
-  // Writeback is "active" iff the draft declares a template AND the
-  // surface has the registry+callback to wire it. Coral drafts (no
-  // template) and registry-less callers (tests, preview) keep the
-  // in-memory-only commit path — backwards compat per A4 scope.
+  // ── Writeback ────────────────────────────────────────────────────────────
   const writebackActive = Boolean(
     shape.writeback_template && registry && onWriteback
   )
@@ -106,8 +213,56 @@ export function ShapingSurface({
   )
 
   const writebackReady = !writebackActive || writebackChange !== null
-  const commitEnabled = allResolved && writebackReady && !submitting
+  const commitEnabled =
+    allResolved && writebackReady && !submitting && !llmLoading
 
+  // ── ShapingChat onSend ───────────────────────────────────────────────────
+  const handleShapeSend = useCallback(
+    async (message: string) => {
+      if (!onShapeMessage) return
+      const userTurn: ShapingChatTurn = {
+        speaker: 'user',
+        body: message,
+        at: new Date().toISOString(),
+      }
+      // Optimistically append the user's turn; show loading spinner.
+      setLiveTurns((prev) => [...prev, userTurn])
+      setLlmLoading(true)
+      try {
+        const result = await onShapeMessage({
+          draft: liveDraft,
+          history: [...liveTurns, userTurn],
+          user_message: message,
+        })
+        const shaperTurn: ShapingChatTurn = {
+          speaker: 'shaper',
+          body: result.reply,
+          at: new Date().toISOString(),
+        }
+        setLiveTurns((prev) => [...prev, shaperTurn])
+        if (result.patch) {
+          setLiveDraft((prev) => applyShapePatch(prev, result.patch))
+        }
+        setConcerns(result.concerns)
+        setLlmStatus(result.status)
+        setKindSuggestion(result.kind_suggestion)
+      } catch (err) {
+        setLiveTurns((prev) => [
+          ...prev,
+          {
+            speaker: 'shaper',
+            body: `(error: ${err instanceof Error ? err.message : String(err)})`,
+            at: new Date().toISOString(),
+          },
+        ])
+      } finally {
+        setLlmLoading(false)
+      }
+    },
+    [onShapeMessage, liveDraft, liveTurns]
+  )
+
+  // ── Commit handler ───────────────────────────────────────────────────────
   const onCommitClick = useCallback(async () => {
     if (!commitEnabled) return
     if (writebackActive && writebackChange && onWriteback) {
@@ -118,6 +273,7 @@ export function ShapingSurface({
           intentId: intent.id,
           sourceId: writebackChange.sourceId,
           config: writebackChange.config,
+          intent: liveDraft.intent,
         })
         if (!result.ok) {
           setWritebackError(result.error ?? 'writeback failed')
@@ -140,6 +296,7 @@ export function ShapingSurface({
     onWriteback,
     onCommit,
     intent.id,
+    liveDraft.intent,
   ])
 
   return (
@@ -151,15 +308,31 @@ export function ShapingSurface({
       </nav>
 
       <div className={styles.panes}>
-        <ShapingDialog turns={shape.dialog} />
+        {llmShapingActive ? (
+          <ShapingChat
+            turns={liveTurns}
+            loading={llmLoading}
+            onSend={handleShapeSend}
+            concerns={concerns}
+          />
+        ) : (
+          <ShapingDialog turns={shape.dialog} />
+        )}
         <div className={styles.rightCol}>
-          <IntentDraftPane intent={intent} shape={shape} />
+          <IntentDraftPane intent={liveDraft.intent} shape={liveShape} />
           {writebackActive && shape.writeback_template && registry && (
             <WritebackForm
               registry={registry}
-              template={shape.writeback_template}
+              template={liveDraft.writeback}
               onChange={handleWritebackChange}
             />
+          )}
+          {kindSuggestion && (
+            <div className={styles.kindSuggestion} role="status">
+              Shaper suggests this is a <strong>{kindSuggestion}</strong>, not
+              a nous-campaign. v0.1 doesn't reframe — start a new draft of
+              that kind, or carry on shaping as nous.
+            </div>
           )}
         </div>
       </div>
@@ -183,6 +356,15 @@ export function ShapingSurface({
             {writebackError}
           </span>
         )}
+        {llmShapingActive && llmStatus === 'ready-to-commit' && allResolved && (
+          <span
+            className={styles.readyHint}
+            role="status"
+            data-testid="ready-to-commit-hint"
+          >
+            ✓ shaper says this is ready to commit
+          </span>
+        )}
         <button
           type="button"
           className={styles.commit}
@@ -196,15 +378,15 @@ export function ShapingSurface({
                     ? `${pendingCount} pending`
                     : submitting
                       ? 'submitting'
-                      : 'writeback config invalid'
+                      : llmLoading
+                        ? 'waiting for shaper'
+                        : 'writeback config invalid'
                 })`
           }
         >
           {submitting ? 'committing…' : 'commit to active'}
           {!allResolved && (
-            <span className={styles.commitHint}>
-              · {pendingCount} pending
-            </span>
+            <span className={styles.commitHint}>· {pendingCount} pending</span>
           )}
         </button>
       </footer>

@@ -158,3 +158,26 @@ export const SHAPING_BY_ID: Record<string, DraftShape> = {
 export function shapingFor(intentId: string): DraftShape | undefined {
   return SHAPING_BY_ID[intentId]
 }
+
+/**
+ * A4.6: A "blank" draft shape — used when the user creates a new draft
+ * via "+ new nous campaign" and there's no scripted dialog. The empty
+ * `dialog` field signals to ShapingSurface that LLM-shaping is active
+ * (ShapingChat replaces ShapingDialog). The writeback_template ships
+ * sensible defaults the user can override.
+ */
+export function blankNousDraftShape(): DraftShape {
+  return {
+    requiredFields: [...NOUS_FIELDS],
+    resolvedFields: new Set(), // nothing resolved on a blank draft; LLM fills as conversation progresses
+    dialog: [],
+    writeback_template: {
+      max_iterations: 5,
+      target_system: {
+        name: '',
+        description: '',
+        repo_path: '',
+      },
+    },
+  }
+}
