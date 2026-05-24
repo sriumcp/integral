@@ -579,6 +579,7 @@ function Router({
               onBack={goMap}
               onRefresh={onRefresh}
               refreshing={refreshing}
+              registry={registry}
             />
           )}
         </div>

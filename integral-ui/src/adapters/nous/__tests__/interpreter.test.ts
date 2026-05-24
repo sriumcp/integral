@@ -103,6 +103,57 @@ describe('interpretCampaign', () => {
     expect(result?.state.status).toBe('active')
   })
 
+  // ─── Cache-stability: last_advanced_at must be deterministic across reads
+  // when state.json is absent. Otherwise the projection cache key changes
+  // every request and the LLM regenerates per page load. The fix: thread
+  // the YAML file's mtime through `CampaignFiles.campaignYamlMtime` and
+  // use it as the fallback before resorting to the non-deterministic
+  // current-time stamp.
+  it('uses campaignYamlMtime as last_advanced_at when state.json is absent', () => {
+    const mtime = '2026-05-24T15:30:00.000Z'
+    const result = interpretCampaign(
+      'no-state',
+      {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: null,
+        ledger: null,
+        principles: null,
+        campaignYamlMtime: mtime,
+      },
+      'fs:/synthetic'
+    )
+    expect(result?.state.last_advanced_at).toBe(mtime)
+  })
+
+  it('produces a stable last_advanced_at across repeat calls when mtime is provided', () => {
+    const files: CampaignFiles = {
+      campaignYaml: MIN_CAMPAIGN_YAML,
+      state: null,
+      ledger: null,
+      principles: null,
+      campaignYamlMtime: '2026-05-24T15:30:00.000Z',
+    }
+    const a = interpretCampaign('stable', files, 'fs:/synthetic')
+    const b = interpretCampaign('stable', files, 'fs:/synthetic')
+    expect(a?.state.last_advanced_at).toBe(b?.state.last_advanced_at)
+  })
+
+  it('prefers parsedState.timestamp over mtime when state.json is present', () => {
+    const result = interpretCampaign(
+      'has-state',
+      {
+        campaignYaml: MIN_CAMPAIGN_YAML,
+        state: STATE_DONE,
+        ledger: null,
+        principles: null,
+        campaignYamlMtime: '2099-01-01T00:00:00.000Z', // far future, would lose
+      },
+      'fs:/synthetic'
+    )
+    // STATE_DONE.timestamp = '2026-05-19T21:18:04Z'
+    expect(result?.state.last_advanced_at).toBe('2026-05-19T21:18:04Z')
+  })
+
   it('returns null when YAML is malformed beyond recovery', () => {
     const result = interpretCampaign(
       'broken',

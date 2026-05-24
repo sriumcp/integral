@@ -194,7 +194,14 @@ export function interpretCampaign(
   const intentId = makeIntentId(sourceId, runId)
   const stateId = `${intentId}-STATE`
 
-  const declaredAt = parsedState?.timestamp ?? synthTimestamp()
+  // Stable fallback chain for the campaign's effective timestamp. When
+  // state.json is absent (freshly-shaped campaign Nous hasn't run yet),
+  // we prefer the YAML file's mtime over `synthTimestamp()` so the
+  // projection cache key is stable across reads. Without this, the Vite
+  // plugin re-generates LLM projections on every Detail navigation for
+  // any campaign that hasn't been run.
+  const declaredAt =
+    parsedState?.timestamp ?? files.campaignYamlMtime ?? synthTimestamp()
   const startedAt = parsedState?.timestamp ?? declaredAt
 
   const title = makeTitle(runId, parsedYaml)

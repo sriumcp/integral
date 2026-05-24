@@ -24,6 +24,13 @@ export interface CampaignFiles {
   /** Contents of `.nous/<run_id>/principles.json` if present. v0.1 maps
    *  principles lossily to KnowledgeRefs (see gaps.md G-N-2). */
   principles: string | null
+  /** ISO mtime of the campaign-X.yaml file, when the source can provide
+   *  one. Optional. The interpreter uses it as a *stable* fallback for
+   *  `last_advanced_at` when state.json is absent — without this, every
+   *  adapter read regenerates the timestamp via `new Date()`, which makes
+   *  the projection cache key unstable for freshly-shaped campaigns and
+   *  triggers a fresh LLM call on every Detail navigation. */
+  campaignYamlMtime?: string
 }
 
 /** Transport contract — abstracts over filesystem / S3 / HTTP / etc. */

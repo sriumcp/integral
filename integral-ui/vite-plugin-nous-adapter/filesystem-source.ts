@@ -85,14 +85,22 @@ export class FilesystemNousSource implements NousSource {
     const ledgerPath = path.join(this.root, '.nous', runId, 'ledger.json')
     const principlesPath = path.join(this.root, '.nous', runId, 'principles.json')
 
-    const [campaignYaml, state, ledger, principles] = await Promise.all([
-      readOrEmpty(yamlPath),
-      readOrNull(statePath),
-      readOrNull(ledgerPath),
-      readOrNull(principlesPath),
-    ])
+    const [campaignYaml, state, ledger, principles, yamlMtime] =
+      await Promise.all([
+        readOrEmpty(yamlPath),
+        readOrNull(statePath),
+        readOrNull(ledgerPath),
+        readOrNull(principlesPath),
+        statMtimeOrNull(yamlPath),
+      ])
 
-    return { campaignYaml, state, ledger, principles }
+    return {
+      campaignYaml,
+      state,
+      ledger,
+      principles,
+      ...(yamlMtime ? { campaignYamlMtime: yamlMtime } : {}),
+    }
   }
 }
 
@@ -107,6 +115,19 @@ async function readOrEmpty(p: string): Promise<string> {
 async function readOrNull(p: string): Promise<string | null> {
   try {
     return await fs.readFile(p, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+/** ISO mtime of the file at `p`, or null if it doesn't exist. Used to
+ *  give the interpreter a *stable* fallback timestamp for campaigns
+ *  whose `.nous/<run>/state.json` hasn't been written yet — without it,
+ *  the projection cache key changes on every adapter read. */
+async function statMtimeOrNull(p: string): Promise<string | null> {
+  try {
+    const st = await fs.stat(p)
+    return st.mtime.toISOString()
   } catch {
     return null
   }

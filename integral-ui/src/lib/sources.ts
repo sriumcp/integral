@@ -24,6 +24,12 @@ export interface SourceEntry {
   /** `'fixture'` = bundled static data; `'adapter'` = fetched from
    *  the Vite plugin's `/api/workspace?source=<id>` endpoint. */
   kind: SourceKind
+  /** Filesystem path of the source on the dev machine. Present for
+   *  adapter sources resolved from `integral.config.json`; absent for
+   *  the fixture and absent in offline test environments. Consumed by
+   *  the A5 `RunCommand` panel to compose paste-ready `nous run`
+   *  commands; surfaces should treat as optional. */
+  path?: string
 }
 
 export const FIXTURE_SOURCE: SourceEntry = {
@@ -42,11 +48,21 @@ export async function fetchSourceRegistry(): Promise<ReadonlyArray<SourceEntry>>
     const res = await fetch('/api/sources')
     if (!res.ok) return [FIXTURE_SOURCE]
     const body = (await res.json()) as {
-      sources?: Array<{ id: string; label: string; kind: SourceKind }>
+      sources?: Array<{
+        id: string
+        label: string
+        kind: SourceKind
+        path?: string
+      }>
     }
     const adapters: SourceEntry[] = (body.sources ?? [])
       .filter((s) => s && typeof s.id === 'string' && typeof s.label === 'string')
-      .map((s) => ({ id: s.id, label: s.label, kind: 'adapter' as const }))
+      .map((s) => ({
+        id: s.id,
+        label: s.label,
+        kind: 'adapter' as const,
+        ...(typeof s.path === 'string' ? { path: s.path } : {}),
+      }))
     return [FIXTURE_SOURCE, ...adapters]
   } catch {
     return [FIXTURE_SOURCE]

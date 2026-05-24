@@ -8,11 +8,12 @@
  * drop colliding intent IDs into the same merged workspace.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceSchema, type Workspace } from '@/schema'
 import { fixtureWorkspace } from '@/fixtures/workspace'
 import {
   attributeSource,
+  fetchSourceRegistry,
   FIXTURE_SOURCE,
   mergeWorkspaces,
   parseSourcesFromUrl,
@@ -175,5 +176,74 @@ describe('mergeWorkspaces', () => {
           JSON.stringify(result.error.issues, null, 2)
       )
     }
+  })
+})
+
+// ─── fetchSourceRegistry — path retention (A5 dependency) ──────────────────
+
+describe('fetchSourceRegistry', () => {
+  let originalFetch: typeof globalThis.fetch
+  beforeEach(() => {
+    originalFetch = globalThis.fetch
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('retains the filesystem path on adapter sources from the API response', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          sources: [
+            {
+              id: 'nous',
+              label: 'nous campaigns',
+              kind: 'adapter',
+              path: '/Users/sri/Documents/Projects/inference-sim',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    ) as unknown as typeof globalThis.fetch
+
+    const out = await fetchSourceRegistry()
+    const nous = out.find((s) => s.id === 'nous')
+    expect(nous).toBeDefined()
+    expect(nous?.path).toBe('/Users/sri/Documents/Projects/inference-sim')
+  })
+
+  it('falls back to the fixture-only registry on a non-OK response', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response('error', { status: 500 })
+    ) as unknown as typeof globalThis.fetch
+
+    const out = await fetchSourceRegistry()
+    expect(out).toEqual([FIXTURE_SOURCE])
+  })
+
+  it('falls back gracefully when fetch throws', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error('network down')
+    }) as unknown as typeof globalThis.fetch
+
+    const out = await fetchSourceRegistry()
+    expect(out).toEqual([FIXTURE_SOURCE])
+  })
+
+  it('omits the path when the API response lacks one (graceful)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          sources: [{ id: 'nous', label: 'nous campaigns', kind: 'adapter' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    ) as unknown as typeof globalThis.fetch
+
+    const out = await fetchSourceRegistry()
+    const nous = out.find((s) => s.id === 'nous')
+    expect(nous).toBeDefined()
+    expect(nous?.path).toBeUndefined()
   })
 })

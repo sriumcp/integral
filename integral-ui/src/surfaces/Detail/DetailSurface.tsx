@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { Intent, Party, Workspace, ZoomLevel } from '@/schema'
+import type { SourceEntry } from '@/lib/sources'
 import { DetailHeader } from './DetailHeader/DetailHeader'
 import { ChildrenSection } from './ChildrenSection/ChildrenSection'
 import { EvidenceEdges } from './EvidenceEdges/EvidenceEdges'
 import { KnowledgeRefsSection } from './KnowledgeRefsSection/KnowledgeRefsSection'
 import { ProjectionSection } from './ProjectionSection/ProjectionSection'
+import { RunCommand } from './RunCommand'
 import styles from './DetailSurface.module.css'
 
 export interface DetailSurfaceProps {
@@ -20,6 +22,10 @@ export interface DetailSurfaceProps {
    *  refresh in v0.1 (no per-intent re-read endpoint yet). */
   onRefresh?: () => void
   refreshing?: boolean
+  /** Source registry — passed to A5 RunCommand for per-source filesystem
+   *  path resolution. Optional so tests + preview environments can render
+   *  Detail without it; the RunCommand panel just hides itself. */
+  registry?: ReadonlyArray<SourceEntry>
 }
 
 /**
@@ -44,6 +50,7 @@ export function DetailSurface({
   onBack,
   onRefresh,
   refreshing,
+  registry,
 }: DetailSurfaceProps) {
   const [zoom, setZoom] = useState<ZoomLevel>('structure')
 
@@ -65,6 +72,9 @@ export function DetailSurface({
         {...(refreshing !== undefined && { refreshing })}
       />
       <ProjectionSection intentId={intent.id} zoom={zoom} />
+      {registry && (
+        <RunCommand intent={intent} state={state} registry={registry} />
+      )}
       <ChildrenSection
         intent={intent}
         workspace={workspace}
