@@ -38,31 +38,45 @@ export class FilesystemNousSource implements NousSource {
   }
 
   async listRunIds(): Promise<string[]> {
+    // Discover run_ids from BOTH `.nous/<run>/` dirs and standalone
+    // `campaign-*.yaml` files, then union and dedupe. A run_id can exist
+    // in either or both:
+    //  - Existing campaigns Nous has run: have both a campaign-*.yaml
+    //    declaration AND a `.nous/<run>/` runtime state dir.
+    //  - Newly-written campaigns (e.g., from Integral's writeback): have
+    //    a campaign-*.yaml but NO `.nous/<run>/` yet (Nous hasn't run them).
+    //  - Stale runtime: a `.nous/<run>/` dir without a matching
+    //    campaign-*.yaml (rare; the interpreter skips these).
+    //
+    // The previous "fallback only when .nous/ is empty" rule made
+    // newly-written declarations invisible whenever the source dir
+    // had any prior runs.
+    const found = new Set<string>()
+
     const nousDir = path.join(this.root, '.nous')
-    let entries: string[] = []
     try {
       const dirents: Dirent[] = await fs.readdir(nousDir, { withFileTypes: true })
-      entries = dirents
-        .filter((d: Dirent) => d.isDirectory() && !d.name.startsWith('.'))
-        .map((d: Dirent) => d.name)
-    } catch {
-      // No .nous/ dir — return campaigns derived from campaign-*.yaml only.
-    }
-
-    if (entries.length === 0) {
-      // Fallback: derive run_ids from campaign-*.yaml file names. Strips
-      // the "campaign-" prefix and ".yaml" suffix; preserves order.
-      try {
-        const files: string[] = await fs.readdir(this.root)
-        entries = files
-          .filter((f: string) => f.startsWith('campaign-') && f.endsWith('.yaml'))
-          .map((f: string) => f.slice('campaign-'.length, -'.yaml'.length))
-      } catch {
-        // Source dir missing — nothing to discover.
+      for (const d of dirents) {
+        if (d.isDirectory() && !d.name.startsWith('.')) {
+          found.add(d.name)
+        }
       }
+    } catch {
+      // No .nous/ dir — fine, we'll rely on YAML discovery.
     }
 
-    return entries.sort()
+    try {
+      const files: string[] = await fs.readdir(this.root)
+      for (const f of files) {
+        if (f.startsWith('campaign-') && f.endsWith('.yaml')) {
+          found.add(f.slice('campaign-'.length, -'.yaml'.length))
+        }
+      }
+    } catch {
+      // Source dir missing — nothing to discover.
+    }
+
+    return [...found].sort()
   }
 
   async fetchCampaignFiles(runId: string): Promise<CampaignFiles> {
