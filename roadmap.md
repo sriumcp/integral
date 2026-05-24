@@ -25,11 +25,17 @@ This roadmap is checked against those three at every revision. If a planned item
 4. ShapingSurface (two-pane drafts, in-memory commit).
 5. Visual regression baselines (15 PNGs locked).
 
-**v0.1 expansion (Path 2) — in flight.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3 shipped. Round-trip work, projection layer, breadth adapters all remaining (see Track A / Track B / Track C below).
+**v0.1 expansion (Path 2) — Track A nearly closed.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3+4 shipped. Projection generator (A2), refresh affordances (A3), source configuration, writeback (A4), LLM-driven shaping (A4.6) all done. Track A's remaining piece is **A5 (Nous CLI invocation from inside Integral)**. Track B (Coral, GH issues) and Track C (filter/group/sort) are pending.
 
 Verification at this commit: 566 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
-**v0.1 substrate is now mutating state for Nous.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output; the user navigates; **A4 shaping commit on a Nous draft writes a real `campaign-<run_id>.yaml`** to a configured Nous source path. The user runs `nous run campaign-X.yaml` themselves; subsequent workspace refreshes show the new campaign + its iterations as typed Intents. Track A's remaining piece is A5 (one user-fired Operation that triggers harness execution from inside Integral).
+**v0.1 substrate is mutating state for Nous and shaping fresh campaigns.** Surfaces render typed Intent / IntentState / EvidenceLink / Operation records from the fixture or live adapter output. Users can:
+1. Click `+ new nous campaign` on the Map → shape a brand-new campaign through natural-language conversation with the LLM-driven shaper (A4.6).
+2. The form auto-fills as the LLM extracts fields; user can override any value.
+3. Click commit → real `campaign-<run_id>.yaml` written to disk (A4); workspace auto-refreshes; new campaign appears as a typed Intent on the Map.
+4. The user then runs `nous run campaign-X.yaml` from a terminal. Subsequent workspace refreshes show iterations + principles as Nous produces them.
+
+Track A's remaining piece — **A5** — wires the `nous run` invocation inside Integral so users don't drop to a terminal. After A5, the substrate fully closes the loop end-to-end on Nous.
 
 ---
 
@@ -57,8 +63,29 @@ Workspace-level refresh button in AppHeader (replaces the placeholder `reversibi
 **A4. Shaping → Nous writeback. ✓ DONE.**
 Commit-to-active on a Nous draft writes a real `campaign-<run_id>.yaml` to a configured Nous source path. The Shaping surface gains a `WritebackForm` below the typed-draft pane (target source dropdown + max_iterations + target_system.{name, description, repo_path} + optional run_id), pre-filled from the draft's `writeback_template`. Same-button approach: commit POSTs to `/api/nous/writeback` (server-side handler refuses overwrite with 409, validates inputs against `IntentSchema` + `NousWritebackConfigSchema`, writes via the pure `serializeNousCampaign` function), then on success flips the in-memory state + triggers workspace refresh. Coral drafts (no `writeback_template`) and registry-less callers (tests, preview) keep the in-memory-only path — backwards compat. Schema unchanged: Nous-specific writeback fields live in adapter-private `NousWritebackConfig`, not the universal schema. **First true mutation of state outside the in-memory shaping commit.** Nous CLI invocation deferred to A5.
 
-**A5. One user-fired Operation on Nous.**
-Pick one operation that closes the calculus loop end-to-end. Recommendation: `revoke` on a `nous-iteration` (lowest blast radius — flips state, doesn't touch the harness's running execution). Wire button in DetailHeader → API endpoint → adapter writes a `revoked` marker → next refresh shows status flipped. Proves the user → harness → user round-trip.
+**A5. Run Nous from inside Integral (close the full loop).**
+After A4 (writeback) + A4.6 (shaping), the user shapes a campaign in Integral, the YAML is on disk, and they have to *drop to a terminal* to actually run `nous run --auto-approve campaign-X.yaml`. A5 wires that invocation into the chrome:
+
+- **"▶ run" button** on the Detail surface for any `nous-campaign` whose state is `active` (just-shaped) or `gated awaiting human` (between iterations).
+- **Server-side process invocation:** `POST /api/nous/run` spawns `nous run --auto-approve <path>` via `child_process.spawn` in the source's `repo_path`. Returns immediately with a process id.
+- **Status endpoint:** `GET /api/nous/run/<process_id>` returns running / completed / failed + last N lines of stdout/stderr (or full log).
+- **UI:** the Detail surface shows "running… (started X ago)" while the process is alive. Existing workspace refresh + the Phase 1+2 read adapter pick up new iterations as Nous writes them; the Activity Strip shows the new operations Phase 4 emits.
+- **Kill switch:** "■ stop" button → `POST /api/nous/run/<id>/kill` sends SIGTERM.
+
+**Scope discipline (v0.1 minimum):**
+- Single concurrent run per campaign (no queueing).
+- Process state lives in-memory on the Vite plugin; survives nothing across server restarts.
+- No streaming output — UI polls the status endpoint via the existing refresh mechanism.
+- Nous CLI must be on the user's `PATH` — we shell out, don't bundle. Failure case: `nous: command not found` → graceful 500 with an actionable error.
+- Long-running processes (hours) are fine; the user is expected to leave the dev server up.
+
+**What this proves:**
+The substrate can drive harness execution, not just describe it. Combined with A1+A2+A3+A4+A4.6, the v0.1 expansion's stop conditions are met for Nous: declare → handover → execute → interpret → (eventually) act, all from inside the chrome.
+
+**What this deliberately doesn't do:**
+- No `revoke` operation yet (the original A5 framing — interesting but lower priority once `run` is wired). v0.2 promotion candidate.
+- No multi-campaign queue / dashboard of running processes. v0.2.
+- No kill confirmation / "are you sure?" dialog. v0.2 polish.
 
 ### Track B — Schema breadth (falsification)
 
@@ -76,11 +103,11 @@ Read GitHub issues + comments via `gh` CLI or REST API for a configurable repo. 
 Beyond "awaiting me," add filters: kind (multi-select), tag, holder mode, status, source (already shipped — extend the cluster). Group toggle: by-kind / by-holder / by-source / no-grouping. Sort: recency / awaiting / status / alphabetical. Filter+group+sort live in `MapSurface.topRow`'s chip cluster.
 
 **C2. Visual baseline regen.**
-Every chrome-affecting item (A2, A3, A5, B1, B2, C1) regenerates the 15 baselines via `npm run test:e2e:visual:update`. New baseline candidates as features land:
-- Map with filter chips active
+Every chrome-affecting item regenerates the 15 baselines via `npm run test:e2e:visual:update`. Already regenerated through this expansion: A3 (refresh button replaces reversibility chip), A4 (WritebackForm appears on Nous draft Shaping), A4.6 (`+ new nous campaign` button on Map). Future regen candidates as features land:
+- Map with filter chips active (C1)
 - Detail with operation log section + projection prose
-- AppHeader showing the workspace refresh affordance
-- TreeCards rendering Coral + GitHub-issue intents
+- TreeCards rendering Coral + GitHub-issue intents (B1, B2)
+- Detail with "▶ run" button + running-process indicator (A5)
 
 ---
 
@@ -101,6 +128,7 @@ Every chrome-affecting item (A2, A3, A5, B1, B2, C1) regenerates the 15 baseline
 13. ✓ **A3 — Refresh affordances + multi-source configuration.** Workspace-level refresh button in AppHeader (replaces the placeholder reversibility chip): "↻ synced <time> ago", goes amber past 60min, disables to "refreshing…" while in flight. Per-intent refresh in DetailHeader (small ↻ next to IdPill; piggy-backs on workspace refresh in v0.1). ProjectionSection timestamp goes amber past 60min via `data-stale`. **Source configuration:** the hardcoded `inference-sim` path becomes a config-file-driven list. `integral-ui/integral.config.json` (gitignored, user-local; example file `integral.config.example.json` committed) declares `{sources: [{id, kind, label, path}]}`. Vite plugin reads it at startup; `/api/sources` returns the resolved list. Browser registry is dynamic — `fetchSourceRegistry()` discovers adapter sources at app mount. Multiple Nous workspaces with distinct ids render as separate picker chips with distinct `via <source>` attribution. Default (no config file) keeps `id='nous'`, `label='nous campaigns'`, `path=~/Documents/Projects/inference-sim` so the URL contract `?sources=fixture,nous` and the existing visual baselines are preserved.
 14. ✓ **A4 — Shaping → Nous writeback (first true mutation).** `src/adapters/nous/writeback.ts` (browser-safe pure serializer + `NousWritebackConfigSchema`); `vite-plugin-nous-adapter/writeback-handler.ts` (Node-only file writer with refuse-overwrite + write-permission validation + schema validation). New `POST /api/nous/writeback` endpoint. `src/surfaces/Shaping/WritebackForm/` collects target source + max_iterations + target_system fields + optional run_id; pre-fills from the draft's `writeback_template` (a new field on `DraftShape`). ShapingSurface integrates: commit is **same-button** — when the draft has a writeback_template AND a registry+onWriteback are provided, click POSTs writeback then on `ok:true` flips in-memory state + triggers workspace refresh. Failure paths show inline error (e.g., "campaign-X.yaml already exists" on 409). Coral drafts (no template) keep the in-memory-only path. Schema unchanged: Nous-specific writeback fields are adapter-private. End-to-end smoke verified: a full Shaping commit through the chrome writes a real YAML to disk, validates against `yaml.parse`, and the new campaign reappears in the merged workspace on next refresh. **The substrate now closes the loop on Nous: declare → execute (user runs `nous run campaign-X.yaml`) → interpret.**
 15. ✓ **A4.6 — LLM-driven shaping (the load-bearing UX).** Users can shape a brand-new Nous campaign via natural-language conversation. `+ new nous campaign` button on Map (`MapSurface.onNewNousDraft`) creates a blank draft + navigates to Shaping. ShapingSurface detects empty `dialog` + presence of `onShapeMessage` and renders the new **`ShapingChat`** (interactive: text input + threaded turns + Enter-to-send/Shift+Enter-newline + auto-scroll + "shaper is thinking…" pulse + concerns panel). On user message, App.tsx POSTs `/api/shape` to the new server-side handler (`shape-handler.ts`), which runs the same LLM factory we use for projections (OpenAI/Anthropic env-driven) with a Nous-specific system prompt that knows the schema. LLM returns `{reply, patch, status, concerns, kind_suggestion}`. Browser applies the patch via the new `applyShapePatch` pure function (`src/adapters/nous/shape-patch.ts` — schema-clean: only declaration/extension/tags/writeback fields are LLM-patchable, never holder/lifetime/provenance/schema_version; immutable; preserves user typing-in-progress). The right pane (`IntentDraftPane` + `WritebackForm`) auto-fills as the LLM extracts fields — the form's `useEffect`-based template sync updates not-yet-edited fields without clobbering user input. Commit gates on **dynamically-resolved** fields (non-empty values, computed live) AND writeback validity; the LLM's `ready-to-commit` signal renders as an amber→green hint above the button; `kind-mismatch` surfaces an amber suggestion box. **End-to-end smoke verified**: click +new → directive message → LLM fills title/summary/research_question/success_criterion/target_system in one turn → form auto-fills → commit → YAML on disk. Backwards compat: existing fixture drafts (Nous + Coral) keep their scripted `ShapingDialog`. **The v0.1 substrate now closes the FULL round-trip: declare (LLM-driven, fixture-free) → handover (YAML on disk) → execute (`nous run` by user) → interpret (read adapter + projections).** A5 (Nous CLI invocation from inside Integral) is the next milestone.
+16. ✓ **Bugfix — writeback-written campaigns invisible to read adapter.** `FilesystemNousSource.listRunIds()` previously fell back to `campaign-*.yaml` discovery only when `.nous/` was empty. With existing runs in place (e.g., 30 inference-sim campaigns), newly-written YAMLs from Shaping commit were ignored on the next workspace refresh — the adapter saw 30 entries from `.nous/` and never ran the YAML scan. Fix: union both discovery sources (`.nous/<run>/` directory names + `campaign-*.yaml` filenames stripped to run_ids), then dedupe. A campaign now surfaces if it has *either* a `.nous/<run>/` runtime dir or a `campaign-*.yaml` declaration (Nous-completed campaigns have both; freshly-shaped ones have just the YAML until the user runs Nous). Smoke verified against synthetic source with both forms.
 
 Verification triple after every item: `npm run test:run` + `npm run typecheck` + `npm run build` + `npm run test:e2e` (and `npm run test:e2e:visual` after chrome changes).
 
