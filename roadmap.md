@@ -104,7 +104,21 @@ Integral resolves a typed Intent → exact shell command — the part only the s
 Parallel internally. Each adapter can land independent of the other.
 
 **B1. Adapter #2 — Coral optimization.**
-Read `.coral/attempts/*.json` and `.coral/notes/`. Map to typed `coral-optimization` + `coral-attempt` intents. Tests competitive parallelism (many sibling child intents under one parent). Surfaces structural questions about decomposition pattern (parallel vs. sequence — see `semantics-v0.1.md` S-3). Phases 1+2 minimum (read declarations + scored attempts); operations + writeback v0.2.
+Read a Coral project directory (e.g. `~/Documents/learning/coral/pi-mc/`) and produce typed `coral-optimization` + `coral-attempt` intents. Tests competitive parallelism (many sibling child intents under one parent) and DAG-shaped decomposition (each attempt has a `parent_hash` pointing at the prior commit it built on). Surfaces structural questions about decomposition pattern (parallel vs. sequence — see `semantics-v0.1.md` S-3). Phases 1+2 minimum (read declarations + scored attempts); operations + writeback v0.2.
+
+**On-disk layout (verified against real Coral run, not docs).** Coral writes per-run state under `<root>/results/<task-name>/<timestamp>/.coral/`. The adapter source path points at `<root>` (the Coral project containing `task.yaml` + `seed/` + `grader/` + `results/`); the adapter scans `results/<task>/<timestamp>/` to discover runs. Each run is its own `coral-optimization` intent — re-running the same task starts fresh, no shared state with prior runs.
+
+Within `<run>/.coral/public/`:
+- `attempts/<commit-sha>.json` — one file per `coral eval` call. Fixed schema: `commit_hash`, `parent_hash`, `agent_id`, `title`, `score`, `status` (`improved` is the observed value; full enum TBD), `timestamp`, `feedback`, `shared_state_hash`, `metadata.budget_class`. The `parent_hash` makes attempts a DAG; the chain typically starts from a synthetic root commit Coral creates from the seed.
+- `notes/index.md` + `notes/experiments/*.md` — agent-shared knowledge corpus. Maps to `KnowledgeRefs` (campaign-scope), analogous to Nous principles → KnowledgeRefs.
+- `roles/agent-N.md` — per-agent persona. Holder mapping: `attempt.holder.parties = [resolveAgent(agent_id, roles/)]`.
+- `agents/<persona>.md` + `skills/<skill>/` — pre-installed personas and reusable capabilities. v0.2 — for v0.1 just record their existence in gaps.md.
+
+The grader's `task.yaml` has `direction: maximize|minimize` — the `coral-optimization` extension should surface this so "best score" rendering knows which way is better.
+
+**Falsification fixture (real data).** `~/Documents/learning/coral/pi-mc/results/pi-mc/2026-05-24_194843/` — 2 attempts captured during the A5-followup hello-world smoke. Includes a specification-gaming attempt (`a06c06c4...json`) where agent-2 printed `math.pi` directly and hit the grader's `1e12` cap with title "Use math.pi (IEEE 754 float64) as optimal estimate". Schema must accept this without flinching — real Coral runs will produce gaming outcomes.
+
+**Implementation plan**: write `integral-ui/.plan-b1.md` first, mirroring the A5 plan-then-implement pattern. Get user approval before touching code.
 
 **B2. Adapter #3 — GitHub issues (as feature-campaign).**
 Read GitHub issues + comments via `gh` CLI or REST API for a configurable repo. Issues become `feature-campaign` declarations: title → `declaration.title`, body → `declaration.summary`, labels → `tags`, assignees → `holder.parties`, comments → activity. Sub-issues / linked PRs / commits / CI status are deferred (full feature-dev integration is v0.2). This is the lighter stand-in for the original "feature-campaign with git log + GitHub PR API + repo-scoped CLAUDE.md" — same kind, thinner read scope.
