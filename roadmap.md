@@ -25,7 +25,7 @@ This roadmap is checked against those three at every revision. If a planned item
 4. ShapingSurface (two-pane drafts, in-memory commit).
 5. Visual regression baselines (15 PNGs locked).
 
-**v0.1 expansion (Path 2) — Track A closed.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3+4 shipped. Projection generator (A2), refresh affordances (A3), source configuration, writeback (A4), LLM-driven shaping (A4.6), run-command surfacing (A5) all done. The full Nous round-trip is closed end-to-end: declare (LLM-shape) → handover (writeback YAML) → run-command resolution (chrome) → execute (terminal, user-driven) → interpret (read adapter + projections). In-chrome process invocation and the cross-kind orchestrator are v0.2. Track B (Coral, GH issues) and Track C (filter/group/sort) remain.
+**v0.1 expansion (Path 2) — Track A closed; B1 shipped.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3+4 shipped. Projection generator (A2), refresh affordances (A3), source configuration, writeback (A4), LLM-driven shaping (A4.6), run-command surfacing (A5) all done. The full Nous round-trip is closed end-to-end: declare (LLM-shape) → handover (writeback YAML) → run-command resolution (chrome) → execute (terminal, user-driven) → interpret (read adapter + projections). **B1 (Coral, Adapter #2) shipped 2026-05-24** — read-only Phases 1+2: declarations + scored attempts; DAG-shaped decomposition via `parent_hash` (parents/children wired through `decomposition` and `extension.parent_attempts`); 14 schema-fit gaps recorded as G-C-1..G-C-14. In-chrome process invocation and the cross-kind orchestrator are v0.2. **Track B remains: B2 (GitHub issues).** Track C (filter/group/sort) remains.
 
 Verification at this commit: 611 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
@@ -103,7 +103,7 @@ Integral resolves a typed Intent → exact shell command — the part only the s
 
 Parallel internally. Each adapter can land independent of the other.
 
-**B1. Adapter #2 — Coral optimization.**
+**B1. ✓ Adapter #2 — Coral optimization (shipped 2026-05-24).**
 Read a Coral project directory (e.g. `~/Documents/learning/coral/pi-mc/`) and produce typed `coral-optimization` + `coral-attempt` intents. Tests competitive parallelism (many sibling child intents under one parent) and DAG-shaped decomposition (each attempt has a `parent_hash` pointing at the prior commit it built on). Surfaces structural questions about decomposition pattern (parallel vs. sequence — see `semantics-v0.1.md` S-3). Phases 1+2 minimum (read declarations + scored attempts); operations + writeback v0.2.
 
 **On-disk layout (verified against real Coral run, not docs).** Coral writes per-run state under `<root>/results/<task-name>/<timestamp>/.coral/`. The adapter source path points at `<root>` (the Coral project containing `task.yaml` + `seed/` + `grader/` + `results/`); the adapter scans `results/<task>/<timestamp>/` to discover runs. Each run is its own `coral-optimization` intent — re-running the same task starts fresh, no shared state with prior runs.
@@ -118,7 +118,19 @@ The grader's `task.yaml` has `direction: maximize|minimize` — the `coral-optim
 
 **Falsification fixture (real data).** `~/Documents/learning/coral/pi-mc/results/pi-mc/2026-05-24_194843/` — 2 attempts captured during the A5-followup hello-world smoke. Includes a specification-gaming attempt (`a06c06c4...json`) where agent-2 printed `math.pi` directly and hit the grader's `1e12` cap with title "Use math.pi (IEEE 754 float64) as optimal estimate". Schema must accept this without flinching — real Coral runs will produce gaming outcomes.
 
-**Implementation plan**: write `integral-ui/.plan-b1.md` first, mirroring the A5 plan-then-implement pattern. Get user approval before touching code.
+**Implementation plan**: see `integral-ui/.plan-b1.md` for the file layout, TDD plan, and architecture decisions.
+
+**Shipped:**
+- `src/adapters/coral/` — browser-safe transport/interpreter split mirroring Nous. `types.ts` (CoralSource, RunFiles, ParsedAttempt, ParsedTaskYaml, ParsedRoleFile), `interpreter.ts` (`buildCoralWorkspace`, `interpretRun` per-run pure mapping), `notes.ts` (notes/*.md → campaign-scope KnowledgeRefs).
+- `vite-plugin-nous-adapter/coral-filesystem-source.ts` — Node-only `FilesystemCoralSource`. Discovers runs by scanning `<root>/results/<task>/<timestamp>/.coral/public/`; tolerates missing `attempts/`, `notes/`, `roles/` subdirs.
+- Vite plugin: `sources-config.ts` accepts `kind: 'nous' | 'coral'`; `/api/workspace?source=<id>` and `/api/projection` dispatch via `buildWorkspaceForSource(configured)` helper.
+- DAG resolution via `parent_hash`: campaign's `decomposition.children` lists root attempts only; each attempt's `decomposition.children` lists its DAG descendants; each attempt's `extension.parent_attempts` carries the typed parent edge. The schema's `parent_attempts: list[IntentId]` was already plural — no schema bump required for B1's load-bearing test.
+- Attempt-status mapping: `'improved' → satisfied`, default → `'active'` (G-C-6 records the unknown-enum gap).
+- 38 new Vitest tests (interpreter 32 + notes 6); 649 total passing. Typecheck clean. Build clean.
+
+**Smoke test (real data):** registered `~/Documents/learning/coral/pi-mc/` as a Coral source in `integral.config.json`; the merged workspace contains 1 `coral-optimization` + 2 `coral-attempt` intents alongside Nous campaigns; the spec-gaming attempt's 90-char title clamps cleanly to 80 chars without rejecting the schema.
+
+**Gaps recorded:** G-C-1..G-C-14 in `gaps.md` (success_criterion, direction, search_algorithm, role-evolution, campaign-done signal, attempt-status enum, feedback, shared_state_hash, budget_class, notes-as-KnowledgeRefs, personas, skills, operational state, agent-worktree kind name).
 
 **B2. Adapter #3 — GitHub issues (as feature-campaign).**
 Read GitHub issues + comments via `gh` CLI or REST API for a configurable repo. Issues become `feature-campaign` declarations: title → `declaration.title`, body → `declaration.summary`, labels → `tags`, assignees → `holder.parties`, comments → activity. Sub-issues / linked PRs / commits / CI status are deferred (full feature-dev integration is v0.2). This is the lighter stand-in for the original "feature-campaign with git log + GitHub PR API + repo-scoped CLAUDE.md" — same kind, thinner read scope.
@@ -183,24 +195,60 @@ After v0.1 expansion: regroup, design v0.2 (schema bump + writeback hardening + 
 Promoted from "Deferred" — v0.2 has explicit scope now, not just a non-goals list.
 
 **Schema bump (the v0.2 schema design pass).**
-Promote candidates from `gaps.md`. Current list at v0.1 expansion start: G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), G-N-9 (control/robustness/ablation outcomes), G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload). Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
+Promote candidates from `gaps.md`. Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
+
+*From Nous (G-N series, surfaced during A1+A2):* G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), G-N-9 (control/robustness/ablation outcomes), G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload), G-N-12 (principle-extraction `OperationKind`).
+
+*From Coral (G-C series, surfaced during B1):* G-C-1 (`success_criterion` source — same shape as G-N-8; promote together), G-C-2 (`direction: maximize|minimize` on `CoralOptimizationExtension`), G-C-3 (`search_algorithm` enum reflects nothing real), G-C-4 (`Party` is too thin for role-evolution history), G-C-5 (no campaign-level "done" signal), G-C-6 (`coral-attempt.status` enum mapping), G-C-7 (`evaluator_feedback` field on attempt), G-C-8 (`corpus_snapshot_hash` — typed `shared_state_hash`), G-C-9 (`budget_class` field on attempt), G-C-10 (notes-as-typed-knowledge — same shape as G-N-2; **two adapters independently want this, so it promotes from "candidate" to "v0.2 commitment" per the gaps.md two-adapter rule**), G-C-11 (pre-installed personas as `KnowledgeRef`s), G-C-12 (pre-installed skills as `KnowledgeRef`s), G-C-13 (operational state stays out — observability, not intent semantics), G-C-14 (Coral agent-worktree anchor kind name).
+
+*From B2 (TBD):* G-F-* once GitHub-issues adapter lands. Promotions land then.
 
 **Writeback hardening.**
 Generalize Track A's writeback (A4) beyond Nous. Each adapter declares its writeback schema; UI affords commit/declare/refine for every kind, not just Nous. Filesystem auto-watch replaces the refresh button (the v0.1.1 ambition realized later than planned).
 
+Per-adapter scope:
+- **Nous writeback already shipped** (A4) — keep, harden against multi-source races.
+- **Coral writeback (new in v0.2):** `task.yaml` serializer (`src/adapters/coral/writeback.ts`) + `/api/coral/writeback` endpoint (`vite-plugin-nous-adapter/coral-writeback-handler.ts`) + a `CoralWritebackConfig` schema covering `task.{name, description}` + `grader.{entrypoint, direction, timeout, args}` + `agents.{count, runtime, model}` + `workspace.repo_path`. Refuse-overwrite semantics mirror Nous's. Today's `writeback-handler.ts` early-rejects `source.kind !== 'nous'` with 400 — that guard inverts when the Coral handler lands.
+- **GitHub-issue writeback (B2 promotion):** open/close/comment/assign via `gh` CLI or REST. Read-only B2 doesn't write; the writeback story rides v0.2.
+- **Paper writeback (Adapter #4 v0.2):** edits to `draft.md` sections via section-anchored edits; bibliography additions to `refs.bib`.
+
+**Acceptance:** all four kinds reach declare-edit-refine parity through the chrome. Backwards-compat: existing Nous writeback path stays intact.
+
 **Execution orchestrator (promoted from the original A5 framing).**
-Build the in-chrome execution capability as a substrate-level concern, not a per-kind UI button. A workspace-watcher service observes intent state and policies (auto-fire on declare? gate on human approval per kind?); a generic process manager handles spawn/track/kill/log; per-kind runners (`nous-runner`, `coral-runner`, `feature-dev-runner`) plug in. The chrome adds a `▶ run` affordance that calls the same orchestrator API a background watcher would. Cross-restart idempotency and process-tracking design happen here, once, with cross-kind evidence in hand. The v0.1 `RunCommand` panel from A5 stays as the manual fallback for environments where the orchestrator isn't running.
+Build the in-chrome execution capability as a substrate-level concern, not a per-kind UI button. A workspace-watcher service observes intent state and policies (auto-fire on declare? gate on human approval per kind?); a generic process manager handles spawn/track/kill/log; per-kind runners (`nous-runner`, `coral-runner`, `feature-dev-runner`, `paper-runner`) plug in. The chrome adds a `▶ run` affordance that calls the same orchestrator API a background watcher would. Cross-restart idempotency and process-tracking design happen here, once, with cross-kind evidence in hand. The v0.1 `RunCommand` panel from A5 stays as the manual fallback for environments where the orchestrator isn't running.
+
+Per-kind run-command plugins (the small per-kind piece; each one mirrors `src/lib/run-command-plugins/nous-campaign.ts`):
+- `coral-optimization` → `cd <root> && coral run` (or whatever Coral's CLI entrypoint is). Composes from `task.yaml`'s presence + the run timestamp dir.
+- `feature-campaign` → invocation TBD when B2's full feature-dev story lands.
+- `paper-campaign` → invocation TBD with Adapter #4.
 
 **Adapter #4 — Paper.**
 The original 4th-of-4 in the v0.1 plan. Read `papers/<name>/draft.md` + `refs.bib` + cross-references to upstream Nous campaigns. Tests cross-tree provenance via `EvidenceLink` (paper-claim → nous-iteration). The structural test that's been deferred from v0.1 expansion.
+
+**Coral parity with Nous (the explicit follow-up list from B1).**
+B1 shipped Coral as read-only Phases 1+2. Bringing it to Nous parity is several discrete v0.2 items, listed here so future sessions can pick them up independently:
+
+1. **Coral writeback** — covered under "Writeback hardening" above. Mirrors A4 for Coral.
+2. **Coral LLM-driven shaping (mirrors A4.6).** New `+ new coral campaign` button on `MapSurface.topRow`. New shape-handler variant — the existing `vite-plugin-nous-adapter/shape-handler.ts` carries a Nous-specific system prompt that knows about `research_question`, `target_system`, etc. Coral needs its own prompt scoped to graders + agents + seed dirs, OR the handler refactors to dispatch on `intent.kind`. Recommended: dispatch + per-kind prompt files, so Adapter #4 (Paper) and full feature-dev slot in similarly. `shape-patch.ts` is already kind-agnostic — patches apply to any draft Intent regardless of kind, so that piece is reusable as-is.
+3. **Coral run-command plugin** — covered under "Execution orchestrator" above. Mirrors A5 for Coral.
+4. **Coral projection plugins.** B1 deliberately shipped without these. The projection engine is kind-pluggable (`src/lib/projection.ts` indexed by `(intent.kind, zoom)`); B1 left the slots empty so all Coral kinds fall back to raw fields with `data-projection-source="fallback"`. v0.2 fills four cells:
+   - `src/lib/projection-plugins/coral-optimization.ts` — structure (≤800 chars: best score, attempt count, agent count, recent-leader narrative) + detail (unbounded: full attempt-tree narrative, principle highlights, gaming-attempt callouts).
+   - `src/lib/projection-plugins/coral-attempt.ts` — structure (score + status + lineage one-liner) + detail (attempt rationale, parent comparison, feedback prose).
+   - Register both in `vite-plugin-nous-adapter/index.ts:55-58`'s `projectionPlugins` map.
+   - Reason for deferring: pi-mc is one Coral run; prompt design overfits without cross-validation against more Coral runs. Fill once we have at least two real Coral fixtures.
+5. **Coral Phase-4 operations diff.** B1 left ops empty — `buildCoralWorkspace`'s `BuildCoralWorkspaceOpts.prior` is reserved but ignored. The generic `diffWorkspaces` engine in `src/lib/workspace-diff.ts` is adapter-agnostic; Coral's job in v0.2 is to plug in. **The load-bearing v0.2 test:** Coral's DAG-shaped decomposition is structurally different from Nous's tree-shaped decomposition (each parent attempt potentially has multiple children via parent_hash chains). The diff engine's `KIND_DISPOSITIONS` map needs no changes — `decompose` already covers "parent's children grew" — but the test is whether DAG growth produces clean ops without double-counting when an attempt's parent-attempt-id is also a child of the campaign at the schema level. **This is the validation B1 deferred** — Coral as the second adapter through `diffWorkspaces` is the breadth-of-decomposition-shape test the engine needs.
+6. **CoralWritebackConfig schema gaps.** When v0.2 designs Coral writeback, expect the same fields surfaced in G-C-1..G-C-3 + G-C-7..G-C-9 to surface again as writeback config fields. Promote those gaps before designing the writeback to avoid round-tripping through a schema that drops user input.
+
+Each of (1)-(5) is independently shippable and small enough to land per-PR. Sequencing recommendation: **(4) projection plugins first** (no schema dependencies, smallest surface, fastest feedback on Coral chrome quality), then **(2) shaping + (1) writeback together** (couple naturally), then **(3) + (5) under the orchestrator umbrella** (need cross-kind design).
 
 **Full feature-development adapter.**
 Promote the GitHub-issues stand-in (B2) to the full feature-dev story: git log + PR API + CI status + repo-scoped `CLAUDE.md` as a scoped knowledge corpus. Most expensive integration; benefits from schema lessons of three other adapters.
 
 **Semantic-model promotion.**
-- S-2 per-kind status grammars made explicit (hover tooltips on status chips; `Kind × Status → Meaning` table).
+- S-1 projection generator filled out for Coral kinds + B2's `feature-campaign` + Adapter #4's paper kinds. v0.1 ships only Nous projection plugins; v0.2 fills the remaining `(IntentKind × ZoomLevel)` cells. See "Coral parity with Nous" item (4) above for Coral specifics.
+- S-2 per-kind status grammars made explicit (hover tooltips on status chips; `Kind × Status → Meaning` table). Coral status mapping is currently `'improved' → satisfied`, default → `'active'` (G-C-6); v0.2 nails down the full Coral enum.
 - S-4 evidence narratives (one-line generated narrative per `EvidenceLink`).
-- S-5 principles-as-typed-objects (depends on G-N-2 schema bump).
+- S-5 principles-as-typed-objects (depends on G-N-2 + G-C-10 joint schema bump — two adapters independently want this).
 - C-4 architectural decision: adapter-side vs. generator-side projections. Recommended generator-side; v0.2 commits.
 - Two-audiences API surface: documented `/api/intents/<id>?zoom=...` endpoints; operation endpoints symmetric with chrome buttons.
 

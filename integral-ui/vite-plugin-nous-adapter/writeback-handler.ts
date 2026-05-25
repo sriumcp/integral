@@ -93,6 +93,13 @@ export async function handleWriteback(
       error: `unknown sourceId: ${body.sourceId}`,
     }
   }
+  if (source.kind !== 'nous') {
+    return {
+      ok: false,
+      status: 400,
+      error: `writeback target source must be of kind "nous", got "${source.kind}"`,
+    }
+  }
 
   // ── Verify target dir exists + writable ────────────────────────────────
   try {

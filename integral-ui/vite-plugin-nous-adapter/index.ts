@@ -1,6 +1,7 @@
 import * as path from 'node:path'
 import type { Plugin } from 'vite'
 import { buildNousWorkspace } from '../src/adapters/nous'
+import { buildCoralWorkspace } from '../src/adapters/coral'
 import {
   generateProjection,
   type PluginRegistry,
@@ -10,6 +11,7 @@ import { nousIterationPlugin } from '../src/lib/projection-plugins/nous-iteratio
 import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
 import { FilesystemNousSource } from './filesystem-source'
+import { FilesystemCoralSource } from './coral-filesystem-source'
 import {
   projectionCacheDir,
   readPersistedProjection,
@@ -137,8 +139,7 @@ export function nousAdapterPlugin(): Plugin {
             return
           }
 
-          const source = new FilesystemNousSource(configured.path)
-          const workspace = await buildNousWorkspace(source)
+          const workspace = await buildWorkspaceForSource(configured)
           workspaceCache.set(configured.id, workspace)
 
           res.statusCode = 200
@@ -149,7 +150,7 @@ export function nousAdapterPlugin(): Plugin {
               source: {
                 id: configured.id,
                 label: configured.label,
-                kind: 'nous',
+                kind: configured.kind,
                 path: configured.path,
               },
               workspace,
@@ -304,9 +305,7 @@ export function nousAdapterPlugin(): Plugin {
           for (const candidate of sources) {
             let ws = workspaceCache.get(candidate.id)
             if (!ws) {
-              ws = await buildNousWorkspace(
-                new FilesystemNousSource(candidate.path)
-              )
+              ws = await buildWorkspaceForSource(candidate)
               workspaceCache.set(candidate.id, ws)
             }
             if (ws.intents.some((i) => i.id === intentId)) {
@@ -389,6 +388,20 @@ export function nousAdapterPlugin(): Plugin {
 
 function isZoomLevel(s: string): s is ZoomLevel {
   return s === 'overview' || s === 'structure' || s === 'detail'
+}
+
+/** Adapter-kind dispatch — picks the right interpreter for a configured
+ *  source. Keeps the per-route logic out of the middleware bodies; v0.2
+ *  adds `feature` (B2) similarly. */
+async function buildWorkspaceForSource(
+  configured: ConfiguredSource
+): Promise<Workspace> {
+  switch (configured.kind) {
+    case 'nous':
+      return buildNousWorkspace(new FilesystemNousSource(configured.path))
+    case 'coral':
+      return buildCoralWorkspace(new FilesystemCoralSource(configured.path))
+  }
 }
 
 /** Stub LLM client used when no API key is in env. Throws on call so

@@ -32,9 +32,11 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
+export type AdapterKind = 'nous' | 'coral'
+
 export interface ConfiguredSource {
   id: string
-  kind: 'nous'
+  kind: AdapterKind
   label: string
   /** Resolved absolute path (with `~` and relatives expanded). */
   path: string
@@ -128,10 +130,10 @@ function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
   if (typeof obj.id !== 'string' || obj.id.length === 0) return null
-  if (obj.kind !== 'nous') {
+  if (obj.kind !== 'nous' && obj.kind !== 'coral') {
     // eslint-disable-next-line no-console
     console.warn(
-      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — only "nous" is supported in v0.1`
+      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — supported kinds: "nous", "coral"`
     )
     return null
   }
@@ -139,7 +141,7 @@ function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (typeof obj.path !== 'string' || obj.path.length === 0) return null
   return {
     id: obj.id,
-    kind: 'nous',
+    kind: obj.kind,
     label: obj.label,
     path: expandPath(obj.path, cwd),
   }

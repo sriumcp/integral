@@ -122,6 +122,110 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
 
 ---
 
+## Source: Coral optimization sizing
+
+Evidence anchored in `~/Documents/learning/coral/pi-mc/results/pi-mc/2026-05-24_194843/` (real Coral run, 2 attempts captured during the A5-followup hello-world smoke; includes a specification-gaming attempt at the grader's `1e12` cap).
+
+### G-C-1. `Declaration.success_criterion` has no source in `task.yaml`
+
+- **Evidence:** A Coral `task.yaml` carries `task.description` (the human framing) and `grader.entrypoint` + `grader.direction` (the scoring mechanism), but no explicit success criterion in declarative form. The pi-mc fixture's task description is "Optimize seed/solution.py to print a more accurate Monte Carlo estimate of pi" — closer to a problem statement than a satisfaction predicate.
+- **v0.1 schema:** `Declaration.success_criterion: z.string().min(0).max(2000)` (allows empty).
+- **Loss:** The B1 adapter emits `''`. The Detail header's "success" line is empty for every Coral campaign; the grader's `direction: maximize` is the closest thing to a satisfaction predicate but lives on the extension, not the declaration.
+- **v0.2 candidate:** Same shape as G-N-8 (Nous has the same gap) — relax `success_criterion` to optional, OR add an upstream convention that the harness's task declaration carries an explicit criterion.
+
+### G-C-2. `direction: maximize | minimize` has no home on `CoralOptimizationExtension`
+
+- **Evidence:** `task.yaml.grader.direction` carries the optimization sense; the chrome needs it to render "best score" correctly (highest vs. lowest). The B1 adapter computes `best_score_so_far` correctly per direction, but has no schema-typed place to *record* the direction itself for downstream consumers (filter chips, projection plugins, etc.).
+- **v0.1 schema:** `CoralOptimizationExtension` has `scoring_function_ref`, `search_algorithm`, `population_size`, two anchors, optional `best_score_so_far`. No `direction`.
+- **Loss:** B1 stuffs the direction into `tags` as `direction:maximize` / `direction:minimize`. Tags are free-form string-soup; consumers needing the direction must string-match a tag prefix.
+- **v0.2 candidate:** Add `direction: 'maximize' | 'minimize'` to `CoralOptimizationExtension`. Cheap, well-localized, semantic.
+
+### G-C-3. `search_algorithm` enum doesn't reflect Coral's actual mechanism
+
+- **Evidence:** Coral runs a population of agents in parallel; each turn produces an attempt; high-scoring attempts seed knowledge for the next turn (notes, principles, role evolution). The `task.yaml` doesn't carry a search-algorithm name; the algorithm is in Coral's source code.
+- **v0.1 schema:** `CoralSearchAlgorithmSchema = z.enum(['ucb', 'island', 'beam', 'best-of-n', 'other'])`.
+- **Loss:** B1 emits `'other'` for every Coral campaign. The enum's signal value is zero in practice.
+- **v0.2 candidate:** Either drop the enum (replace with free-form `string` description), OR add `'parallel-agents-with-shared-corpus'` (Coral's actual shape) and verify against more Coral runs.
+
+### G-C-4. `roles/agent-N.md` carries rich role-evolution data; `Party` doesn't
+
+- **Evidence:** Each agent in a Coral run has a `roles/agent-N.md` file with frontmatter (`agent_id`, `generation`, `last_revised_at`, `last_revised_after_eval`) and a structured body (sections: "How I'd describe my role right now," "What I've actually done," "What I've learned about how I work," "What I think I should do next," "History"). Generation bumps are evidence of agent self-revision over time. The pi-mc fixture has `agent-2` at generation 1 (it ran one eval and rewrote its self-description); `agent-1` is still at generation 0 (seeded blank).
+- **v0.1 schema:** `Party = { id: PartyId, kind: PartyKind, display_name: string }`.
+- **Loss:** B1 reads role frontmatter to confirm `agent_id` but drops everything else. The "agent-2 evolved its self-description after eval 1" signal is invisible.
+- **v0.2 candidate:** Either (a) attach role history as a `KnowledgeRef` with role `'principles'` + scope `'campaign'` (lossy in the same way as Nous principles), OR (b) introduce a Party-scoped `Persona` typed object with a generation-history list. (b) is cleaner but needs more design.
+
+### G-C-5. No campaign-level "done" signal
+
+- **Evidence:** A Coral run that hit max score (pi-mc's case — both attempts capped at 1e12) is structurally identical on disk to a Coral run that ran out of budget. There's no `<run>/.coral/state.json` analogous to Nous's `state.json` with a `phase: DONE` field.
+- **v0.1 schema:** `StatusSchema = z.enum(['draft', 'active', 'gated', 'satisfied', 'abandoned', 'revoked'])`.
+- **Loss:** B1 always emits `status: 'active'` for the campaign, regardless of whether it's still running. Users can't tell from the chrome whether to expect more attempts.
+- **v0.2 candidate:** Either (a) request that Coral writes a per-run `state.json` analogous to Nous, OR (b) derive run status from a heartbeat heuristic ("no heartbeat updates in N hours → 'idle'") in the chrome (not the adapter). (a) is cleaner.
+
+### G-C-6. `coral-attempt.status` enum is unknown beyond `'improved'`
+
+- **Evidence:** The pi-mc fixture's two attempts both have `status: 'improved'`. Coral's source likely emits other values (`'regressed'`, `'failed'`, `'pending'`, …) but we haven't observed them yet.
+- **v0.1 schema:** B1 maps `'improved' → satisfied`, anything else → `'active'`.
+- **Loss:** Unknown statuses get bucketed into `'active'`, which conflates "running" with "completed-but-not-improved."
+- **v0.2 candidate:** Read Coral's source to enumerate status values; add an explicit per-Coral-status mapping table; record the mapping in the adapter inline.
+
+### G-C-7. `attempt.feedback` has no schema home
+
+- **Evidence:** Each attempt JSON carries a `feedback` field. It's empty in the pi-mc fixture but presumably gets populated when the grader returns explanatory text alongside the score (e.g., test-failure messages, runtime errors).
+- **v0.1 schema:** `CoralAttemptExtension` has `worktree_anchor`, `score`, `artifact_uri`, `parent_attempts`, `evaluator_log_uri`. No `feedback`.
+- **Loss:** B1 drops `feedback` entirely. Useful evaluator output disappears.
+- **v0.2 candidate:** Add `evaluator_feedback: string | null` to `CoralAttemptExtension`. Strongly correlated with `evaluator_log_uri` — together they cover prose feedback + raw log.
+
+### G-C-8. `attempt.shared_state_hash` has no representation
+
+- **Evidence:** Each attempt records the SHA of the shared knowledge corpus (notes/) at eval time. Useful for "which set of notes was this attempt seeded with" — answer changes over the course of a run.
+- **v0.1 schema:** No corpus-snapshot concept anywhere.
+- **Loss:** B1 drops the field. Reasoning about "agent-2 saw the prior eval-1 note before eval-2" requires manual git-archaeology in the public repo.
+- **v0.2 candidate:** Add `corpus_snapshot_hash: string?` to `CoralAttemptExtension`. Probably tied to G-C-10 (notes as KnowledgeRefs) — the snapshot SHA is the version pin for the campaign-scope corpus at that attempt's moment.
+
+### G-C-9. `attempt.metadata.budget_class` is opaque metadata
+
+- **Evidence:** Observed value `'real'`; Coral's source distinguishes `'tune'` (cheap iteration) vs. `'real'` (counts toward score). The pi-mc fixture only has `'real'` attempts.
+- **v0.1 schema:** No budget concept.
+- **Loss:** B1 stuffs into `tags` as `budget-class:real`. Same string-soup problem as G-C-2.
+- **v0.2 candidate:** Add `budget_class: string | null` to `CoralAttemptExtension`. Or model "tune-vs-real" as an attempt-status modifier (`status: 'tune-improved'` etc.) — but that bloats the status enum.
+
+### G-C-10. `notes/**.md` mapping mirrors G-N-2 (Nous principles)
+
+- **Evidence:** Coral notes are structured prose: each note has frontmatter (`creator`, `last_updated`, optional `eval`) and structured sections ("Status," "Key Finding," "Synthesis," "Confidence"). The pi-mc fixture has `index.md` (a synthesis across the run) and `experiments/eval-1-math-pi-optimal.md` (a per-eval finding). They're principles by another name.
+- **v0.1 schema:** `KnowledgeRef = { uri, role, version?, scope }` — opaque URI, no body.
+- **Loss:** B1 emits one `KnowledgeRef` per note with `role: 'principles'`, `scope: 'campaign'`, `version: 'v0.1-lossy'`. The full markdown body, frontmatter, and section structure are dropped. Same shape as Nous's G-N-2.
+- **v0.2 candidate:** Resolve together with G-N-2. Coral's notes are a second adapter independently wanting "structured knowledge unit with confidence + scope + body" — that's the two-adapter signal that promotes the gap from "candidate" to "v0.2 commitment" per the gaps.md discipline.
+
+### G-C-11. Pre-installed personas (`agents/<persona>.md`) have no schema home
+
+- **Evidence:** The pi-mc run has `agents/deep-researcher.md` and `agents/librarian.md` — pre-installed reusable agent personas that Coral provisions for every run. They live alongside `roles/` (which is per-eval-mutable) but represent immutable templates.
+- **v0.1 schema:** No persona/template concept; closest fit is `KnowledgeRoleSchema = z.enum([..., 'methodology', ...])` which suggests v0.1 anticipated this.
+- **Loss:** B1 ignores them entirely.
+- **v0.2 candidate:** Surface as `KnowledgeRef`s with role `'methodology'`, scope `'project'` (since they're not campaign-scoped — they're cross-run templates). This is the cleanest fit; would need a path-resolution scheme.
+
+### G-C-12. Pre-installed skills (`skills/<skill>/`) have no schema home
+
+- **Evidence:** The pi-mc run has `skills/deep-research/SKILL.md`, `skills/organize-files/SKILL.md`, `skills/skill-creator/SKILL.md` — each with `agents/`, `references/`, `scripts/` subdirs. These are reusable capability bundles. Strongly correlated with `KnowledgeRoleSchema`'s existing `'skills'` value, suggesting v0.1 anticipated this.
+- **v0.1 schema:** No `Skill` typed object; only `KnowledgeRef` with `role: 'skills'`.
+- **Loss:** B1 ignores. The `KnowledgeRoleSchema` enum value `'skills'` has zero adapter-emitted refs in v0.1.
+- **v0.2 candidate:** Same shape as G-C-11 — surface as `KnowledgeRef`s with role `'skills'`, scope `'project'`. The skill bundle's `SKILL.md` is the addressable artifact; sub-files (`scripts/`, `references/`) are followable from the bundle's anchor.
+
+### G-C-13. Operational state has no schema home
+
+- **Evidence:** Every Coral run carries operational telemetry: per-agent heartbeats (`heartbeat/agent-N.json`), per-agent logs (`logs/agent-N.M.log`), per-eval logs (`eval_logs/`), aggregate eval counter (`eval_count`), tmux session data (`sessions.json`), grader heartbeat (`grader_daemon_heartbeat`), agent error traces (`diagnostics/agent-N/agent.err`).
+- **v0.1 schema:** No observability concept.
+- **Loss:** B1 drops all of it.
+- **v0.2 candidate:** Probably stays out of the schema — these are observability concerns, not intent semantics. The orchestrator (v0.2) may want to consume them for "is this run alive" signals; the schema needn't.
+
+### G-C-14. Attempt git-worktree kind name is approximate
+
+- **Evidence:** Each agent has a real git worktree at `<run>/agents/<agent_id>/.git`. B1 emits `worktree_anchor` with `kind: 'coral-shared-dir'` because there's no `coral-agent-worktree` value in the enum.
+- **v0.1 schema:** `ExternalAnchorKindSchema` has `'worktree'` (generic), `'coral-shared-dir'` (Coral-specific dir-shaped), but no Coral-specific worktree kind.
+- **Loss:** B1 conflates "Coral's shared-state directory" (notes + skills + eval results) with "Coral agent's git worktree" (per-agent code in flight) under one anchor kind. Consumers that want to dereference the worktree's git log have to disambiguate by URI substring.
+- **v0.2 candidate:** Either add `'coral-agent-worktree'` (Coral-specific), or use the existing generic `'worktree'` (and disambiguate via URI scheme). Cheap fix.
+
+---
+
 ## Cross-cutting observations
 
 These are not gaps to fix — they're observations that may shape v0.2 thinking.
