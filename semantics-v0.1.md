@@ -12,10 +12,10 @@ This document is normative for v0.1 in the same sense as `intent-schema-v0.1.md`
 
 | Layer              | Captures                                                     | v0.1 status                                |
 | ------------------ | ------------------------------------------------------------ | ------------------------------------------ |
-| Source plane       | Bytes from external systems → typed objects                  | Adapter #1 (Nous) Phases 1+2+3 done; #2–4 pending |
-| Type system        | Grammar of what can be said (schema)                         | v0.1 frozen; gaps tracked in `gaps.md`     |
+| Source plane       | Bytes from external systems → typed objects                  | Three of four adapters shipped (Nous Phases 1+2+3+4, Coral Phases 1+2, GitHub-issues Phases 1+2); Paper adapter deferred to v0.2 |
+| Type system        | Grammar of what can be said (schema)                         | v0.1 frozen modulo `'github-repo'` additive (B2); gaps tracked in `gaps.md` |
 | Chrome             | Vocabulary visualization (surfaces, atoms, figures)          | All five surfaces shipped; baselines locked|
-| Calculus skeleton  | Grammar of change (typed `Operation` records)                | Types declared; not user-fired             |
+| Calculus skeleton  | Grammar of change (typed `Operation` records)                | Types declared; Nous Phase-4 emits ops from observed transitions; not user-fired |
 | **Semantic model** | **What the typed objects *mean*; how to project them**        | **Mostly TBD — this doc**                  |
 
 The five layers are not stacked; they couple. Section *§ Couplings* below names the edges that cross between them.
@@ -49,36 +49,50 @@ The matrix is *deliberately revisitable*. As Coral / GH issues / Paper adapters 
 
 **Status (post-A2):** ✓ shipped for Nous kinds. The engine is at `src/lib/projection.ts` (pure, dependency-injected `LLMClient`); plugins at `src/lib/projection-plugins/`; chrome wiring at `src/surfaces/Detail/ProjectionSection/`; LLM call lives server-side in `vite-plugin-nous-adapter/` with `OPENAI_API_KEY` (preferred) or `ANTHROPIC_API_KEY` (fallback) read from env. Tests never call real LLMs — mocks injected. S-1 is now partially implemented (Nous kinds × {structure, detail}); other 7 kinds × 2 zoom levels fall back to raw-field render until their plugins land alongside their adapters.
 
+**Status (post-B1, post-B2 — active fallback now load-bearing).** With Coral and GitHub-issues adapters shipped, **6 (kind × zoom) cells are now actively rendering raw-field fallbacks against real data** (`coral-optimization`, `coral-attempt`, `feature-campaign` × {structure, detail}). `ProjectionSection` exposes the fallback publicly via `data-projection-source="fallback"` so the chrome can distinguish LLM prose from raw fields, but the visible asymmetry between Nous (LLM prose) and the other two kinds (raw fields, dumb "title — body" concatenation) is now a real UX concern that v0.1.5 polish will need to address. See `integral-ui/.notes-v0.1.5.md` § theme A. v0.2 fills the remaining cells with kind-specific projection plugins; v0.1.5 may close part of that gap or redesign the fallback to read as deliberate.
+
 ### S-2. Status grammar
 
 `StatusSchema = enum('draft', 'active', 'gated', 'satisfied', 'abandoned', 'revoked')`. The same six values mean *different things* across kinds:
 
 - `nous-iteration · satisfied` = the iteration finished and produced a verdict (which may be `refuted`!). Refutation is a finished outcome, not a failure.
 - `nous-campaign · satisfied` = the research question is answered (or shelved with a stable principle set).
+- `coral-optimization · active` = a Coral run with attempts still landing OR a Coral run that completed (the adapter has no campaign-level "done" signal to read; G-C-5).
+- `coral-attempt · satisfied` = the attempt's `status` field on disk is `'improved'` (the only value v0.1 has observed; G-C-6 records that the full Coral status enum is unknown).
+- `coral-attempt · active` = any non-`'improved'` Coral status (default mapping; the chrome can't yet distinguish "completed-but-not-improved" from "still running").
+- `feature-campaign · active` = the GitHub issue is open (B2).
+- `feature-campaign · satisfied` = the GitHub issue is closed with `state_reason: COMPLETED` (or legacy `null`, which v0.1 maps defensively to `satisfied`; G-F-5).
+- `feature-campaign · abandoned` = the GitHub issue is closed with `state_reason: NOT_PLANNED` or `DUPLICATE`.
 - `feature-pr · satisfied` = merged.
 - `paper-claim · satisfied` = supported by sufficient evidence to ship in the paper.
 
-**v0.1 commitment:** the per-kind interpretation lives implicitly in `src/lib/queue.ts` (`isAwaitingMe`) and the activity classifier. v0.2 should make this explicit — a per-kind status guide visible in the chrome (e.g., a hover-explanation on the status chip).
+The same status value (`'satisfied'`) means six different things across these kinds. The schema's flat enum doesn't carry the per-kind meaning; the adapter does the mapping at ingestion, and the chrome relies on `intent.kind` plus context to render correctly.
+
+**v0.1 commitment:** the per-kind interpretation lives implicitly in `src/lib/queue.ts` (`isAwaitingMe`), the activity classifier, and the per-adapter mapping functions (`mapPhaseToStatus` for Nous, `mapAttemptStatus` for Coral, `mapState` for GitHub-issues). v0.2 should make this explicit — a per-kind status guide visible in the chrome (hover-explanation on the status chip), plus a `Kind × Status → Meaning` table consumed by both chrome and projection generator (open question 4 below).
 
 ### S-3. Decomposition stories
 
-When an intent has 5 children, the semantic question is: *what's the relationship between them?* Three patterns observed so far:
+When an intent has 5 children, the semantic question is: *what's the relationship between them?* Patterns observed across the three v0.1 adapters:
 
-- **Sequence** (Nous iter-1 → iter-2 → iter-3): each builds on the prior; the latest dominates.
-- **Parallel competition** (Coral attempts): siblings race; best-so-far is meaningful, the others are diagnostic.
+- **Sequence** (Nous iter-1 → iter-2 → iter-3): each builds on the prior; the latest dominates. Tree spine via `decomposition.children` ordered by `iteration_number`.
+- **Parallel competition with shared lineage** (Coral attempts): siblings race within a campaign; best-so-far is meaningful, the others diagnostic. **DAG-shaped** at the data level — each attempt's `extension.parent_attempts` records the commit it built on, while `decomposition.children` carries the tree spine. v0.1 Coral always emits singleton `parent_attempts` (one parent per attempt), but the schema admits true DAGs (multi-parent merges). G-C-* records the practical limits.
+- **Tree of formal sub-issues, recursive** (GitHub-issues feature-campaign): introduced in B2. A tracking issue's `decomposition.children` lists the children GitHub's `/sub_issues` API returned (filtered to same-repo per G-F-9). Sub-issues can themselves be tracking issues; arbitrary depth supported. `lifetime.kind: 'campaign'` for tracking issues, `'discrete'` for leaves. Cross-repo sub-issues silently dropped at the source boundary.
 - **Independent components** (paper sections, feature PRs): each child is a separate satisfaction subgoal; none dominates.
 
-The schema's `decomposition.children` is a flat list — it doesn't say *which pattern*. Today, kind tells the surface enough (`nous-iteration` → render as a sequence; `coral-attempt` → render as a population). v0.2 may add `decomposition.pattern: 'sequence' | 'parallel' | 'independent'` so cross-kind UI can render uniformly.
+The schema's `decomposition.children` is a flat list — it doesn't say *which pattern*. Today, kind tells the surface enough (`nous-iteration` → render as a sequence; `coral-attempt` → render as a population; `feature-campaign` → render as nested tree). v0.2 may add `decomposition.pattern: 'sequence' | 'parallel' | 'independent' | 'tree'` so cross-kind UI can render uniformly.
+
+**Critical observation from B1+B2.** The schema's `parent_attempts: list[IntentId]` (plural) on `CoralAttemptExtension` admitted Coral's DAG without a schema bump — the load-bearing v0.1 falsification result. Similarly, GitHub-issues tree-of-sub-issues fits cleanly because `decomposition.children` is recursive (a child can have its own children). Three of four canonical kinds now demonstrate three distinct decomposition patterns through the same primitive. This is the strongest signal so far that the v0.1 schema generalizes.
 
 **v0.1 commitment:** the pattern is implicit in `ChildrenSection`'s per-kind rendering. Document the implicit rule per-kind here:
 
-| Kind                | Pattern              |
-| ------------------- | -------------------- |
-| `nous-iteration`    | sequence             |
-| `coral-attempt`     | parallel competition |
-| `feature-pr`        | independent          |
-| `paper-section`     | independent          |
-| `paper-claim`       | independent          |
+| Kind                | Pattern              | Notes                                                    |
+| ------------------- | -------------------- | -------------------------------------------------------- |
+| `nous-iteration`    | sequence             | Children ordered by iteration number                     |
+| `coral-attempt`     | parallel competition | DAG via `parent_attempts`; tree spine via `decomposition.children` |
+| `feature-campaign`  | tree                 | Recursive; sub-issues can themselves be tracking issues  |
+| `feature-pr`        | independent          | (v0.1 fixture only; B2 doesn't emit feature-pr Intents)  |
+| `paper-section`     | independent          | (v0.1 fixture only; Paper adapter is v0.2)               |
+| `paper-claim`       | independent          | (v0.1 fixture only; Paper adapter is v0.2)               |
 
 ### S-4. Evidence narratives
 
@@ -203,6 +217,8 @@ Both must agree on **meaning**: "satisfied" must mean the same thing whether a h
 
 Four of nine components are real (S-1 partial, S-7, S-8, S-9 complete); the rest are implicit or absent. This is the **honest v0.1 surface**: the chrome is structurally correct, the LLM-driven projection layer ships for Nous, and meaning rendering for the remaining kinds (Coral, GH issues, Paper) lands when their adapters do.
 
+**Post-B1+B2 update.** With three of four adapters now shipping real data, the *implicit* components (S-2 status grammar, S-3 decomposition stories) are exercised across multiple kinds simultaneously — and the asymmetries between them show. S-2's per-kind status mappings now span 9 distinct value-meanings across the same six-element `Status` enum. S-3's three structural patterns (sequence, parallel-competition-with-DAG, recursive tree) are all visible in production-shaped data. Both validate that v0.1's commitment to "implicit per-kind interpretation in adapter + chrome code" works for falsification — but the v0.1.5 polish phase is where the same implicit interpretation gets surfaced for the user (per-kind status hover tooltips, decomposition-pattern visual hints).
+
 ---
 
 ## Open questions
@@ -241,6 +257,7 @@ These files are normative together. Cross-references between them are load-beari
 - `intent-schema-v0.1.md` — typed object model. Inputs to the semantic model.
 - `intent-ux-sketch-v0.1.md` — UX surfaces. Where projections render.
 - `intents-and-harnesses.md` — catalog of harnesses. What the substrate is generalizing across.
-- `gaps.md` — schema-fit issues found while sizing adapters. Many gaps (G-N-2, G-N-9, G-N-11) are *also* semantic gaps.
-- `roadmap.md` — Path 2 expansion items. The semantic-model work below adapter #1 Phase 4 is unscheduled today; v0.2 work.
+- `gaps.md` — schema-fit issues found while sizing adapters. The G-N series (Nous, 12 entries) + G-C series (Coral, 14 entries) + G-F series (GitHub-issues, 13 entries) accumulate the falsification evidence; many gaps (G-N-2 / G-C-10 jointly, G-N-9, G-N-11, G-F-7/8) are *also* semantic gaps that v0.2 promotion will resolve.
+- `roadmap.md` — v0.1 expansion items. v0.1 ships through B2 + C1 + a small `semantics-v0.1.md` refresh (this file). v0.2's "Semantic-model promotion" subsection lists the S-component status flips that the next phase commits to.
 - `CLAUDE.md` — operating conventions. § Resolved surface decisions and § Implementation order encode several semantic commitments (S-2, S-7, S-8).
+- `integral-ui/.notes-v0.1.5.md` — pre-brainstorm notes for the chrome polish phase between v0.1 and v0.2. Many of v0.1.5's themes are direct consequences of S-1's partial implementation surfacing through real adapter data.

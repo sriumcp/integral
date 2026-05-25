@@ -25,3 +25,8 @@ dist-ssr
 
 # User-local source configuration (the example file is committed)
 integral.config.json
+
+# Capture-spec output (regenerable; see e2e/captures/v0_1_5-baseline.spec.ts).
+# The spec itself is committed so anyone can regenerate; the PNG outputs are
+# just temporal evidence and would bloat the repo.
+e2e/captures/output/
