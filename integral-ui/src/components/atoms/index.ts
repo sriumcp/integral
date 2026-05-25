@@ -13,6 +13,9 @@ export type { StatusDotProps } from './StatusDot/StatusDot'
 export { Chip } from './Chip/Chip'
 export type { ChipProps, ChipTone } from './Chip/Chip'
 
+export { FilterChip } from './FilterChip/FilterChip'
+export type { FilterChipProps } from './FilterChip/FilterChip'
+
 export { IdPill } from './IdPill/IdPill'
 export type { IdPillProps } from './IdPill/IdPill'
 

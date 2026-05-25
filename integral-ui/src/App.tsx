@@ -21,6 +21,12 @@ import {
   serializeSourcesToUrl,
   type SourceEntry,
 } from '@/lib/sources'
+import {
+  DEFAULT_VIEW,
+  parseFilterQuery,
+  serializeFilterQuery,
+  type MapView,
+} from '@/lib/filter-query'
 import styles from './App.module.css'
 
 const ME = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
@@ -258,6 +264,44 @@ function Router({
   const [stripCollapsed, setStripCollapsed] = useState<boolean>(
     initialStripCollapsed
   )
+  // Map view (filter / group / sort) — parsed from URL on mount, written
+  // back to URL via history.replaceState on every change. The URL is the
+  // single source of truth for shareability + reload-survival.
+  const [mapView, setMapView] = useState<MapView>(() =>
+    typeof window !== 'undefined'
+      ? parseFilterQuery(new URLSearchParams(window.location.search))
+      : DEFAULT_VIEW
+  )
+
+  const onChangeMapView = useCallback((next: MapView) => {
+    setMapView(next)
+    try {
+      const existing = new URLSearchParams(window.location.search)
+      const updated = serializeFilterQuery(next)
+      // Preserve `sources` (and any other unrelated params); replace
+      // only the keys this serializer owns.
+      for (const key of [
+        'awaiting',
+        'kind',
+        'status',
+        'holder',
+        'tag',
+        'group',
+        'sort',
+      ]) {
+        existing.delete(key)
+      }
+      for (const [k, v] of updated) existing.set(k, v)
+      const search = existing.toString()
+      window.history.replaceState(
+        null,
+        '',
+        `${window.location.pathname}${search ? '?' + search : ''}${window.location.hash}`
+      )
+    } catch {
+      // history.replaceState may fail in restricted contexts; fall through.
+    }
+  }, [])
 
   // Keep workspace in sync when source selection (and therefore the
   // initialWorkspace prop) changes.
@@ -569,6 +613,8 @@ function Router({
               enabledSources={enabledSources}
               onToggleSource={onToggleSource}
               onNewNousDraft={onNewNousDraft}
+              view={mapView}
+              onChangeView={onChangeMapView}
             />
           ) : (
             <DetailSurface

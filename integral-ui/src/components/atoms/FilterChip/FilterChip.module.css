@@ -1,0 +1,60 @@
+/* FilterChip — a `key:value` mono token with optional × remove.
+   Same visual genre as Chip[data-mono='true'][data-soft='true'] but adds
+   the remove affordance. The × turns amber on hover (single-amber-signal). */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.token {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.k {
+  color: var(--mute);
+}
+
+.colon {
+  color: var(--mute-2);
+  margin: 0 1px;
+}
+
+.v {
+  color: var(--ink-1);
+}
+
+.remove {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  margin-left: 2px;
+  font: inherit;
+  color: var(--mute);
+  cursor: pointer;
+  line-height: 1;
+  border-radius: 2px;
+}
+
+.remove:hover,
+.remove:focus-visible {
+  color: var(--amber-strong, var(--amber, #b8761c));
+  outline: none;
+}
+
+.remove:focus-visible {
+  background: var(--amber-soft);
+}

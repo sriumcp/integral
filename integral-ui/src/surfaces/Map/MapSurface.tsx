@@ -1,9 +1,25 @@
-import { useMemo, useState } from 'react'
-import type { Intent, Party, Workspace } from '@/schema'
-import { Chip, SectionLabel } from '@/components/atoms'
+import { useMemo } from 'react'
+import type { Intent, IntentState, Party, Workspace } from '@/schema'
+import { SectionLabel } from '@/components/atoms'
 import { isAwaitingMe } from '@/lib/queue'
+import {
+  applyFilters,
+  DEFAULT_VIEW,
+  type FilterQuery,
+  type GroupBy,
+  type MapView,
+  type SortBy,
+} from '@/lib/filter-query'
+import {
+  groupIntents,
+  groupLabel,
+  sortGroups,
+  sortIntents,
+} from '@/lib/intent-grouping'
 import type { SourceEntry } from '@/lib/sources'
 import { TreeCard } from './TreeCard/TreeCard'
+import { MapControls } from './MapControls/MapControls'
+import type { FilterCategory } from './FilterBar/FilterBar'
 import styles from './MapSurface.module.css'
 
 export interface MapSurfaceProps {
@@ -11,20 +27,18 @@ export interface MapSurfaceProps {
   me: Party
   /** Drill-down handler — clicking a TreeCard navigates to the Detail surface. */
   onOpenIntent?: (intent: Intent) => void
-  /** Known sources (registry from `src/lib/sources.ts`). When provided
-   *  alongside `enabledSources` and `onToggleSource`, the source picker
-   *  chip cluster renders in the top row; when omitted, no picker. */
+  /** Known sources (registry from `src/lib/sources.ts`). */
   knownSources?: ReadonlyArray<SourceEntry>
-  /** Currently-enabled source IDs. */
   enabledSources?: ReadonlySet<string>
-  /** Click handler for a source chip — toggles that source on/off. */
   onToggleSource?: (sourceId: string) => void
-  /** Click handler for "+ new nous campaign". When provided, the
-   *  topRow renders a "+ new" button that creates a blank Nous draft +
-   *  navigates to the Shaping surface. Without it, the button is
-   *  hidden — preserves backwards compat for tests / preview where
-   *  draft creation isn't wired. */
+  /** Click handler for "+ new nous campaign". */
   onNewNousDraft?: () => void
+  /** Current MapView (filter + group + sort). When omitted, defaults
+   *  apply (no filters, no grouping, default sort). */
+  view?: MapView
+  /** Notified when the user changes any filter/group/sort. The parent
+   *  is responsible for URL serialization + re-render. */
+  onChangeView?: (view: MapView) => void
 }
 
 type RootKind =
@@ -41,18 +55,16 @@ const ROOT_KINDS: ReadonlySet<RootKind> = new Set([
 ])
 
 /**
- * MapSurface — overview-zoom forest of root intents (campaigns).
+ * MapSurface — overview-zoom forest of root intents.
  *
- * v0.1 scope:
- *  - Renders a 2-column forest of TreeCards for the four root kinds.
- *  - Filter: "awaiting me" toggle (per the resolved decision in CLAUDE.md).
- *  - Click a TreeCard → calls `onOpenIntent` (Detail surface lands later).
- *
- * v0.2:
- *  - Cross-tree EvidenceLink edges rendered between cards.
- *  - Shaping drafts row.
- *  - Backgrounded section.
- *  - Per-kind grouping toggle.
+ * v0.1 + C1 scope:
+ *  - Top region (counts + filter chips + group/sort + sources picker)
+ *    rendered by MapControls.
+ *  - Forest of TreeCards filtered + sorted + (optionally) grouped per
+ *    the active MapView.
+ *  - "Root" intents = ROOT_KINDS that aren't children of any other
+ *    intent in the workspace (handles B2 nested feature-campaign trees;
+ *    sub-issues don't surface as top-level cards).
  */
 export function MapSurface({
   workspace,
@@ -62,159 +74,317 @@ export function MapSurface({
   enabledSources,
   onToggleSource,
   onNewNousDraft,
+  view = DEFAULT_VIEW,
+  onChangeView,
 }: MapSurfaceProps) {
-  const [awaitingOnly, setAwaitingOnly] = useState(false)
-
-  // Pair root intents with their states; non-root kinds (iterations, attempts,
-  // sections, claims, PRs) are not first-class on the Map surface — they're
-  // navigable from the Detail surface of their parent.
-  const rootIntentPairs = useMemo(() => {
-    const stateById = new Map(workspace.states.map((s) => [s.intent_id, s]))
-    return workspace.intents
-      .filter((i): i is Intent & { kind: RootKind } =>
-        ROOT_KINDS.has(i.kind as RootKind)
-      )
-      .map((intent) => {
-        // Bijection refine guarantees the state exists.
-        const state = stateById.get(intent.id)!
-        return { intent, state }
-      })
-  }, [workspace])
-
-  const activePairs = useMemo(
-    () =>
-      rootIntentPairs.filter(
-        ({ state }) => state.status === 'active' || state.status === 'gated'
-      ),
-    [rootIntentPairs]
+  const stateById = useMemo(
+    () => new Map(workspace.states.map((s) => [s.intent_id, s])),
+    [workspace.states]
   )
 
-  const draftPairs = useMemo(
-    () => rootIntentPairs.filter(({ state }) => state.status === 'draft'),
-    [rootIntentPairs]
-  )
-
-  const filteredPairs = useMemo(() => {
-    if (!awaitingOnly) return rootIntentPairs
-    return rootIntentPairs.filter(({ intent, state }) =>
-      isAwaitingMe(intent, state, me)
+  // True rootness: an Intent is a root iff no other Intent's
+  // decomposition.children includes its id. Plus we restrict to the
+  // four root-kinds (sub-iterations / sub-attempts / etc. never surface
+  // as top-level cards even if they happen to be unparented).
+  const rootIntents = useMemo(() => {
+    const allChildIds = new Set(
+      workspace.intents.flatMap((i) => i.decomposition.children)
     )
-  }, [rootIntentPairs, awaitingOnly, me])
+    return workspace.intents.filter(
+      (i): i is Intent & { kind: RootKind } =>
+        ROOT_KINDS.has(i.kind as RootKind) && !allChildIds.has(i.id)
+    )
+  }, [workspace.intents])
 
-  const awaitingCount = useMemo(
+  const rootStates = useMemo(
     () =>
-      rootIntentPairs.filter(({ intent, state }) =>
-        isAwaitingMe(intent, state, me)
-      ).length,
-    [rootIntentPairs, me]
+      rootIntents
+        .map((i) => stateById.get(i.id))
+        .filter((s): s is IntentState => s !== undefined),
+    [rootIntents, stateById]
   )
 
-  const workingCount = workspace.intents.filter(
-    (i) => i.kind === 'coral-attempt'
-  ).length // placeholder until presence is first-class
+  // Counts (computed before filter application — they describe the
+  // workspace, not the filtered view).
+  const counts = useMemo(() => {
+    const active = rootStates.filter(
+      (s) => s.status === 'active' || s.status === 'gated'
+    ).length
+    const drafts = rootStates.filter((s) => s.status === 'draft').length
+    const awaiting = rootIntents.filter((i) => {
+      const state = stateById.get(i.id)
+      return state ? isAwaitingMe(i, state, me) : false
+    }).length
+    const working = workspace.intents.filter(
+      (i) => i.kind === 'coral-attempt'
+    ).length
+    return { active, awaiting, working, drafts }
+  }, [rootIntents, rootStates, stateById, workspace.intents, me])
+
+  // Available tags across all loaded intents — populates TAG autocomplete.
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const i of workspace.intents) {
+      for (const t of i.tags ?? []) tags.add(t)
+    }
+    return [...tags].sort()
+  }, [workspace.intents])
+
+  // ─── Apply filter → sort → group ─────────────────────────────────────
+  const isAwaitingForMe = useMemo(
+    () => (intent: Intent, state: IntentState) =>
+      isAwaitingMe(intent, state, me),
+    [me]
+  )
+
+  const filtered = useMemo(
+    () =>
+      applyFilters({
+        intents: rootIntents,
+        states: rootStates,
+        filter: view.filter,
+        isAwaitingMe: isAwaitingForMe,
+      }),
+    [rootIntents, rootStates, view.filter, isAwaitingForMe]
+  )
+
+  const sorted = useMemo(
+    () =>
+      sortIntents({
+        intents: filtered,
+        states: rootStates,
+        sortBy: view.sort,
+        isAwaitingMe: isAwaitingForMe,
+      }),
+    [filtered, rootStates, view.sort, isAwaitingForMe]
+  )
+
+  const groupedSections = useMemo(() => {
+    const groups = groupIntents({
+      intents: sorted,
+      states: rootStates,
+      groupBy: view.group,
+    })
+    return sortGroups(groups, view.group)
+  }, [sorted, rootStates, view.group])
+
+  // ─── Change handlers ─────────────────────────────────────────────────
+  function update(next: MapView): void {
+    onChangeView?.(next)
+  }
+
+  function addFilter(key: FilterCategory, value: string): void {
+    const f: FilterQuery = view.filter
+    let next: FilterQuery
+    switch (key) {
+      case 'awaiting':
+        next = { ...f, awaitingMe: true }
+        break
+      case 'kind':
+        next = { ...f, kinds: new Set([...f.kinds, value as Intent['kind']]) }
+        break
+      case 'status':
+        next = {
+          ...f,
+          statuses: new Set([...f.statuses, value as IntentState['status']]),
+        }
+        break
+      case 'holder':
+        next = {
+          ...f,
+          holderModes: new Set([
+            ...f.holderModes,
+            value as Intent['holder']['mode'],
+          ]),
+        }
+        break
+      case 'tag':
+        next = { ...f, tags: new Set([...f.tags, value]) }
+        break
+    }
+    update({ ...view, filter: next })
+  }
+
+  function removeFilter(key: FilterCategory, value: string): void {
+    const f: FilterQuery = view.filter
+    let next: FilterQuery
+    switch (key) {
+      case 'awaiting':
+        next = { ...f, awaitingMe: false }
+        break
+      case 'kind': {
+        const s = new Set(f.kinds)
+        s.delete(value as Intent['kind'])
+        next = { ...f, kinds: s }
+        break
+      }
+      case 'status': {
+        const s = new Set(f.statuses)
+        s.delete(value as IntentState['status'])
+        next = { ...f, statuses: s }
+        break
+      }
+      case 'holder': {
+        const s = new Set(f.holderModes)
+        s.delete(value as Intent['holder']['mode'])
+        next = { ...f, holderModes: s }
+        break
+      }
+      case 'tag': {
+        const s = new Set(f.tags)
+        s.delete(value)
+        next = { ...f, tags: s }
+        break
+      }
+    }
+    update({ ...view, filter: next })
+  }
+
+  function clearAllFilters(): void {
+    update({ ...view, filter: DEFAULT_VIEW.filter })
+  }
+
+  function changeGroup(g: GroupBy): void {
+    update({ ...view, group: g })
+  }
+
+  function changeSort(s: SortBy): void {
+    update({ ...view, sort: s })
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────
+  const sectionHint = `${filtered.length} of ${rootIntents.length}`
 
   return (
     <main className={styles.surface}>
-      <header className={styles.topRow}>
-        <div>
-          <p className={styles.summary}>active trees · zoom = overview</p>
-          <h1 className={styles.headline}>
-            {activePairs.length} active · {awaitingCount} awaiting you ·{' '}
-            {workingCount} agent{workingCount === 1 ? '' : 's'} working
-            {draftPairs.length > 0 && (
-              <>
-                {' · '}
-                {draftPairs.length} in shaping
-              </>
-            )}
-          </h1>
-        </div>
-        <div className={styles.filters} data-testid="map-filters">
-          <button
-            type="button"
-            onClick={() => setAwaitingOnly((v) => !v)}
-            data-active={awaitingOnly ? 'true' : undefined}
-            style={{ all: 'unset', cursor: 'pointer' }}
-          >
-            <Chip
-              tone={awaitingOnly ? 'amber' : 'mute'}
-              mono
-              dot={awaitingOnly}
-            >
-              awaiting me · {awaitingCount}
-            </Chip>
-          </button>
-          <Chip tone="mute" mono>
-            all kinds
-          </Chip>
-          <Chip tone="mute" mono>
-            last 24h
-          </Chip>
-          {onNewNousDraft && (
-            <button
-              type="button"
-              className={styles.newDraftButton}
-              onClick={onNewNousDraft}
-              aria-label="new nous campaign"
-            >
-              + new nous campaign
-            </button>
-          )}
-        </div>
-      </header>
+      <MapControls
+        view={view}
+        counts={counts}
+        availableTags={availableTags}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        onChangeGroup={changeGroup}
+        onChangeSort={changeSort}
+        {...(knownSources && { knownSources })}
+        {...(enabledSources && { enabledSources })}
+        {...(onToggleSource && { onToggleSource })}
+        {...(onNewNousDraft && { onNewNousDraft })}
+      />
 
-      {knownSources && enabledSources && onToggleSource && (
-        <div
-          className={styles.sourcePicker}
-          role="group"
-          aria-label="data sources"
-          data-testid="source-picker"
-        >
-          <span className={styles.sourcePickerLabel}>sources</span>
-          {knownSources.map((source) => {
-            const enabled = enabledSources.has(source.id)
-            return (
-              <button
-                key={source.id}
-                type="button"
-                onClick={() => onToggleSource(source.id)}
-                data-source={source.id}
-                data-enabled={enabled ? 'true' : undefined}
-                style={{ all: 'unset', cursor: 'pointer' }}
-                aria-pressed={enabled}
-              >
-                <Chip mono tone={enabled ? 'sage' : 'mute'} dot={enabled}>
-                  {source.label}
-                </Chip>
-              </button>
-            )
-          })}
-        </div>
-      )}
+      <SectionLabel hint={sectionHint}>forest</SectionLabel>
 
-      <SectionLabel hint={`${filteredPairs.length} of ${rootIntentPairs.length}`}>
-        forest
-      </SectionLabel>
-
-      {filteredPairs.length === 0 ? (
-        <div className={styles.empty} role="status">
-          {awaitingOnly
-            ? 'nothing awaits you right now'
-            : 'no active trees in this workspace'}
-        </div>
+      {filtered.length === 0 ? (
+        <EmptyState onClearAll={clearAllFilters} />
+      ) : view.group === 'none' ? (
+        <FlatForest
+          intents={sorted}
+          stateById={stateById}
+          me={me}
+          {...(onOpenIntent && { onOpenIntent })}
+        />
       ) : (
-        <div className={styles.forest} data-testid="forest">
-          {filteredPairs.map(({ intent, state }) => (
-            <TreeCard
-              key={intent.id}
-              intent={intent}
-              state={state}
-              me={me}
-              {...(onOpenIntent && { onOpen: onOpenIntent })}
-            />
-          ))}
-        </div>
+        <GroupedForest
+          sections={groupedSections}
+          stateById={stateById}
+          me={me}
+          groupBy={view.group}
+          {...(onOpenIntent && { onOpenIntent })}
+        />
       )}
     </main>
+  )
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────
+
+interface FlatForestProps {
+  intents: ReadonlyArray<Intent>
+  stateById: Map<string, IntentState>
+  me: Party
+  onOpenIntent?: (intent: Intent) => void
+}
+
+function FlatForest({ intents, stateById, me, onOpenIntent }: FlatForestProps) {
+  return (
+    <div className={styles.forest} data-testid="forest">
+      {intents.map((intent) => {
+        const state = stateById.get(intent.id)
+        if (!state) return null
+        return (
+          <TreeCard
+            key={intent.id}
+            intent={intent}
+            state={state}
+            me={me}
+            {...(onOpenIntent && { onOpen: onOpenIntent })}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+interface GroupedForestProps {
+  sections: ReadonlyArray<[string, Intent[]]>
+  stateById: Map<string, IntentState>
+  me: Party
+  groupBy: GroupBy
+  onOpenIntent?: (intent: Intent) => void
+}
+
+function GroupedForest({
+  sections,
+  stateById,
+  me,
+  groupBy,
+  onOpenIntent,
+}: GroupedForestProps) {
+  return (
+    <div className={styles.groupedForest} data-testid="grouped-forest">
+      {sections.map(([key, intents]) => (
+        <section key={key} className={styles.group} data-group-key={key}>
+          <header className={styles.groupSeparator}>
+            <span className={styles.groupLabel}>
+              {groupLabel(groupBy, key)}
+            </span>
+            <span className={styles.groupCount}>{intents.length}</span>
+          </header>
+          <div className={styles.forest}>
+            {intents.map((intent) => {
+              const state = stateById.get(intent.id)
+              if (!state) return null
+              return (
+                <TreeCard
+                  key={intent.id}
+                  intent={intent}
+                  state={state}
+                  me={me}
+                  {...(onOpenIntent && { onOpen: onOpenIntent })}
+                />
+              )
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+interface EmptyStateProps {
+  onClearAll: () => void
+}
+
+function EmptyState({ onClearAll }: EmptyStateProps) {
+  return (
+    <div className={styles.empty} role="status" data-testid="empty-results">
+      <p className={styles.emptyMessage}>0 intents match the current filter</p>
+      <button
+        type="button"
+        className={styles.clearLink}
+        onClick={onClearAll}
+      >
+        clear filter →
+      </button>
+    </div>
   )
 }

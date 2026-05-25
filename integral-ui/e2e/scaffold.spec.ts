@@ -101,19 +101,31 @@ test.describe('Map + Detail (post-landing)', () => {
     await expect(awaitingCards.first()).toContainText('awaiting you')
   })
 
-  test('awaiting-me filter narrows to awaiting trees', async ({ page }) => {
+  test('awaiting-me filter narrows to awaiting trees (via + filter chip)', async ({ page }) => {
     await page.goto('/?sources=fixture')
 
-    await page.getByText(/^awaiting me · /).click()
+    // Click + filter, then awaiting:me option.
+    await page.getByText(/^\+ filter$/).click()
+    await page.getByRole('menuitem', { name: 'awaiting:me' }).click()
     // After filtering, only the one awaiting tree remains.
     const cards = page.locator('button[data-kind]')
     await expect(cards).toHaveCount(1)
+    // Active chip is visible in the bar.
+    await expect(
+      page.getByLabel(/filter: awaiting:me/i)
+    ).toBeVisible()
   })
 
   test('clicking a TreeCard navigates to the Detail surface', async ({ page }) => {
     await page.goto('/?sources=fixture')
 
-    await page.getByRole('button', { name: /coral-optimization/ }).first().click()
+    // The fixture has 2 coral-optimization cards (1 active + 1 draft).
+    // Drafts route to ShapingSurface; non-drafts route to Detail. Be
+    // explicit so we test the Detail navigation path.
+    await page
+      .locator('button[data-kind="coral-optimization"][data-status="active"]')
+      .first()
+      .click()
     // The Detail surface's own header exposes data-kind for the focused intent.
     await expect(
       page.locator('header[data-kind="coral-optimization"]')
@@ -126,7 +138,7 @@ test.describe('Map + Detail (post-landing)', () => {
   test('zoom toggle changes Detail body — overview collapses children list', async ({ page }) => {
     await page.goto('/?sources=fixture')
 
-    await page.getByRole('button', { name: /nous-campaign/ }).first().click()
+    await page.locator('button[data-kind="nous-campaign"]').first().click()
     await expect(page.locator('header[data-kind="nous-campaign"]')).toBeVisible()
 
     await expect(page.getByText(/iter-2 · reward-curvature probe/)).toBeVisible()
@@ -146,7 +158,7 @@ test.describe('Map + Detail (post-landing)', () => {
   test('clicking a child within Detail drills further', async ({ page }) => {
     await page.goto('/?sources=fixture')
 
-    await page.getByRole('button', { name: /nous-campaign/ }).first().click()
+    await page.locator('button[data-kind="nous-campaign"]').first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
     await expect(page.locator('header[data-kind="nous-iteration"]')).toBeVisible()
   })
@@ -154,7 +166,7 @@ test.describe('Map + Detail (post-landing)', () => {
   test('clicking an evidence edge navigates cross-tree', async ({ page }) => {
     await page.goto('/?sources=fixture')
 
-    await page.getByRole('button', { name: /paper-campaign/ }).first().click()
+    await page.locator('button[data-kind="paper-campaign"]').first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
     await page.getByRole('button', { name: /open Claim 19/ }).click()
     await expect(page.locator('header[data-kind="paper-claim"]')).toBeVisible()
@@ -264,5 +276,95 @@ test.describe('Map + Detail (post-landing)', () => {
     await expect(
       page.getByRole('heading', { name: /activity/i }).first()
     ).toBeVisible()
+  })
+
+  // ─── C1: filter / group / sort on Map ─────────────────────────────────
+
+  test('C1: adding kind filter via + filter narrows the Map', async ({ page }) => {
+    await page.goto('/?sources=fixture')
+    const initialCount = await page.locator('button[data-kind]').count()
+
+    await page.getByText(/^\+ filter$/).click()
+    await page.getByRole('menuitem', { name: 'nous-campaign' }).click()
+
+    // Cards filter to nous-campaign only.
+    const filteredCards = page.locator('button[data-kind="nous-campaign"]')
+    expect(await filteredCards.count()).toBeGreaterThan(0)
+    expect(await page.locator('button[data-kind]').count()).toBeLessThan(
+      initialCount
+    )
+    // Active chip visible.
+    await expect(
+      page.getByLabel(/filter: kind:nous-campaign/i)
+    ).toBeVisible()
+    // URL reflects the filter.
+    expect(page.url()).toContain('kind=nous-campaign')
+  })
+
+  test('C1: URL with ?kind=... loads with filter applied', async ({ page }) => {
+    await page.goto('/?sources=fixture&kind=nous-campaign')
+
+    await expect(
+      page.getByLabel(/filter: kind:nous-campaign/i)
+    ).toBeVisible()
+    const cards = page.locator('button[data-kind]')
+    expect(await cards.count()).toBeGreaterThan(0)
+    for (const card of await cards.all()) {
+      expect(await card.getAttribute('data-kind')).toBe('nous-campaign')
+    }
+  })
+
+  test('C1: removing chip via × widens the Map', async ({ page }) => {
+    await page.goto('/?sources=fixture&kind=nous-campaign')
+
+    await page
+      .getByRole('button', { name: /remove filter kind:nous-campaign/i })
+      .click()
+
+    await expect(
+      page.getByLabel(/filter: kind:nous-campaign/i)
+    ).not.toBeVisible()
+    expect(page.url()).not.toContain('kind=')
+  })
+
+  test('C1: group by source renders typographic separators', async ({ page }) => {
+    // Add a filter so GroupSortControls becomes visible
+    await page.goto('/?sources=fixture&awaiting=me&group=source')
+
+    // Grouped forest container is present
+    await expect(page.getByTestId('grouped-forest')).toBeVisible()
+    // At least one group section header
+    const groupSections = page.locator('section[data-group-key]')
+    expect(await groupSections.count()).toBeGreaterThanOrEqual(1)
+  })
+
+  test('C1: empty results state renders clear-filter link', async ({ page }) => {
+    // Filter that excludes everything: paper-claim is not a root kind
+    // surfaced on the Map, so kind=paper-claim → empty.
+    await page.goto('/?sources=fixture&kind=paper-claim')
+
+    const empty = page.getByTestId('empty-results')
+    await expect(empty).toBeVisible()
+    await expect(empty).toContainText(/0 intents match/i)
+
+    // Click "clear filter →" → filter clears, Map widens
+    await page.getByRole('button', { name: /clear filter/i }).click()
+    await expect(empty).not.toBeVisible()
+    expect(page.url()).not.toContain('kind=')
+  })
+
+  test('C1: GroupSortControls is hidden when no filters and default group/sort', async ({ page }) => {
+    await page.goto('/?sources=fixture')
+    await expect(page.getByTestId('group-sort-controls')).not.toBeVisible()
+  })
+
+  test('C1: GroupSortControls becomes visible when a filter is added', async ({ page }) => {
+    await page.goto('/?sources=fixture')
+    await expect(page.getByTestId('group-sort-controls')).not.toBeVisible()
+
+    await page.getByText(/^\+ filter$/).click()
+    await page.getByRole('menuitem', { name: 'awaiting:me' }).click()
+
+    await expect(page.getByTestId('group-sort-controls')).toBeVisible()
   })
 })

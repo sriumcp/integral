@@ -1,0 +1,93 @@
+# Integral CI — repo-level hygiene.
+#
+# Runs the verification quintuple on every push and pull request:
+#   1. typecheck         — strict TypeScript
+#   2. test:run          — Vitest unit + integration
+#   3. build             — production bundle
+#   4. test:e2e          — Playwright behavioral
+#   5. test:e2e:visual   — Playwright visual baselines (continue-on-error)
+#
+# Plus a load-bearing LLM-isolation guard that fails the build if any
+# test file references real LLM provider clients or env vars (per
+# CLAUDE.md § Test discipline — the vite-plugin-nous-adapter/ boundary
+# is non-negotiable).
+#
+# Security note: this workflow does NOT interpolate any github.event.*
+# fields into run: commands. The only `${{ }}` expression appears in
+# the concurrency group key (github.ref) which is not a shell context.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: integral-ui
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: integral-ui/package-lock.json
+
+      - name: install
+        run: npm ci
+
+      - name: install playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: llm-isolation audit (load-bearing)
+        run: |
+          set -e
+          HITS=$(grep -RE "OPENAI_API_KEY|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN|tryCreateLLMClient|api\.openai\.com|api\.anthropic\.com|@anthropic-ai|from 'openai'" src/ 2>/dev/null | grep -E "\.(test|spec)\." || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::LLM-isolation violated — test files reference real LLM clients/keys:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "llm-isolation clean (zero hits)."
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test:run
+        run: npm run test:run
+
+      - name: build
+        run: npm run build
+
+      - name: test:e2e
+        run: npm run test:e2e
+
+      - name: test:e2e:visual
+        run: npm run test:e2e:visual
+        continue-on-error: true
+
+      - name: upload playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            integral-ui/playwright-report/
+            integral-ui/test-results/
+          retention-days: 7

@@ -1,0 +1,100 @@
+/* FilterBar — active filter chips + + filter disclosure. */
+
+.bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.disclosure {
+  position: relative;
+}
+
+.summary {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary:hover,
+.disclosure[open] .summary {
+  color: var(--ink-1);
+  background: var(--paper-2);
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(40, 30, 20, 0.06);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--mute);
+  text-transform: uppercase;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.option {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 7px;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.option:hover:not(:disabled) {
+  color: var(--ink-1);
+  background: var(--paper-2);
+}
+
+.option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

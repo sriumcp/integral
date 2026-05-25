@@ -94,11 +94,86 @@
 }
 
 .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--mute);
-  padding: 18px;
+  padding: 28px 18px;
   border: 1px dashed var(--line);
   border-radius: 4px;
   text-align: center;
+}
+
+.emptyMessage {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.clearLink {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.clearLink:hover {
+  color: var(--amber-strong, var(--amber, #b8761c));
+}
+
+.clearLink:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.groupedForest {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.groupSeparator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+
+.groupSeparator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.groupLabel {
+  color: var(--ink-2);
+}
+
+.groupCount {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  color: var(--mute);
 }

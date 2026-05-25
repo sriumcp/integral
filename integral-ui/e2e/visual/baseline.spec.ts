@@ -24,8 +24,11 @@ const SKIP_LANDING_INIT =
 
 async function readyForScreenshot(page: import('@playwright/test').Page) {
   await page.evaluate(() => document.fonts.ready)
+  // Wait for any pending network activity to settle (projection
+  // fetches, source registry, sub-issue fetches, etc.).
+  await page.waitForLoadState('networkidle').catch(() => undefined)
   // Stabilize any layout settling after fonts swap in.
-  await page.waitForTimeout(150)
+  await page.waitForTimeout(300)
 }
 
 test.describe('visual / landing', () => {
@@ -49,11 +52,31 @@ test.describe('visual / map + detail + activity', () => {
     await expect(page).toHaveScreenshot('map-default.png', { fullPage: true })
   })
 
-  test('map with awaiting-me filter active', async ({ page }) => {
-    await page.goto('/?sources=fixture')
-    await page.getByText(/^awaiting me · /).click()
+  test('map with awaiting-me filter active (via + filter chip)', async ({ page }) => {
+    // C1: filter is a chip, not a button. Use the URL contract for
+    // determinism — same end state as clicking through the disclosure.
+    await page.goto('/?sources=fixture&awaiting=me')
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('map-awaiting-filter.png', { fullPage: true })
+  })
+
+  test('map with multiple filters + group/sort visible (C1)', async ({ page }) => {
+    await page.goto('/?sources=fixture&awaiting=me&kind=nous-campaign')
+    await readyForScreenshot(page)
+    await expect(page).toHaveScreenshot('map-with-filters.png', { fullPage: true })
+  })
+
+  test('map grouped by source — typographic separators (C1)', async ({ page }) => {
+    await page.goto('/?sources=fixture&group=source')
+    await readyForScreenshot(page)
+    await expect(page).toHaveScreenshot('map-grouped-by-source.png', { fullPage: true })
+  })
+
+  test('map empty-results state with clear-filter link (C1)', async ({ page }) => {
+    // paper-claim isn't a root kind, so this filter excludes everything.
+    await page.goto('/?sources=fixture&kind=paper-claim')
+    await readyForScreenshot(page)
+    await expect(page).toHaveScreenshot('map-empty-results.png', { fullPage: true })
   })
 
   test('workspace activity strip', async ({ page }) => {
@@ -76,7 +99,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail nous-campaign at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /nous-campaign/ }).first().click()
+    await page.locator('button[data-kind="nous-campaign"]').first().click()
     await expect(page.locator('header[data-kind="nous-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('detail-nous-campaign.png', { fullPage: true })
@@ -84,7 +107,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail nous-iteration at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /nous-campaign/ }).first().click()
+    await page.locator('button[data-kind="nous-campaign"]').first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
     await expect(page.locator('header[data-kind="nous-iteration"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -93,7 +116,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail nous-iteration at detail zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /nous-campaign/ }).first().click()
+    await page.locator('button[data-kind="nous-campaign"]').first().click()
     await page.getByRole('button', { name: /open iter-2/ }).click()
     await page
       .getByRole('group', { name: 'zoom level' })
@@ -105,7 +128,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail coral-optimization at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /coral-optimization/ }).first().click()
+    await page.locator('button[data-kind="coral-optimization"][data-status="active"]').first().click()
     await expect(page.locator('header[data-kind="coral-optimization"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('detail-coral-optimization.png', { fullPage: true })
@@ -113,7 +136,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail coral-attempt at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /coral-optimization/ }).first().click()
+    await page.locator('button[data-kind="coral-optimization"][data-status="active"]').first().click()
     await page.getByRole('button', { name: /open attempt-042/ }).click()
     await expect(page.locator('header[data-kind="coral-attempt"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -122,7 +145,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail feature-campaign at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /feature-campaign/ }).first().click()
+    await page.locator('button[data-kind="feature-campaign"]').first().click()
     await expect(page.locator('header[data-kind="feature-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('detail-feature-campaign.png', { fullPage: true })
@@ -130,7 +153,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail feature-pr at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /feature-campaign/ }).first().click()
+    await page.locator('button[data-kind="feature-campaign"]').first().click()
     await page.getByRole('button', { name: /open Add intent-state projection cache/ }).click()
     await expect(page.locator('header[data-kind="feature-pr"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -139,7 +162,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail paper-campaign at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /paper-campaign/ }).first().click()
+    await page.locator('button[data-kind="paper-campaign"]').first().click()
     await expect(page.locator('header[data-kind="paper-campaign"]')).toBeVisible()
     await readyForScreenshot(page)
     await expect(page).toHaveScreenshot('detail-paper-campaign.png', { fullPage: true })
@@ -147,7 +170,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail paper-section at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /paper-campaign/ }).first().click()
+    await page.locator('button[data-kind="paper-campaign"]').first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
     await expect(page.locator('header[data-kind="paper-section"]')).toBeVisible()
     await readyForScreenshot(page)
@@ -156,7 +179,7 @@ test.describe('visual / detail by intent kind', () => {
 
   test('detail paper-claim at structure zoom', async ({ page }) => {
     await page.goto('/?sources=fixture')
-    await page.getByRole('button', { name: /paper-campaign/ }).first().click()
+    await page.locator('button[data-kind="paper-campaign"]').first().click()
     await page.getByRole('button', { name: /open §4 · Results/ }).click()
     await page.getByRole('button', { name: /open Claim 19/ }).click()
     await expect(page.locator('header[data-kind="paper-claim"]')).toBeVisible()
