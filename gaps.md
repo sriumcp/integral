@@ -226,6 +226,101 @@ Evidence anchored in `~/Documents/learning/coral/pi-mc/results/pi-mc/2026-05-24_
 
 ---
 
+## Source: GitHub-issues feature-campaign sizing
+
+Evidence anchored in `github.com/sriumcp/integral` (the seed fixture for B2's smoke test, captured 2026-05-25): 5 issues — 1 tracking with 3 formal sub-issues + 1 top-level leaf. Schema mapping verified end-to-end via `gh` CLI.
+
+### G-F-1. `Declaration.success_criterion` has no source in a GitHub issue
+
+- **Evidence:** GitHub issues carry `title` + `body` (markdown) but no separate "success criterion" field. The body conventionally describes the bug/feature, not the satisfaction predicate.
+- **v0.1 schema:** `Declaration.success_criterion: z.string().min(0).max(2000)` (allows empty).
+- **Loss:** B2 emits `''`. Detail header's "success" line is empty for every GitHub-sourced campaign.
+- **v0.2 candidate:** **Three adapters now want this** (G-N-8 Nous + G-C-1 Coral + G-F-1 GitHub) — promote to v0.2 commitment per the gaps.md two-adapter rule. Either relax `success_criterion` to optional, or add an upstream convention (issue-template field, label like `criterion:...`).
+
+### G-F-2. `feature-campaign.inherited_conventions` not populated in v0.1
+
+- **Evidence:** A GitHub repo's CLAUDE.md / CONTRIBUTING.md / coding-standards docs are the natural inputs to `inherited_conventions`. v0.1 doesn't walk the repo; full feature-dev integration (git log + repo file walk) is v0.2.
+- **v0.1 schema:** `inherited_conventions: list[KnowledgeRef]` — schema admits empty array; B2 emits `[]`.
+- **Loss:** No project-scoped conventions surface. Detail's KnowledgeRefs section is empty for GitHub Intents.
+- **v0.2 candidate:** Walk the configured repo's tree for known convention files (CLAUDE.md, CONTRIBUTING.md, .editorconfig, etc.); emit one `KnowledgeRef` per with `scope: 'project'`.
+
+### G-F-3. `feature-campaign.standing_invariants` not populated in v0.1
+
+- **Evidence:** CI rules + lint configs + repo settings (branch protection, required checks) constitute "standing invariants" — declared elsewhere but binding on this campaign.
+- **v0.1 schema:** `standing_invariants: list[Reference]` — empty in v0.1.
+- **Loss:** Same shape as G-F-2.
+- **v0.2 candidate:** Walk `.github/workflows/`, `eslint.config.js`, `tsconfig.json`, `package.json#scripts` etc.; emit `Reference`s pointing at each.
+
+### G-F-4. `state_reason: REOPENED` is transient and lossy
+
+- **Evidence:** When an issue is reopened, GitHub flips `state` back to `OPEN` and may set `state_reason: REOPENED` briefly. The "this issue was closed and then reopened" history is captured only in the timeline events API, not on the issue object directly.
+- **v0.1 schema:** B2 maps to `Status: 'active'` (correct for current state) but the *history* is dropped because `IntentState.history = []`.
+- **Loss:** Reopens vanish from the activity log. Users can't tell from the chrome whether an issue is "freshly opened" vs. "previously satisfied, now reopened."
+- **v0.2 candidate:** Walk `/repos/{o}/{r}/issues/{n}/timeline` and reconstruct state transitions. Tied to G-F-7.
+
+### G-F-5. Legacy issues with `state_reason: null` map ambiguously
+
+- **Evidence:** Issues closed before GitHub introduced `state_reason` (~2022) have `null` in that field even when they were completed. v0.1 defensively maps to `'satisfied'`.
+- **v0.1 schema:** Mapping is consistent (every legacy closed issue → `'satisfied'`); the loss is in distinguishing them from explicitly-completed modern issues.
+- **Loss:** Some "closed by abandonment" pre-2022 issues are mis-bucketed as satisfied.
+- **v0.2 candidate:** Use the issue's `closed_by` + close-event reason (timeline) to disambiguate. Or accept the loss — pre-2022 data is increasingly historical.
+
+### G-F-6. Unassigned issues need a synthetic Party to satisfy `Holder.parties.min(1)`
+
+- **Evidence:** GitHub issues can be unassigned indefinitely (an issue someone filed but no one's claimed). The schema requires `Holder.parties` to be non-empty.
+- **v0.1 schema:** B2 emits a synthetic `{id: 'github-unassigned', kind: 'system', display_name: '(unassigned)'}` party with `holder.mode: 'jointly-held'`.
+- **Loss:** "No human owns this" gets recharacterized as "the system owns it." Subtle but the chrome's holder chip shows `(unassigned)` which is at least honest.
+- **v0.2 candidate:** Either (a) relax `Holder.parties` to allow zero (riskier — invariants downstream may rely on min(1)), or (b) introduce a typed sentinel `{kind: 'unassigned'}` in `PartyKindSchema`.
+
+### G-F-7. `IntentState.history` is empty — timeline events not reconstructed
+
+- **Evidence:** GitHub's `/timeline` API returns assigned/unassigned, label add/remove, milestone change, close/reopen, etc. as typed events. v0.1 doesn't walk them.
+- **v0.1 schema:** `IntentState.history: array(StateTransitionSchema)` — schema admits empty array.
+- **Loss:** Detail's activity strip shows nothing for GitHub Intents (no transitions, no comments — see G-F-8). The Detail surface for an active GitHub issue is essentially raw fields.
+- **v0.2 candidate:** Walk `/timeline`; map each event to a `StateTransition`. Cost: one API call per issue (or paginated repo-wide events). Probably wait for B2 + B3 lessons before designing the walker.
+
+### G-F-8. Comments not loaded in v0.1
+
+- **Evidence:** Issue comments are an N+1 fetch (per-issue) or one repo-wide call (`/repos/{o}/{r}/issues/comments`). B2 doesn't load them. The activity strip on Detail for GitHub Intents stays empty (combined with G-F-7).
+- **v0.1 schema:** No specific operation kind matches "user commented on tracked work" — closest semantic fit is `clarify`, but it's a stretch (clarify is a draft-shaping operation in the schema's vocabulary).
+- **Loss:** Discussion history vanishes from the chrome.
+- **v0.2 candidate:** Either (a) load via repo-wide `/issues/comments` and map to `clarify` operations (lossy semantically — record the forced fit), OR (b) introduce a new `OperationKind: 'comment'` (breaks v0.1 schema; v0.2-only). Decide alongside G-F-7's timeline walker — both are activity-log inputs.
+
+### G-F-9. Cross-repo sub-issues silently dropped
+
+- **Evidence:** GitHub allows a tracking issue in repo A to have sub-issues in repo B. The `/sub_issues` endpoint returns them. B2 filters them out (compares `repository_url` against the configured source's repo).
+- **v0.1 schema:** Workspace is single-source-per-fetch; cross-repo children would need to also exist in the workspace.
+- **Loss:** Cross-repo children disappear from the parent's `decomposition.children` without trace. The chrome can't tell the parent had additional children elsewhere.
+- **v0.2 candidate:** Either (a) multi-repo source semantics (one source = many repos, fetched together), OR (b) emit `EvidenceLink` records for cross-repo children with `relation: 'derived-from'` so the link survives even if the child intent doesn't.
+
+### G-F-10. `'github-repo'` `ExternalAnchorKind` added as v0.1.0 additive
+
+- **Evidence:** B2 needs to anchor `feature-campaign.repo_anchor` at a GitHub repo URL. The closest existing kind was `'github-pr'` (wrong — anchors a PR, not a repo) or `'other'` (works but loses signal).
+- **v0.1 schema:** **Added `'github-repo'` to `ExternalAnchorKindSchema` as a v0.1.0 additive amendment** (per CLAUDE.md: "Adding a fifth intent kind is a v0.2 change" but enum-value additions on string-shaped fields stay at v0.1.0). Documented in `intent-schema-v0.1.md`.
+- **No further v0.2 work.** This entry exists to document the additive amendment, not propose further change.
+
+### G-F-11. `feature-campaign.repo_anchor` is single-repo
+
+- **Evidence:** The schema admits one repo per `feature-campaign`. Monorepo workflows with sub-repos, or cross-org tracking issues spanning repos, would need a different shape.
+- **v0.1 schema:** `repo_anchor: ExternalAnchor` — singular.
+- **Loss:** B2 declares one source = one repo as a v0.1 simplification.
+- **v0.2 candidate:** Either (a) `repo_anchors: list[ExternalAnchor]` (plural), or (b) keep singular and use `EvidenceLink`s for cross-repo references. (b) is cleaner — the primary repo is structural, secondary repos are evidential.
+
+### G-F-12. Issue → PR linking unrepresented
+
+- **Evidence:** GitHub auto-links PRs that say "Closes #123" in their body. The `linked_pull_requests` field on issues exposes this. v0.1 ignores it (no PR reading at all).
+- **v0.1 schema:** Would need either `feature-campaign.primary_pr_anchor` populated (currently unused) or a typed `EvidenceLink` from issue → PR.
+- **v0.2 candidate:** Full feature-dev (the original v0.1 plan promoted to v0.2) — read PRs as `feature-pr` Intents, link via `EvidenceLink` with `relation: 'derived-from'` from PR → issue.
+
+### G-F-13. Task-list-syntax hierarchy unrepresented
+
+- **Evidence:** Many older repos use `- [ ] #123` in issue bodies to express sub-issue relationships, predating GitHub's formal sub-issues feature (2024). v0.1 honors only formal sub-issues.
+- **v0.1 schema:** Would map identically once the relationships are extracted.
+- **Loss:** Repos using the older convention show up as a flat list of leaves with no hierarchy.
+- **v0.2 candidate:** Parse issue bodies for `- [ ] #N` references; treat as `decomposition.children` if the referenced issue is in the same repo. Disambiguate "blocks" / "fixes" / "see also" — multiple conventions exist.
+
+---
+
 ## Cross-cutting observations
 
 These are not gaps to fix — they're observations that may shape v0.2 thinking.

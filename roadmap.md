@@ -25,7 +25,7 @@ This roadmap is checked against those three at every revision. If a planned item
 4. ShapingSurface (two-pane drafts, in-memory commit).
 5. Visual regression baselines (15 PNGs locked).
 
-**v0.1 expansion (Path 2) — Track A closed; B1 shipped.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3+4 shipped. Projection generator (A2), refresh affordances (A3), source configuration, writeback (A4), LLM-driven shaping (A4.6), run-command surfacing (A5) all done. The full Nous round-trip is closed end-to-end: declare (LLM-shape) → handover (writeback YAML) → run-command resolution (chrome) → execute (terminal, user-driven) → interpret (read adapter + projections). **B1 (Coral, Adapter #2) shipped 2026-05-24** — read-only Phases 1+2: declarations + scored attempts; DAG-shaped decomposition via `parent_hash` (parents/children wired through `decomposition` and `extension.parent_attempts`); 14 schema-fit gaps recorded as G-C-1..G-C-14. In-chrome process invocation and the cross-kind orchestrator are v0.2. **Track B remains: B2 (GitHub issues).** Track C (filter/group/sort) remains.
+**v0.1 expansion (Path 2) — Track A closed; B1 + B2 shipped.** Schema-side typed `Operation` log + multi-source data plane + Adapter #1 (Nous) Phases 1+2+3+4 shipped. Projection generator (A2), refresh affordances (A3), source configuration, writeback (A4), LLM-driven shaping (A4.6), run-command surfacing (A5) all done. The full Nous round-trip is closed end-to-end. **B1 (Coral, Adapter #2) shipped 2026-05-24** — read-only Phases 1+2 with DAG-shaped decomposition via `parent_hash`; 14 G-C-* gaps recorded. **B2 (GitHub issues, Adapter #3) shipped 2026-05-25** — read-only Phases 1+2 producing `feature-campaign` Intents with sub-issue hierarchy via `decomposition.children`; first networked transport (`gh` CLI subprocess); falsification fixture is `github.com/sriumcp/integral` itself; 13 G-F-* gaps recorded; one v0.1.0 additive schema amendment (`'github-repo'` `ExternalAnchorKind`). Schema breadth claim now stands across three of four canonical kinds (Nous + Coral + GitHub-issues). In-chrome process invocation and the cross-kind orchestrator are v0.2. **Track C (filter/group/sort) remains.**
 
 Verification at this commit: 611 Vitest + 17 behavioral E2E + 15 visual baselines + typecheck clean + build clean.
 
@@ -132,8 +132,25 @@ The grader's `task.yaml` has `direction: maximize|minimize` — the `coral-optim
 
 **Gaps recorded:** G-C-1..G-C-14 in `gaps.md` (success_criterion, direction, search_algorithm, role-evolution, campaign-done signal, attempt-status enum, feedback, shared_state_hash, budget_class, notes-as-KnowledgeRefs, personas, skills, operational state, agent-worktree kind name).
 
-**B2. Adapter #3 — GitHub issues (as feature-campaign).**
-Read GitHub issues + comments via `gh` CLI or REST API for a configurable repo. Issues become `feature-campaign` declarations: title → `declaration.title`, body → `declaration.summary`, labels → `tags`, assignees → `holder.parties`, comments → activity. Sub-issues / linked PRs / commits / CI status are deferred (full feature-dev integration is v0.2). This is the lighter stand-in for the original "feature-campaign with git log + GitHub PR API + repo-scoped CLAUDE.md" — same kind, thinner read scope.
+**B2. ✓ Adapter #3 — GitHub issues (shipped 2026-05-25).**
+Read GitHub issues via `gh` CLI for a configurable repo. Issues become `feature-campaign` declarations: title → `declaration.title`, body → `declaration.summary`, labels → `tags`, assignees → `holder.parties`. **Sub-issue hierarchy preserved** as `decomposition.children` — tracking issues become parents, leaves stay leaves. Recursive nesting works. Cross-repo sub-issues silently dropped (G-F-9). Comments / linked PRs / CI status / git log / repo-CLAUDE.md walk all deferred to v0.2 (full feature-dev integration).
+
+**Implementation plan:** see `integral-ui/.plan-b2.md`.
+
+**Shipped:**
+- `src/adapters/feature/` — browser-safe transport/interpreter split mirroring Nous + Coral. `types.ts` (GitHubIssuesSource, ParsedIssue, ParsedSubIssueRef, RepoCoordinates), `tree.ts` (pure tree reconstruction with cycle defense + cross-repo filtering at the source boundary), `interpreter.ts` (`buildFeatureWorkspace`, `interpretIssue`).
+- `vite-plugin-nous-adapter/gh-cli-source.ts` — Node-only `GhCliIssuesSource`. Argv-based subprocess (Node's `execFile` family via `util.promisify`); pre-validates `<owner>/<name>` against strict regex; user-controlled fields never reach argv. Wraps `gh issue list --repo … --json …` (single paginated call) + `gh api repos/.../issues/{n}/sub_issues` per tracking issue. Concurrency-capped at 4 for per-issue `subIssuesSummary` fetches. Subprocess timeout 60s; 32MB max buffer. Surfaces typed errors for `ENOENT` (gh not installed), `SIGTERM` (timeout), and stderr propagation.
+- Vite plugin: `sources-config.ts` accepts `kind: 'github-issues'`; for that kind `path` is treated as a repo coordinate, NOT filesystem-expanded. `index.ts` `buildWorkspaceForSource` adds the dispatch branch. `writeback-handler.ts` rejects non-Nous sources with an explicit per-adapter v0.2 message.
+- Schema: `'github-repo'` added to `ExternalAnchorKindSchema` as a v0.1.0 additive amendment. Documented in `intent-schema-v0.1.md`. 3 new schema unit tests; existing 48 unaffected.
+- Sub-issue tree: parent's `decomposition.children` wired via formal `/sub_issues` endpoint (GitHub's 2024 feature). Tracking issues get `lifetime.kind: 'campaign'`; leaves get `'discrete'`. Sub-issues do NOT also appear at top level.
+- State mapping: `OPEN → active`, `CLOSED+COMPLETED → satisfied`, `CLOSED+NOT_PLANNED → abandoned`, `CLOSED+DUPLICATE → abandoned`, `CLOSED+null → satisfied` (legacy default; G-F-5).
+- Holder: assignees → human Parties, mode `'human-held'`. Unassigned issues get a synthetic `(unassigned)` system Party with mode `'jointly-held'` (G-F-6).
+- Bot detection: `author.is_bot === true` → `kind: 'agent'`. Normalizes both `is_bot` (gh CLI shape) and REST's `type: 'Bot'`.
+- 34 new Vitest tests (8 tree + 26 interpreter including the `sriumcp/integral` fixture round-trip). 5 smoke tests against the live repo.
+
+**Falsification fixture:** `github.com/sriumcp/integral` (this repo). Seeded with 5 issues: 1 tracking issue (`#1` v0.1 expansion roadmap) with 3 formal sub-issues (`#2` B1 closed/COMPLETED, `#3` B2 open, `#4` C1 open) + 1 top-level leaf (`#5` Visual baseline regen tracker). Smoke verified: tracker resolves to a campaign with 3 children; #2 maps to `'satisfied'`; #5 stays at top-level; merged 3-adapter workspace (5 feature + 71 nous + 3 coral = 79 intents) validates against `WorkspaceSchema`.
+
+**Gaps recorded:** G-F-1..G-F-13 in `gaps.md` (success_criterion, inherited_conventions, standing_invariants, REOPENED transient state, legacy null state_reason, unassigned synthetic party, timeline events not reconstructed, comments not loaded, cross-repo dropped, github-repo additive amendment, single-repo per source, issue-PR linking, task-list-syntax hierarchy). G-F-1 closes the three-adapter `success_criterion` cross-signal (G-N-8 + G-C-1 + G-F-1) — promotes from "candidate" to "v0.2 commitment" per the gaps.md two-adapter rule.
 
 ### Track C — Cross-cutting UI (parallel with both tracks)
 

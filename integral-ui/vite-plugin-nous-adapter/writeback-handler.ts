@@ -97,7 +97,9 @@ export async function handleWriteback(
     return {
       ok: false,
       status: 400,
-      error: `writeback target source must be of kind "nous", got "${source.kind}"`,
+      error:
+        `writeback target source must be of kind "nous", got "${source.kind}". ` +
+        `Per-adapter writeback (coral, github-issues, paper) is v0.2 with the orchestrator.`,
     }
   }
 

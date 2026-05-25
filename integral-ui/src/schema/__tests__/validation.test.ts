@@ -13,6 +13,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   EvidenceLinkSchema,
+  ExternalAnchorKindSchema,
+  ExternalAnchorSchema,
   IntentKindSchema,
   IntentSchema,
   IntentStateSchema,
@@ -381,6 +383,29 @@ describe('Provenance.source — v0.1.0 additive amendment', () => {
     const result = IntentSchema.safeParse(decorated)
     // z.string().min(1) — empty strings are not valid sources.
     expect(result.success).toBe(false)
+  })
+})
+
+describe('ExternalAnchorKind — additive amendment for github-repo (B2)', () => {
+  it("accepts kind: 'github-repo' (added v0.1.0 for Adapter #3)", () => {
+    expect(
+      ExternalAnchorKindSchema.safeParse('github-repo').success
+    ).toBe(true)
+  })
+
+  it('accepts a full ExternalAnchor with kind: github-repo', () => {
+    const anchor = {
+      kind: 'github-repo' as const,
+      uri: 'https://github.com/sriumcp/integral',
+      read_only: true,
+    }
+    expect(ExternalAnchorSchema.safeParse(anchor).success).toBe(true)
+  })
+
+  it('still rejects unknown anchor kinds', () => {
+    expect(
+      ExternalAnchorKindSchema.safeParse('not-a-real-kind').success
+    ).toBe(false)
   })
 })
 

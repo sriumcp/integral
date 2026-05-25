@@ -230,7 +230,9 @@ StateTransition:
   evidence:     list[Reference]?
 
 ExternalAnchor:
-  kind:         enum { git-branch | github-pr | filesystem-path | markdown-doc | bibliography | worktree | nous-campaign-dir | coral-shared-dir | other }
+  kind:         enum { git-branch | github-pr | github-repo | filesystem-path | markdown-doc | bibliography | worktree | nous-campaign-dir | coral-shared-dir | other }
+                // `github-repo` was added v0.1.0 (additive amendment) for
+                // Adapter #3 (GitHub-issues → feature-campaign).
   uri:          URI
   read_only:    bool               // if true, Integral MUST NOT mutate this anchor
   last_synced:  Timestamp?

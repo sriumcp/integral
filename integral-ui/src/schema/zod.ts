@@ -99,6 +99,7 @@ export const ZoomLevelSchema = z.enum(['overview', 'structure', 'detail'])
 export const ExternalAnchorKindSchema = z.enum([
   'git-branch',
   'github-pr',
+  'github-repo',
   'filesystem-path',
   'markdown-doc',
   'bibliography',
@@ -107,6 +108,10 @@ export const ExternalAnchorKindSchema = z.enum([
   'coral-shared-dir',
   'other',
 ])
+// `'github-repo'` added v0.1.0 (additive amendment per CLAUDE.md
+// meta-rule: optional additive fields and enum values stay at the
+// current minor). Used by Adapter #3 (GitHub-issues → feature-campaign);
+// see `intent-schema-v0.1.md` for the full anchor-kind enumeration.
 
 export const EvidenceRelationSchema = z.enum([
   'supports',

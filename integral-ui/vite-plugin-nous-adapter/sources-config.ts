@@ -32,13 +32,17 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-export type AdapterKind = 'nous' | 'coral'
+export type AdapterKind = 'nous' | 'coral' | 'github-issues'
 
 export interface ConfiguredSource {
   id: string
   kind: AdapterKind
   label: string
-  /** Resolved absolute path (with `~` and relatives expanded). */
+  /** For filesystem-backed adapters (`'nous'`, `'coral'`): a resolved
+   *  absolute filesystem path (with `~` and relatives expanded). For
+   *  `'github-issues'`: an `<owner>/<name>` repo coordinate, NOT
+   *  filesystem-expanded. The dispatcher in `index.ts` interprets this
+   *  field according to `kind`. */
   path: string
 }
 
@@ -130,19 +134,23 @@ function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
   if (typeof obj.id !== 'string' || obj.id.length === 0) return null
-  if (obj.kind !== 'nous' && obj.kind !== 'coral') {
+  if (obj.kind !== 'nous' && obj.kind !== 'coral' && obj.kind !== 'github-issues') {
     // eslint-disable-next-line no-console
     console.warn(
-      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — supported kinds: "nous", "coral"`
+      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — supported kinds: "nous", "coral", "github-issues"`
     )
     return null
   }
   if (typeof obj.label !== 'string' || obj.label.length === 0) return null
   if (typeof obj.path !== 'string' || obj.path.length === 0) return null
+  // For github-issues, `path` is a repo coordinate (`owner/name`) and
+  // must NOT be filesystem-expanded — the gh-cli-source validates the
+  // shape on its own. Filesystem-backed kinds do path expansion.
+  const resolvedPath = obj.kind === 'github-issues' ? obj.path : expandPath(obj.path, cwd)
   return {
     id: obj.id,
     kind: obj.kind,
     label: obj.label,
-    path: expandPath(obj.path, cwd),
+    path: resolvedPath,
   }
 }

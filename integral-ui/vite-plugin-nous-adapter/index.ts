@@ -2,6 +2,7 @@ import * as path from 'node:path'
 import type { Plugin } from 'vite'
 import { buildNousWorkspace } from '../src/adapters/nous'
 import { buildCoralWorkspace } from '../src/adapters/coral'
+import { buildFeatureWorkspace } from '../src/adapters/feature'
 import {
   generateProjection,
   type PluginRegistry,
@@ -12,6 +13,7 @@ import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
 import { FilesystemNousSource } from './filesystem-source'
 import { FilesystemCoralSource } from './coral-filesystem-source'
+import { GhCliIssuesSource } from './gh-cli-source'
 import {
   projectionCacheDir,
   readPersistedProjection,
@@ -401,6 +403,8 @@ async function buildWorkspaceForSource(
       return buildNousWorkspace(new FilesystemNousSource(configured.path))
     case 'coral':
       return buildCoralWorkspace(new FilesystemCoralSource(configured.path))
+    case 'github-issues':
+      return buildFeatureWorkspace(new GhCliIssuesSource(configured.path))
   }
 }
 
