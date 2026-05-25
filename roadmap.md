@@ -215,7 +215,87 @@ The expansion is done when **all** of the following hold:
 6. **`semantics-v0.1.md` updated** — any S-component that changed status (e.g., S-1 promoted from "not implemented" to "implemented for Nous kinds") reflects in the doc.
 7. **CLAUDE.md "Current state" reflects ship state** — test counts, current adapters, current operations.
 
-After v0.1 expansion: regroup, design v0.2 (schema bump + writeback hardening + Paper adapter + full feature-dev + semantic-model promotion).
+After v0.1 expansion: regroup, design v0.1.5 (per-adapter outcome cleanup, see next section), then v0.2 (schema bump + Paper adapter + orchestrator).
+
+---
+
+## v0.1.5 — make each adapter actually serve its user's outcome
+
+**Phase position:** between v0.1 ship and v0.2 substrate work. Not a polish pass; a re-framing.
+
+**Essence:** v0.1 made the substrate work. v0.1.5 makes each adapter useful for what its user is actually trying to do — not just legible to read.
+
+**The framing question:** *"what is each adapter's user trying to accomplish, and where does the chrome help vs. just display?"* The answer differs per adapter, so the cleanup differs per adapter — but the discipline is the same: cut affordances that don't serve the primary outcome, add the ones that do, and let the legibility issues from `.notes-v0.1.5.md` (loading states, empty states, stale-data signals) fall out as consequences of doing the outcome work right.
+
+**Why this isn't v0.2 work.** v0.2 expands the substrate (schema bump, Paper adapter, cross-kind orchestrator, per-kind writeback). v0.1.5 stays inside the v0.1 substrate and asks: with what's already shipped, can each adapter help its user finish the job? The schema and the adapter contracts don't change. Only the chrome over them does.
+
+### Per-adapter primary outcome
+
+| Adapter | What the user is trying to accomplish |
+|---|---|
+| **Nous** | Move a research question through an iterative cycle: shape → run → read → iterate. Today the shape end works; the read-and-iterate handoff is weak. |
+| **Coral** | Steer a population-based optimization: what's the leader, what's gaming, what's the trend, what should I try next. Today the chrome reads but doesn't help steer. |
+| **GitHub-issues** | Triage work in a repo: what needs me, what's blocked, what's in flight, what's connected. Today the chrome shows the issue tree but nothing else. |
+
+### Nous — the shaper goes from transcription to enablement
+
+The shaper exists (A4.6) and works as a chat that fills declaration fields. To make it actually enabling — getting the user from vague research idea to running campaign that produces insight:
+
+1. **Show the resulting `campaign-X.yaml` in real time** as fields fill. User verifies before committing instead of "trust me."
+2. **Pre-flight validation during shaping** — does `target_system.repo_path` exist on disk? Is `nous` installed? Surface as inline hints, not modals.
+3. **Socratic prompts on the research question.** The LLM is currently responsive (user says X, LLM transcribes X). The strongest research-question coach pushes back: "this is descriptive, not predictive — what would you bet on?" Karpathy-genre = small inline hint.
+4. **Templates from past campaigns.** "You shaped a similar campaign 3 weeks ago — start from `best-of-field-comparison`?" The shaper has workspace access; pull existing intents.
+5. **Aftermath integration.** When a campaign completes, offer: "want to shape a follow-up that builds on iter-2's confirmed h_main?" Closes the loop from "I ran it" → "I'm shaping the next one."
+6. **Visible commit audit** — show what's about to be written, where, and what command will run. Mutation visibility *before* the click.
+7. **Concerns inline, not paneled** — move the LLM's concerns next to the fields they're about, like spell-check underlines for shape-quality.
+
+### Coral — read-comprehension that lets the user steer
+
+Coral is read-only in v0.1. v0.2 brings shaping + orchestration. v0.1.5's job is to make the read affordances actually serve the steering outcome:
+
+1. **Best-so-far chart.** The single most useful Coral artifact is the leader trend over attempts. Currently no visualization.
+2. **Gaming-detection signal.** The `math.pi` attempt hit the 1e12 cap — that's a structural tell, not a real solution. Mark suspicious attempts visibly ("score = grader cap; verify").
+3. **Side-by-side attempt diff.** Click two attempts → see the diff in `solution.py`. Coral is fundamentally about variation; the chrome should make variation legible.
+4. **Agent personalities visible.** Each `roles/agent-N.md` is a typed agent identity (G-C-4 lossy today). Show the persona inline on attempt cards — "agent-2 (strategic analyst)."
+5. **Notes-as-principles, in context.** G-C-10 lossy mapping today; surface note bodies (or excerpts) on the campaign Detail. The user's mental model of the run depends on the synthesis their notes capture.
+
+### GitHub-issues — make the queue actually triagable
+
+GitHub is read-only in v0.1. Issue creation / commenting from chrome is v0.2 writeback. v0.1.5's job is to make the *triage* outcome work:
+
+1. **Timeline events + comments loaded.** Promote G-F-7 + G-F-8 from candidate to v0.1.5 commitment. Activity Strip on GitHub Detail is silent today; making it speak is the highest-leverage GitHub fix. ("agent-bot commented 2h ago: blocked on review.")
+2. **Linked PRs as references.** GitHub's `linked_pull_requests` field exists on issues. Surface as a chip on Detail ("linked: PR#123 ci-failing") — typed as an `EvidenceLink` reference, not yet a full `feature-pr` Intent.
+3. **Stale-data signal honest.** When the Map says "5 active" but reality has shifted on github.com, surface "synced 12m ago · refresh →." (Theme C from `.notes-v0.1.5.md`, framed as serving triage — you can't triage on stale data.)
+4. **Markdown body rendering on Detail.** Issues use markdown — checklists, links, code blocks. Render them. Closest in-spec substitute for the missing projection plugin.
+5. **Body-search / jump-to-issue.** With 50+ issues, scrolling is dead time. `/` keyboard shortcut → narrow to substring matches → jump.
+6. **One-click jump to github.com to comment.** Until v0.2 brings issue writeback, surface the Detail header link prominently.
+
+### What v0.1.5 leaves to v0.2
+
+The outcome framing makes the v0.2 boundary cleaner:
+
+- **Coral writeback / task shaping.** Coral's "shape a task" is structurally a writeback story — needs `task.yaml` serializer + LLM shape-handler with Coral-specific prompts. Defer.
+- **GitHub issue creation / commenting from chrome.** Same shape — writeback. Defer.
+- **Cross-kind orchestrator** (run from chrome). Defer.
+- **Schema bump** (G-C-* / G-F-* promotions). Defer.
+- **Paper adapter.** Defer.
+
+### Falsification per adapter
+
+Each cleanup needs a checkable stop condition (analogous to "the schema accepts this without modification" for B1/B2). Picked at brainstorm time:
+
+- **Nous:** the spec-gaming nous-campaign that passes commit gating today should fail it under v0.1.5's pre-flight validation OR the user is shown the validation failure inline. (Concrete: shape a campaign with a non-existent `repo_path` → committing is gated until the path exists.)
+- **Coral:** the `math.pi` spec-gaming attempt is visually marked as "score = grader cap; verify" on the campaign Detail. (Concrete: open pi-mc Detail → both attempts have a suspicious-cap chip.)
+- **GitHub-issues:** the Activity Strip on a GitHub Detail surface shows ≥1 timeline event for an issue that has comments. (Concrete: open issue #1 Detail → ≥1 event, not "no activity yet.")
+
+### Companion files
+
+- **`integral-ui/.notes-v0.1.5.md`** — the original parking lot (legibility framing). To be re-organized once v0.1.5 brainstorming converts these themes into the outcome framing above. The legibility issues stay in scope; they're now consequences rather than primary objectives.
+- **`integral-ui/.plan-v0.1.5.md`** — to be written after brainstorming + scope decisions. Not started.
+
+### Implementation note
+
+v0.1.5 is **scoped to chrome work** — no new schema, no new adapter contracts, no new endpoints (with the exception of GitHub timeline / comments fetch, which is a strict additive read on top of the existing `gh-cli-source.ts`). If a v0.1.5 candidate requires substrate change, it slides to v0.2.
 
 ---
 
