@@ -253,7 +253,7 @@ The shaper exists (A4.6) and works as a chat that fills declaration fields. To m
 
 Coral is read-only in v0.1. v0.2 brings shaping + orchestration. v0.1.5's job is to make the read affordances actually serve the steering outcome:
 
-1. **Best-so-far chart.** The single most useful Coral artifact is the leader trend over attempts. Currently no visualization.
+1. **Best-so-far chart.** The single most useful Coral artifact is the leader trend over attempts. Currently no visualization. Folded into the cross-adapter visual vocabulary below as the `BestSoFarLine` atom (Phase 3).
 2. **Gaming-detection signal.** The `math.pi` attempt hit the 1e12 cap — that's a structural tell, not a real solution. Mark suspicious attempts visibly ("score = grader cap; verify").
 3. **Side-by-side attempt diff.** Click two attempts → see the diff in `solution.py`. Coral is fundamentally about variation; the chrome should make variation legible.
 4. **Agent personalities visible.** Each `roles/agent-N.md` is a typed agent identity (G-C-4 lossy today). Show the persona inline on attempt cards — "agent-2 (strategic analyst)."
@@ -270,6 +270,61 @@ GitHub is read-only in v0.1. Issue creation / commenting from chrome is v0.2 wri
 5. **Body-search / jump-to-issue.** With 50+ issues, scrolling is dead time. `/` keyboard shortcut → narrow to substring matches → jump.
 6. **One-click jump to github.com to comment.** Until v0.2 brings issue writeback, surface the Detail header link prominently.
 
+### Cross-adapter visual vocabulary — the progress pillar
+
+**Phase position:** atom-level commitment. Composes into the per-adapter projection plugins above. Distinguished from v0.2 *findings* plots: this section ships **progress trackers** (plots about a campaign's meta-state — how many iterations, which hypotheses are confirmed, when gates transitioned), not **findings plots** (plots about the data the campaign produced — those need a schema bump and live in v0.2).
+
+**Architecture: hand-tuned static SVG. No chart library.** Atoms in `src/components/atoms/` extend the existing `Sparkline` / `ScoreGauge` / `HypothesisBars` vocabulary. Each atom takes typed structured data and renders inline SVG. Per-kind projection plugins compose them. The "no library" choice is load-bearing — these atoms set the aesthetic register against which v0.2's Observable Plot output will be visually tested.
+
+**Aesthetic discipline (load-bearing for both v0.1.5 and v0.2):**
+- Inherit `--paper` / `--ink` / `--mute` / `--amber` / `--sage` / `--rose` tokens. No hue inventions.
+- Single-amber signal preserved: `--amber` only for "current/active/awaiting" — never decorative.
+- `--sage` for confirmed/satisfied; `--rose` for refuted/abandoned; `--mute-2` for "not yet probed."
+- Whitespace > gridlines. Reach for whitespace before drawing a line; if a gridline must exist, render in `--mute-2` dashed at low opacity.
+- Annotation > legend. Label values inline; never push to a sidebar legend.
+- Typography: serif rare (titles only when the surrounding context doesn't provide one); mono for tick labels and value annotations; sans for axis titles.
+- No animation, no tooltips. In-band annotations only.
+- Always show units, scale type (linear/log), and N (sample size) when relevant.
+- Don't lie: y-axis starts at zero unless the data demands a different anchor (and the anchor is named inline if so).
+- Small multiples > overlays for comparison. Avoid spaghetti plots.
+- Print-faithful: SVG output, no canvas, no JS-runtime interactivity.
+
+**Interpretability discipline:**
+- The central question must be legible from a 2-second glance.
+- A reader who's never seen this codebase reads the plot the same way as a senior researcher.
+- One-line human-authored summary above each plot (no LLM in v0.1.5 — atoms author their own captions).
+
+**The three atoms** (revised after schema audit — `IterationTrajectory` deferred to v0.2):
+
+| Atom | Renders | Data threshold | Schema fields consumed | First adapter consumer |
+|---|---|---|---|---|
+| **`PrinciplesTempo`** | Stepped line of cumulative principles extracted per iteration; gaps in the slope tell the user "we learned in bursts" | ≥1 principle | `nous-iteration.extension.principles_emitted: Reference[]` + `iteration_number` | Nous (`nous-campaign + structure`) |
+| **`HypothesisGrid`** | 2D grid: rows = hypothesis position (h_main · h_ablation[i] · h_super_additivity · h_control_negative · h_robustness[i]), columns = iterations, cells = `--sage` ✓ / `--rose` − / `--mute-2` ? / blank | ≥1 hypothesis with ≥1 probe | `nous-iteration.extension.hypothesis_bundle.*.result: 'pending' \| 'confirmed' \| 'refuted' \| 'inconclusive'` | Nous (`nous-campaign + detail`) |
+| **`BestSoFarLine`** | Step-line of best score across attempts; gaming attempts marked with `--rose` triangles | ≥3 attempts | `coral-attempt.extension.score: number` + `coral-attempt` ordering | Coral (`coral-optimization + structure`) — replaces the existing v0.1.5 Coral outcome #1 |
+
+**Schema audit note (load-bearing):** the originally-planned fourth atom `IterationTrajectory` ("sparkline of the campaign's main metric") was deferred. The v0.1 `nous-iteration.extension` schema carries no numeric metric field — that gap is **G-N-4** (`prediction_accuracy` aggregate) and **G-N-9** (`control/robustness/ablation outcomes`), both v0.2 schema-bump candidates. Plotting a metric trajectory would either require fabricating data or building against a schema that doesn't yet exist. Both fail the "don't pretend to have data we don't have" discipline. Once G-N-4 lands in v0.2, the trajectory work *naturally folds into the existing v0.2 `trajectory` directive* (Observable Plot output, LLM-emitted) — there is no separate atom to build later. The directive grammar already covers it.
+
+Each atom: one component file + one CSS module + one behavioral test file. Tests assert structural attributes (axis labels, annotation text, `data-*` hooks) but never SVG path data — same discipline as `IntegralGlyph.test.tsx:5-6`. Estimated ~500-700 lines total across the three atoms.
+
+**Per-adapter composition:**
+- **Nous** — structure projection composes `PrinciplesTempo` (full-width or compact at ≥1024px); detail projection adds `HypothesisGrid` (full-width). Trajectory plot deferred to v0.2 alongside G-N-4.
+- **Coral** — structure projection composes `BestSoFarLine` (full-width) with gaming markers tied to G-C-6 status mapping; folds the existing v0.1.5 Coral outcome #1 into the cross-adapter atom.
+- **GitHub-issues** — no progress visualization in v0.1.5; issues don't carry numeric trajectory data. Markdown body rendering (GitHub outcome #4 above) covers the read pillar instead.
+
+**Timeline / sequencing (v0.1.5):**
+
+1. **Phase 1 — `PrinciplesTempo` + `HypothesisGrid`.** Both consume `nous-iteration.extension` data — `PrinciplesTempo` reads `principles_emitted.length` per iteration; `HypothesisGrid` reads `hypothesis_bundle.*.result`. Atoms ship together as one atom-pair PR with shared data-pipeline patterns. `PrinciplesTempo` wires into Nous structure projection; `HypothesisGrid` into Nous detail projection. Acceptance: a Nous campaign with ≥1 principle + ≥1 hypothesis renders both atoms without LLM dependency; v3 plateau study's hypothesis ledger reads cleanly with no legend. **~2-3 days.**
+2. **Phase 2 — `BestSoFarLine` + Coral integration.** Different data shape (Coral attempts carry numeric `score`); built once Phase 1's atom-architecture patterns are proven. Wires into Coral structure projection. Acceptance: pi-mc's `math.pi` gaming attempt renders with `--rose` triangle; legitimate attempts form a clean step-line. **~1-2 days.**
+3. **Phase 3 — Visual baseline regen + cross-adapter aesthetic review.** All three atoms rendered side-by-side at 1440×900 should read as one substrate, not three grafted pieces. **~½ day.**
+
+**Total scope:** ~3-4 days of focused work. Ships as 2-3 PRs.
+
+**Falsification per atom (the stop conditions):**
+- `PrinciplesTempo`: a campaign extracting 4 principles across iterations 2/5/7/12 communicates "burst learning, not steady" visually.
+- `HypothesisGrid`: the v3 plateau study renders as a clean grid distinguishing confirmed / refuted / inconclusive without a legend.
+- `BestSoFarLine`: pi-mc gaming attempts mark visibly as `--rose`; legitimate attempts form a clean step.
+- **Cross-cut**: visual baseline diff against pre-v0.1.5 Detail surfaces shows the new atoms inheriting tokens cleanly, no foreign aesthetic.
+
 ### What v0.1.5 leaves to v0.2
 
 The outcome framing makes the v0.2 boundary cleaner:
@@ -279,6 +334,7 @@ The outcome framing makes the v0.2 boundary cleaner:
 - **Cross-kind orchestrator** (run from chrome). Defer.
 - **Schema bump** (G-C-* / G-F-* promotions). Defer.
 - **Paper adapter.** Defer.
+- **Findings plots** (charts of the data the campaign produced — scatter, ablation grids, distributions, etc., authored via LLM-emitted directives + Observable Plot rendering). Depends on G-N-9 + Coral analogues being promoted. Distinct from the v0.1.5 progress trackers above. See "Findings plots" subsection under v0.2 below.
 
 ### Falsification per adapter
 
@@ -364,6 +420,107 @@ Promote the GitHub-issues stand-in (B2) to the full feature-dev story: git log +
 **Calculus semantics (cautious).**
 v0.1 declares operation signatures; v0.2 may add per-kind validity (when can `gate` fire on a `paper-claim`? When does `decompose` make sense for `coral-attempt`?). Reduction rules / composition theorems only if a pattern is forced by real adapter behavior. **Resist formalizing prematurely.**
 
+### Findings plots — declarative chart authoring (Observable Plot)
+
+**Phase position:** v0.2 atom-level commitment built on top of the schema bump. **Hard dependency** on G-N-9 (and Coral analogues) being promoted from `gaps.md` candidates to actual schema fields — cannot ship without that schema work landing first.
+
+**The distinction restated:** v0.1.5 progress trackers describe *the campaign's meta-state* (how many iterations, which hypotheses confirmed). v0.2 findings plots describe *the data the campaign produced* — scatter plots of experimental results, ablation comparisons, training curves, distribution histograms, hyperparameter heatmaps. They compose on the same Detail surface but answer different questions; they share aesthetic discipline but use different rendering primitives (atoms vs. Plot).
+
+**Aesthetic ambition:** the bar is **better than what a researcher could quickly build in matplotlib + Jupyter**. Not because the substrate has more features, but because the chrome is consistent, the typography is dialed, the color tokens align with the rest of the substrate, and the LLM picks the right chart kind for the data shape automatically. This is the load-bearing visual claim of Integral: *understanding what a campaign found should be faster here than anywhere else.*
+
+**Architectural commitment: the directive seam.**
+
+```
+Layer 1 — DATA      G-N-9-promoted Iteration.results: ResultBundle?
+                    ↓ adapter passes through (no projection)
+Layer 2 — DIRECTIVE LLM emits {type: 'scatter', x: 'model_size', y: 'accuracy', …}
+                    ↓ projection plugin (mockable for tests)
+Layer 3 — CATALOG   handAuthored.scatter(data, directive) → Plot.plot({…})
+                    ↓ pure JS (no LLM)
+Layer 4 — RENDERER  Plot output → static inline SVG
+                    ↓ unmounted, unchanging in v0.2
+DOM
+```
+
+**Module boundary:** `src/lib/charts/`. The rest of the app sees only the directive type, not Plot. Swapping the rendering primitive (Plot → Vega-Lite, or Plot → hand-tuned SVG) is a contained refactor in this module. Same load-bearing isolation discipline as the LLM client living outside `src/`.
+
+**Library: Observable Plot.** Picked over Vega-Lite for cleaner aesthetic defaults + tighter token alignment via Plot's API; over Chart.js / Plotly because Plot renders SVG (inherits CSS tokens) and is small (~200KB). Pre-1.0 status mitigated by the directive seam — **we own the per-kind plot catalog**; Plot is just the rendering primitive.
+
+**The directive grammar.** A small fixed enum of plot kinds the LLM can author safely. v0.2 ships:
+
+| Directive type | Renders | Use case |
+|---|---|---|
+| `trajectory` | Single line over iterations/attempts (extends progress sparkline) | Metric over time, small-multiple-able by `compare_by` |
+| `scatter` | x vs y, optional `color_by` / `shape_by` encoding | Correlations, "x predicts y across N runs" |
+| `compare` | Small-multiples grid faceted by a categorical field | Ablation studies, condition-by-condition |
+| `distribution` | Histogram or density | "What's the spread of N evaluator scores" |
+| `heatmap` | 2D categorical × categorical with intensity | Hyperparameter sweeps |
+| `bar` | Categorical comparison with optional error bars | Ablation summaries, group means |
+| `prose` | Fallback when nothing visual fits | LLM signals "this data doesn't have a natural plot shape" |
+
+LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Each directive is a typed Zod schema in `src/lib/charts/directive.ts` so invalid emissions fail validation and fall back to prose gracefully.
+
+**Aesthetic discipline (extending v0.1.5):**
+- All Plot calls go through catalog wrappers in `src/lib/charts/plots/<kind>.ts`. Plot's defaults are overridden once, in the catalog — never per-call.
+- Plot's CSS classes restyled via `src/lib/charts/charts.module.css` to inherit `--ink-2` for axis lines, `--mute` for tick labels, `--paper` for background. No inline styles on rendered SVG.
+- Color encoding inherits the v0.1.5 vocabulary: `--amber` for the focused/current data point, `--sage` for "confirmed/within target," `--rose` for "refuted/out of bounds," `--mute-2` for everything else. No rainbow scales by default; sequential `--ink` luminance ramps for ordinal data; categorical pastels (`--amber-soft`, `--sage-soft`, `--rose-soft`) for nominal data with ≤4 categories.
+- Typography matches the substrate: same global font stack, mono tick labels, sans axis titles. Plot's default font replaced via CSS module override.
+- **Annotations are mandatory.** Every plot has a one-line LLM-authored caption above it (*"r=0.78 — model size predicts accuracy on the eval set"*). The caption is the entry point; the plot is the supporting evidence. Plots without captions don't render.
+- No interactive features in v0.2. No tooltips, no hover, no zoom. Static SVG, readable from print, accessible to screen readers via `<title>` / `<desc>`. Interactive plots are v0.3.
+- Don't lie: same discipline as v0.1.5 — no axis truncation, always show N, always show units.
+
+**Interpretability discipline:**
+- LLM directive emission is bounded — a fixed enum, not arbitrary code. Sanitize: if the directive's named fields don't match the data's actual keys, fall back to prose and log the mismatch.
+- Caption + plot must answer "what's the takeaway in 5 seconds?" together. If a reader needs to read both fully to understand, the plot has failed.
+- Each catalog wrapper has hand-authored *inline annotations* (e.g., scatter highlights the focused data point; compare grid annotates the leading panel). Annotations are part of the catalog, not LLM-driven.
+
+**Per-adapter rollout:**
+
+| Adapter | Findings plot consumers | Notes |
+|---|---|---|
+| **Nous** | `nous-iteration + detail` shows ablation/control/robustness scatter or compare plots; `nous-campaign + detail` shows aggregate findings across iterations | Phase 1 — most data-rich; first to validate the directive grammar |
+| **Coral** | `coral-optimization + detail` shows attempt-population scatter (parent_hash → child relationships visible as edges); `coral-attempt + detail` shows scatter of solution attributes | Phase 2 — second adapter; tests directive generality across kinds |
+| **Paper** | `paper-claim + detail` shows the figure referenced by the claim, fetched via `ExternalAnchor` (not stored in Integral) | Phase 3 — tests cross-tree findings (paper claims pointing at upstream Nous figures) |
+| **Feature-campaign** | None — declarative work, not data-producing | Excluded by design |
+
+**Test discipline:**
+- LLM mocked in directive emission tests. Mock returns canned directives; assertions verify the projection plugin produces the right directive given canned data. Same pattern as v0.1 projection prose tests.
+- Plot catalog tested via behavioral assertions on rendered SVG: `data-plot="scatter"`, `data-x-field="model_size"`, `data-points="42"`. Path data never asserted.
+- Snapshot tests on rendered Plot output for small fixture datasets, behind a feature flag — snapshots regenerate intentionally, never silently.
+- LLM isolation discipline preserved: real Plot calls are pure JS (no network); real LLM calls do not happen in tests.
+
+**Timeline / sequencing (v0.2):**
+
+1. **Phase 0 — Schema prerequisite.** G-N-9 promotion (typed `ResultBundle` on `Iteration`) + Coral analogues. Writes `intent-schema-v0.2.md` alongside v0.1. **~1 PR, schema design pass.**
+2. **Phase 1 — Adapter pass-through.** Stop dropping G-N-9 fields in `src/adapters/nous/`; pass `results` through. Coral analogues. **~3 PRs (Nous, Coral, Paper data-pass-through).**
+3. **Phase 2 — Directive grammar + Zod schemas.** Define the 7 directive kinds in `src/lib/charts/directive.ts` + tests. **~1 PR.**
+4. **Phase 3 — Plot catalog + renderer module.** `src/lib/charts/plots/<kind>.ts` for each directive kind + `src/lib/charts/render.ts` (the directive → Plot output dispatcher). **~6-7 PRs (one per directive kind, batchable).**
+5. **Phase 4 — LLM directive emission in projection plugins.** Update `src/lib/projection-plugins/{nous-iteration,nous-campaign,coral-*}.ts` to emit directives in addition to prose. **~3 PRs (per-kind plugin updates).**
+6. **Phase 5 — Cross-adapter aesthetic review.** Visual diffs against v0.1.5 progress trackers — the chart family must look like one substrate, not two grafted layers. **~½ day; may surface catalog tweaks.**
+
+**Total scope:** ~3-4 weeks of focused work, ~12-15 PRs across the v0.2 cycle. Lands alongside the schema bump and after the Paper adapter so the cross-tree case is real.
+
+**Falsification per directive type (the stop conditions):**
+- `scatter`: a Nous iteration's ablation results render as a scatter with the focused condition in `--amber`; reading "x correlates with y" is faster than reading the LLM's prose.
+- `compare`: a 4-condition ablation renders as 4 small multiples; the leading condition is annotated.
+- `distribution`: 100 evaluator scores render as a clean histogram with N + median annotated inline.
+- `heatmap`: a hyperparameter sweep renders without the LLM having to author a colorscale.
+- `bar`: ablation summary renders with error bars derived from the same `ResultBundle`.
+- **Cross-cut**: a researcher comparing the Detail surface to their own matplotlib Jupyter scratch finds Integral's plot more readable in <30 seconds.
+
+**Stop conditions for the whole v0.2 chart pillar:**
+- G-N-9 + Coral analogues promoted to schema; adapters surface raw results.
+- Directive grammar finalized; each directive type has a catalog wrapper + tests.
+- Module boundary `src/lib/charts/` enforced — no Plot import outside it (load-bearing test in CI).
+- At least one Nous campaign has its findings rendered as charts on Detail; reads stunningly compared to prose-only.
+
+**Recovery plan if Plot stalls or breaks API across versions:**
+- Renderer module is the only Plot consumer. Swap to Vega-Lite (JSON spec emission instead of API calls) by rewriting `src/lib/charts/render.ts` — directive contract + catalog signatures unchanged.
+- Worst case: hand-tune SVG inside the catalog (no library). Bigger effort but bounded — the catalog has 7 directive kinds, each ~50-100 lines of SVG.
+
+**Companion files:**
+- `integral-ui/.plan-v0.2-charts.md` — to be drafted during v0.2 design pass. Captures directive-schema final form, catalog scope decisions, Plot version pinning, gradient/colorscale tokens.
+
 ---
 
 ## v0.3+ — collaboration tier
@@ -375,6 +532,7 @@ High-level only. Not actionable today; listed so future sessions know it exists.
 - **Trustworthiness scoring** on LLM-generated projections — provenance chain visible per claim.
 - **Real-time collaborative cursors** on the Map and Detail surfaces.
 - **Agent-fired structural operations** — agents can propose `fork` / `merge` / `reframe`; humans confirm. (v0.1 explicitly forbids agent-initiated structural ops.)
+- **Interactive findings plots** — tooltips, brushing, faceted drill-down on the v0.2 Plot output. Static SVG in v0.2; interaction layer is a separate concern (event handling, accessibility implications, mobile interaction).
 
 ---
 
