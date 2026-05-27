@@ -1,0 +1,234 @@
+/**
+ * nous-projection-data — unit tests for pure derivations from
+ * (campaign, workspace) to atom-input shapes.
+ *
+ * Each helper is a pure projection over `decomposition.children` —
+ * filters to nous-iteration extension kind, sorts by iteration_number,
+ * and projects the atom-input shape. Tests cover happy path, missing
+ * children, ordering invariants, and the v0.1.5 thresholds.
+ */
+
+import { describe, expect, it } from 'vitest'
+import type { Intent, Workspace } from '@/schema'
+import { sri } from '@/fixtures/workspace'
+import {
+  nousHypothesisGrid,
+  nousPrinciplesTempo,
+} from './nous-projection-data'
+
+function makeCampaign(childIds: string[]): Intent {
+  return {
+    id: 'CAMP',
+    schema_version: '0.1.0',
+    kind: 'nous-campaign',
+    declaration: { title: 'campaign', summary: '', success_criterion: '' },
+    holder: { mode: 'human-held', parties: [sri] },
+    lifetime: { kind: 'campaign', started_at: '2026-01-01T00:00:00Z' },
+    decomposition: { children: childIds },
+    provenance: {
+      declared_by: sri,
+      declared_at: '2026-01-01T00:00:00Z',
+      motivated_by: [],
+    },
+    knowledge_refs: [],
+    tags: [],
+    state_ref: 'CAMP-STATE',
+    extension: {
+      kind: 'nous-campaign',
+      research_question: 'q',
+      open_hypothesis_bundles: [],
+      gate_status: {},
+    },
+  } as unknown as Intent
+}
+
+function makeIteration(opts: {
+  id: string
+  iterationNumber: number
+  principlesEmitted?: number
+  hMain?: 'pending' | 'confirmed' | 'refuted' | 'inconclusive'
+  hAblation?: ReadonlyArray<'pending' | 'confirmed' | 'refuted' | 'inconclusive'>
+}): Intent {
+  const principles_emitted = opts.principlesEmitted
+    ? Array.from({ length: opts.principlesEmitted }, (_, i) => ({
+        kind: 'observation' as const,
+        observation: `principle-${i}`,
+      }))
+    : []
+  return {
+    id: opts.id,
+    schema_version: '0.1.0',
+    kind: 'nous-iteration',
+    declaration: {
+      title: `iter-${opts.iterationNumber}`,
+      summary: '',
+      success_criterion: '',
+    },
+    holder: { mode: 'human-held', parties: [sri] },
+    lifetime: { kind: 'discrete', started_at: '2026-01-01T00:00:00Z' },
+    decomposition: { children: [] },
+    provenance: {
+      declared_by: sri,
+      declared_at: '2026-01-01T00:00:00Z',
+      motivated_by: [],
+    },
+    knowledge_refs: [],
+    tags: [],
+    state_ref: opts.id + '-STATE',
+    extension: {
+      kind: 'nous-iteration',
+      iteration_number: opts.iterationNumber,
+      hypothesis_bundle: {
+        h_main: {
+          statement: 'main',
+          prediction: 'p',
+          conditions: [],
+          ...(opts.hMain ? { result: opts.hMain } : {}),
+        },
+        h_ablation: (opts.hAblation ?? []).map((r, i) => ({
+          statement: `ab-${i}`,
+          prediction: 'p',
+          conditions: [],
+          result: r,
+        })),
+      },
+      principles_emitted,
+    },
+  } as unknown as Intent
+}
+
+function makeWorkspace(intents: Intent[]): Workspace {
+  return {
+    schema_version: '0.1.0',
+    intents,
+    states: [],
+    evidence_links: [],
+    operations: [],
+  } as unknown as Workspace
+}
+
+describe('nousPrinciplesTempo', () => {
+  it('returns empty when campaign has no children', () => {
+    const camp = makeCampaign([])
+    const ws = makeWorkspace([camp])
+    expect(nousPrinciplesTempo(camp, ws)).toEqual([])
+  })
+
+  it('returns one row per iteration child, in iteration_number order', () => {
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 2,
+      principlesEmitted: 1,
+    })
+    const i2 = makeIteration({
+      id: 'I2',
+      iterationNumber: 1,
+      principlesEmitted: 0,
+    })
+    const i3 = makeIteration({
+      id: 'I3',
+      iterationNumber: 3,
+      principlesEmitted: 2,
+    })
+    // Children listed out-of-order to verify sort by iteration_number.
+    const camp = makeCampaign(['I3', 'I1', 'I2'])
+    const ws = makeWorkspace([camp, i1, i2, i3])
+    expect(nousPrinciplesTempo(camp, ws)).toEqual([
+      { iterationNumber: 1, principlesEmitted: 0 },
+      { iterationNumber: 2, principlesEmitted: 1 },
+      { iterationNumber: 3, principlesEmitted: 2 },
+    ])
+  })
+
+  it('treats missing principles_emitted as 0', () => {
+    const i1 = makeIteration({ id: 'I1', iterationNumber: 1 }) // no principles
+    const camp = makeCampaign(['I1'])
+    const ws = makeWorkspace([camp, i1])
+    expect(nousPrinciplesTempo(camp, ws)).toEqual([
+      { iterationNumber: 1, principlesEmitted: 0 },
+    ])
+  })
+
+  it('skips children that are not nous-iteration extension', () => {
+    // Hypothetical: a campaign accidentally references a non-iteration
+    // child (would fail schema validation in practice, but the helper
+    // is defensive).
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      principlesEmitted: 1,
+    })
+    const camp = makeCampaign(['I1', 'STRANGER'])
+    const ws = makeWorkspace([camp, i1]) // STRANGER missing → filtered
+    expect(nousPrinciplesTempo(camp, ws)).toEqual([
+      { iterationNumber: 1, principlesEmitted: 1 },
+    ])
+  })
+})
+
+describe('nousHypothesisGrid', () => {
+  it('returns empty when campaign has no iteration children', () => {
+    const camp = makeCampaign([])
+    const ws = makeWorkspace([camp])
+    expect(nousHypothesisGrid(camp, ws)).toEqual([])
+  })
+
+  it('emits one HypothesisGridIteration per child, sorted by iteration_number', () => {
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      hMain: 'pending',
+    })
+    const i2 = makeIteration({
+      id: 'I2',
+      iterationNumber: 2,
+      hMain: 'confirmed',
+      hAblation: ['refuted'],
+    })
+    const camp = makeCampaign(['I2', 'I1'])
+    const ws = makeWorkspace([camp, i1, i2])
+    const result = nousHypothesisGrid(camp, ws)
+    expect(result.map((i) => i.iterationNumber)).toEqual([1, 2])
+  })
+
+  it('labels hypotheses with h_main / h_ablation[i] / etc. for stable row identity', () => {
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      hMain: 'confirmed',
+      hAblation: ['pending', 'refuted'],
+    })
+    const camp = makeCampaign(['I1'])
+    const ws = makeWorkspace([camp, i1])
+    const grid = nousHypothesisGrid(camp, ws)
+    expect(grid).toHaveLength(1)
+    const labels = grid[0]!.hypotheses.map((h) => h.label)
+    expect(labels).toEqual(['h_main', 'h_ablation[0]', 'h_ablation[1]'])
+  })
+
+  it('preserves result field per hypothesis', () => {
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      hMain: 'confirmed',
+      hAblation: ['refuted'],
+    })
+    const camp = makeCampaign(['I1'])
+    const ws = makeWorkspace([camp, i1])
+    const grid = nousHypothesisGrid(camp, ws)
+    const hMain = grid[0]!.hypotheses.find((h) => h.label === 'h_main')
+    const hAb0 = grid[0]!.hypotheses.find((h) => h.label === 'h_ablation[0]')
+    expect(hMain?.result).toBe('confirmed')
+    expect(hAb0?.result).toBe('refuted')
+  })
+
+  it('omits result field when the underlying hypothesis has no result', () => {
+    // h_main without a result still produces a row entry but no result.
+    const i1 = makeIteration({ id: 'I1', iterationNumber: 1 }) // no hMain set
+    const camp = makeCampaign(['I1'])
+    const ws = makeWorkspace([camp, i1])
+    const grid = nousHypothesisGrid(camp, ws)
+    const hMain = grid[0]!.hypotheses.find((h) => h.label === 'h_main')
+    expect(hMain?.result).toBeUndefined()
+  })
+})

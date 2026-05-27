@@ -1,0 +1,78 @@
+/* PrinciplesTempo — cumulative step line of principles emitted per
+   iteration. Visual register matches the v0.1.5 cross-adapter
+   discipline: warm paper, cool ink, single-amber for "current,"
+   no animation, no gridlines (whitespace > gridlines). */
+
+.figure {
+  margin: 0;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.caption {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.svg {
+  display: block;
+  font-family: var(--mono);
+}
+
+.placeholder {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute-2);
+  padding: 2px 4px;
+}
+
+/* The baseline — subtle reference at y = 0 so a flat-then-rise reads
+   as rise rather than as origin uncertainty. Mute-2 dashed at low
+   contrast; visible without competing for attention. */
+.baseline {
+  stroke: var(--mute-2);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 3;
+  opacity: 0.6;
+}
+
+/* The cumulative step line — cool ink, single weight. Step shape is
+   semantically correct for discrete events; no smoothing. */
+.line {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Last point — the "current iteration" annotation. Single-amber
+   commitment: --amber means "current/active/awaiting your action."
+   This usage is consistent — the rightmost point is what the user
+   is currently steering. */
+.lastPoint {
+  fill: var(--amber);
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+
+/* Inline annotation of the final cumulative value — small mono
+   numeral above the last point so the eye reads "this many" without
+   counting steps. */
+.lastValue {
+  font-size: 10px;
+  fill: var(--ink);
+  font-weight: 500;
+}
+
+/* Iteration span ticks — bottom corners only, mono, mute. */
+.tick {
+  font-size: 9px;
+  fill: var(--mute);
+  letter-spacing: 0.02em;
+}

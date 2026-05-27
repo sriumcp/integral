@@ -1,0 +1,89 @@
+/* HypothesisGrid — 2D matrix of hypotheses × iterations.
+   Visual register matches the v0.1.5 cross-adapter discipline:
+   --sage confirmed, --rose refuted, --mute-2 pending/inconclusive.
+   No legend — cells self-describe via mark. */
+
+.figure {
+  margin: 0;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.caption {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mute);
+}
+
+.svg {
+  display: block;
+  font-family: var(--mono);
+}
+
+.placeholder {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--mute-2);
+  padding: 2px 4px;
+}
+
+/* Row + column labels — mono mute. Row labels right-anchored; column
+   labels centered under each cell. */
+.rowLabel {
+  font-size: 10px;
+  fill: var(--mute);
+  letter-spacing: 0.02em;
+}
+
+.colLabel {
+  font-size: 10px;
+  fill: var(--mute);
+  letter-spacing: 0.02em;
+}
+
+/* Cell backgrounds — soft tints derived from the existing token system
+   so the grid reads as warm and inhabits the same color register as
+   chips/badges elsewhere. */
+.cellBg-confirmed {
+  fill: var(--sage-soft);
+  stroke: var(--sage-border);
+  stroke-width: 0.5;
+}
+
+.cellBg-refuted {
+  fill: var(--rose-soft);
+  stroke: var(--rose-border);
+  stroke-width: 0.5;
+}
+
+.cellBg-inconclusive,
+.cellBg-pending {
+  fill: var(--paper-2);
+  stroke: var(--line);
+  stroke-width: 0.5;
+}
+
+/* Cell marks — small mono glyphs. Color matches the cell's family
+   (deeper than the bg so the mark reads with high contrast). */
+.cellMark-confirmed {
+  font-size: 11px;
+  fill: var(--sage-fg);
+  font-weight: 600;
+}
+
+.cellMark-refuted {
+  font-size: 12px;
+  fill: var(--rose-fg);
+  font-weight: 600;
+}
+
+.cellMark-inconclusive,
+.cellMark-pending {
+  font-size: 10px;
+  fill: var(--mute-2);
+  font-weight: 500;
+}

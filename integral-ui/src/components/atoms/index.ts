@@ -43,5 +43,19 @@ export type {
 export { ScoreGauge } from './ScoreGauge/ScoreGauge'
 export type { ScoreGaugeProps } from './ScoreGauge/ScoreGauge'
 
+export { PrinciplesTempo } from './PrinciplesTempo/PrinciplesTempo'
+export type {
+  PrinciplesTempoDatum,
+  PrinciplesTempoProps,
+} from './PrinciplesTempo/PrinciplesTempo'
+
+export { HypothesisGrid } from './HypothesisGrid/HypothesisGrid'
+export type {
+  HypothesisGridDatum,
+  HypothesisGridIteration,
+  HypothesisGridProps,
+  HypothesisResult,
+} from './HypothesisGrid/HypothesisGrid'
+
 export { ZoomToggle } from './ZoomToggle/ZoomToggle'
 export type { ZoomToggleProps } from './ZoomToggle/ZoomToggle'

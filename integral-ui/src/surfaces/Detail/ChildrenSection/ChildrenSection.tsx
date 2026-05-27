@@ -8,11 +8,17 @@ import type {
 import {
   Chip,
   HypothesisBars,
+  HypothesisGrid,
   KindBadge,
+  PrinciplesTempo,
   ScoreGauge,
   SectionLabel,
   StatusDot,
 } from '@/components/atoms'
+import {
+  nousHypothesisGrid,
+  nousPrinciplesTempo,
+} from '@/lib/nous-projection-data'
 import styles from './ChildrenSection.module.css'
 
 export interface ChildrenSectionProps {
@@ -66,6 +72,7 @@ export function ChildrenSection({
   return (
     <section className={styles.section} data-kind={intent.kind}>
       <ExtensionSummary intent={intent} />
+      <NousProgressVisuals intent={intent} workspace={workspace} zoom={zoom} />
       {childPairs.length > 0 && (
         <>
           <SectionLabel hint={`${childPairs.length}`}>children</SectionLabel>
@@ -80,6 +87,58 @@ export function ChildrenSection({
       )}
       {zoom === 'detail' && <ExtensionDetail intent={intent} />}
     </section>
+  )
+}
+
+/**
+ * NousProgressVisuals — composes the v0.1.5 cross-adapter atoms for
+ * Nous campaigns. PrinciplesTempo at structure + detail zoom;
+ * HypothesisGrid at detail zoom only (full-width, scannable).
+ *
+ * Gated on data availability: PrinciplesTempo renders only when ≥1
+ * principle has been extracted; HypothesisGrid renders only when ≥1
+ * hypothesis has been probed. Empty campaigns surface no placeholder
+ * noise — the atoms' built-in placeholders are reserved for the
+ * structurally-empty intrinsic case (zero iterations).
+ *
+ * Other intent kinds render nothing here (early-return). Coral's
+ * BestSoFarLine wires in via this same composition site in v0.1.5
+ * Phase 2.
+ */
+function NousProgressVisuals({
+  intent,
+  workspace,
+  zoom,
+}: {
+  intent: Intent
+  workspace: Workspace
+  zoom: ZoomLevel
+}) {
+  if (intent.extension.kind !== 'nous-campaign') return null
+  if (zoom === 'overview') return null
+
+  const tempoData = nousPrinciplesTempo(intent, workspace)
+  const tempoTotal = tempoData.reduce((acc, d) => acc + d.principlesEmitted, 0)
+
+  const gridData =
+    zoom === 'detail' ? nousHypothesisGrid(intent, workspace) : []
+  const gridHasResults =
+    zoom === 'detail' &&
+    gridData.some((iter) =>
+      iter.hypotheses.some((h) => h.result !== undefined)
+    )
+
+  if (tempoTotal === 0 && !gridHasResults) return null
+
+  return (
+    <div className={styles.progressVisuals} data-progress-visuals="nous">
+      {tempoTotal > 0 && (
+        <PrinciplesTempo data={tempoData} title="principles emitted" />
+      )}
+      {gridHasResults && (
+        <HypothesisGrid iterations={gridData} title="hypothesis ledger" />
+      )}
+    </div>
   )
 }
 

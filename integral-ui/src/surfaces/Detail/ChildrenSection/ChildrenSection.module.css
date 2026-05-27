@@ -8,6 +8,17 @@
   border-radius: 4px;
 }
 
+/* Per-kind progress visualizations (v0.1.5 cross-adapter atoms).
+   Stacked column with consistent gap; atoms self-decorate (figure +
+   caption) so this wrapper stays minimal. The wrapper exists so a
+   future viewport-aware layout (side-by-side at ≥1024px) has a hook. */
+.progressVisuals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 2px;
+}
+
 .overview {
   display: flex;
   flex-direction: column;
