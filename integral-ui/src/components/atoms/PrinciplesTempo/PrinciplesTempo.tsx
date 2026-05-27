@@ -100,8 +100,13 @@ export function PrinciplesTempo({
   const iterMax = data[data.length - 1]!.iterationNumber
 
   // Layout — inset margins so axis labels + annotations have room.
+  // padTop = 18 reserves the upper strip for the inline numerical
+  // annotation; the cumulative-monotone line always ends at the top
+  // of the plot region (y = padTop), so the value text needs to sit
+  // *above* it without overlapping the dot or path. With a 10px font,
+  // text-baseline at lastY - 6 yields ~3px clearance above the dot.
   const padX = 18
-  const padTop = 8
+  const padTop = 18
   const padBot = 16
   const plotW = width - padX * 2
   const plotH = height - padTop - padBot
@@ -169,10 +174,13 @@ export function PrinciplesTempo({
         data-current={current ? 'true' : 'false'}
       />
       {/* Inline annotation of the final cumulative value, placed above
-          the last point — small mono numeral. */}
+          the last point — small mono numeral. textAnchor="end" + x=lastX
+          grows the text leftward so it never clips the right edge; the
+          enlarged padTop guarantees the text sits above the dot/path
+          with clean separation. */}
       <text
         x={lastX}
-        y={Math.max(lastY - 6, padTop + 8)}
+        y={lastY - 6}
         textAnchor="end"
         className={styles.lastValue}
       >
