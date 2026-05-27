@@ -8,10 +8,11 @@
   border-radius: 4px;
 }
 
-/* Per-kind progress visualizations (v0.1.5 cross-adapter atoms).
-   Stacked column with consistent gap; atoms self-decorate (figure +
-   caption) so this wrapper stays minimal. The wrapper exists so a
-   future viewport-aware layout (side-by-side at ≥1024px) has a hook. */
+/* Per-kind progress visualizations — composes the cross-adapter atoms
+   (PrinciplesTempo, HypothesisGrid, etc.). Stacked column with
+   consistent gap; atoms self-decorate (figure + caption) so this
+   wrapper stays minimal. The wrapper exists so a future viewport-
+   aware layout (side-by-side at ≥1024px) has a hook. */
 .progressVisuals {
   display: flex;
   flex-direction: column;

@@ -1,6 +1,6 @@
 /* PrinciplesTempo — cumulative step line of principles emitted per
-   iteration. Visual register matches the v0.1.5 cross-adapter
-   discipline: warm paper, cool ink, single-amber for "current,"
+   iteration. Visual register matches the substrate's instrument
+   genre: warm paper, cool ink, single-amber reserved for "current,"
    no animation, no gridlines (whitespace > gridlines). */
 
 .figure {
@@ -52,11 +52,18 @@
 }
 
 /* Last point — the "current iteration" annotation. Single-amber
-   commitment: --amber means "current/active/awaiting your action."
-   This usage is consistent — the rightmost point is what the user
-   is currently steering. */
+   commitment: --amber means "current/active/awaiting your action,"
+   so the amber dot is reserved for live campaigns (active/gated).
+   On terminal states the rightmost point falls back to ink so the
+   amber slot stays exclusive to live work. */
 .lastPoint {
   fill: var(--amber);
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+
+.lastPointTerminal {
+  fill: var(--ink-2);
   stroke: var(--paper);
   stroke-width: 1;
 }

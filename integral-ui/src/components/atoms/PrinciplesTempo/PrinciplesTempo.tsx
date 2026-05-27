@@ -1,12 +1,7 @@
+import type { PrinciplesTempoDatum } from '@/lib/visual-data-shapes'
 import styles from './PrinciplesTempo.module.css'
 
-export interface PrinciplesTempoDatum {
-  /** Iteration index (1-based; supplied by the adapter). Must be unique
-   *  across the input array; the atom does not deduplicate. */
-  iterationNumber: number
-  /** Number of principles emitted *during* this iteration (NOT cumulative). */
-  principlesEmitted: number
-}
+export type { PrinciplesTempoDatum }
 
 export interface PrinciplesTempoProps {
   /** Per-iteration counts. The atom cumulates internally. Order should
@@ -20,6 +15,13 @@ export interface PrinciplesTempoProps {
   width?: number
   /** Pixel height of the SVG. Default 60. */
   height?: number
+  /** Whether the rendered campaign is in a *current* state — `active`
+   *  or `gated`. When true (default), the rightmost cumulative point
+   *  paints in `--amber` (the substrate's reserved "current/active/
+   *  awaiting" signal). When false (terminal states: satisfied /
+   *  abandoned / revoked), the last point falls back to ink so the
+   *  amber slot stays exclusive to live work. */
+  current?: boolean
   /** Accessible label override; defaults to a generated summary. */
   ariaLabel?: string
 }
@@ -34,7 +36,7 @@ export interface PrinciplesTempoProps {
  * researcher reading the plot in 2 seconds sees both the total volume and
  * the temporal pattern.
  *
- * Visual register matches the v0.1.5 cross-adapter discipline:
+ * Visual register matches the substrate's instrument-genre commitments:
  *  - `--ink-2` for the line, `--amber` for the most-recent (current) point
  *  - mono tick labels, no gridlines, no animation
  *  - inline annotation of the final cumulative count next to the last point
@@ -49,6 +51,7 @@ export function PrinciplesTempo({
   title,
   width = 240,
   height = 60,
+  current = true,
   ariaLabel,
 }: PrinciplesTempoProps) {
   const total = data.reduce((acc, d) => acc + d.principlesEmitted, 0)
@@ -161,8 +164,9 @@ export function PrinciplesTempo({
         cx={lastX}
         cy={lastY}
         r={3}
-        className={styles.lastPoint}
+        className={current ? styles.lastPoint : styles.lastPointTerminal}
         data-last-point="true"
+        data-current={current ? 'true' : 'false'}
       />
       {/* Inline annotation of the final cumulative value, placed above
           the last point — small mono numeral. */}

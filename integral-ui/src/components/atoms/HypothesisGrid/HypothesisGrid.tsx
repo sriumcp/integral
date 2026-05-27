@@ -1,28 +1,11 @@
+import type {
+  HypothesisGridDatum,
+  HypothesisGridIteration,
+  HypothesisResult,
+} from '@/lib/visual-data-shapes'
 import styles from './HypothesisGrid.module.css'
 
-/** Hypothesis result vocabulary — matches the schema's HypothesisResult enum. */
-export type HypothesisResult =
-  | 'pending'
-  | 'confirmed'
-  | 'refuted'
-  | 'inconclusive'
-
-export interface HypothesisGridDatum {
-  /** Stable label for this hypothesis position. The atom uses label
-   *  identity to align cells across iterations — first-seen order
-   *  determines row order. Adapter convention: 'h_main',
-   *  'h_ablation[0]', 'h_super_additivity', 'h_control_negative',
-   *  'h_robustness[0]', etc. */
-  label: string
-  /** Optional result. When undefined, no cell is emitted (the position
-   *  exists in the iteration but wasn't probed at that point). */
-  result?: HypothesisResult
-}
-
-export interface HypothesisGridIteration {
-  iterationNumber: number
-  hypotheses: ReadonlyArray<HypothesisGridDatum>
-}
+export type { HypothesisGridDatum, HypothesisGridIteration, HypothesisResult }
 
 export interface HypothesisGridProps {
   /** Per-iteration hypothesis state. Order is preserved as column order. */
@@ -51,7 +34,7 @@ export interface HypothesisGridProps {
  *  - Sparse columns (only h_main probed) vs. dense columns (full bundle)
  *    signal where the campaign focused depth.
  *
- * Visual register matches the v0.1.5 cross-adapter discipline:
+ * Visual register matches the substrate's instrument-genre commitments:
  *  - `--sage` confirmed (✓), `--rose` refuted (−), `--mute-2` inconclusive
  *    or pending (?), no cell when result is undefined.
  *  - mono row + column labels; no legend (cells self-describe via mark).

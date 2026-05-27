@@ -12,23 +12,32 @@
  */
 
 import type {
-  HypothesisGridDatum,
-  HypothesisGridIteration,
-  PrinciplesTempoDatum,
-} from '@/components/atoms'
-import type {
   Hypothesis,
   Intent,
   NousIterationExtension,
   Workspace,
 } from '@/schema'
+import type {
+  HypothesisGridDatum,
+  HypothesisGridIteration,
+  PrinciplesTempoDatum,
+} from './visual-data-shapes'
 
 /**
  * Resolve `campaign.decomposition.children` to typed nous-iteration
- * intents, sorted by iteration_number ascending. Children that are
- * missing from the workspace, or whose extension is not nous-iteration,
- * are dropped silently — schema validation upstream is the canonical
- * gate, this helper is defensive only.
+ * intents, sorted by iteration_number ascending. Two defensive
+ * branches:
+ *
+ *  - **Missing from workspace** — silently dropped. Map / Detail
+ *    render partial data rather than blocking on a single bad child;
+ *    the canonical gate is schema validation upstream.
+ *  - **Wrong extension kind** — `console.warn` once and dropped.
+ *    Reaching this branch implies an adapter bug (children kind ↔
+ *    parent kind coupling violated) that schema's `WorkspaceSchema`
+ *    refine should have caught. Per CLAUDE.md ("adapters MUST
+ *    reject objects whose version they don't understand"), silent
+ *    drop hides the failure mode adapters are supposed to be loud
+ *    about — so we make noise during dev without crashing the render.
  */
 function resolveIterations(
   campaign: Intent,
@@ -39,7 +48,17 @@ function resolveIterations(
   for (const childId of campaign.decomposition.children) {
     const child = byId.get(childId)
     if (!child) continue
-    if (child.extension.kind !== 'nous-iteration') continue
+    if (child.extension.kind !== 'nous-iteration') {
+      // Loud-on-anomaly: a nous-campaign should never have a non-
+      // iteration child. If we reach this, the adapter or merge
+      // produced invalid state.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[nous-projection-data] campaign ${campaign.id} references child ${child.id} ` +
+          `with extension.kind=${child.extension.kind} (expected nous-iteration); skipping.`
+      )
+      continue
+    }
     out.push({ intent: child, ext: child.extension })
   }
   out.sort((a, b) => a.ext.iteration_number - b.ext.iteration_number)
@@ -51,8 +70,10 @@ function resolveIterations(
  *
  * Returns one row per child iteration, in iteration_number order.
  * The atom cumulates internally; this helper returns the *delta*
- * per iteration. Missing `principles_emitted` arrays are treated as
- * zero — equivalent to "this iteration produced no principles."
+ * per iteration. The schema makes `principles_emitted` optional
+ * (zod.ts:268: `Reference[]?`) — when undefined OR an empty array,
+ * the helper reports zero, equivalent to "this iteration produced
+ * no principles."
  */
 export function nousPrinciplesTempo(
   campaign: Intent,

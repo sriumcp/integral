@@ -5,10 +5,11 @@
  * Each helper is a pure projection over `decomposition.children` —
  * filters to nous-iteration extension kind, sorts by iteration_number,
  * and projects the atom-input shape. Tests cover happy path, missing
- * children, ordering invariants, and the v0.1.5 thresholds.
+ * children, wrong-kind children, ordering invariants, and label
+ * generation.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Intent, Workspace } from '@/schema'
 import { sri } from '@/fixtures/workspace'
 import {
@@ -149,20 +150,45 @@ describe('nousPrinciplesTempo', () => {
     ])
   })
 
-  it('skips children that are not nous-iteration extension', () => {
-    // Hypothetical: a campaign accidentally references a non-iteration
-    // child (would fail schema validation in practice, but the helper
-    // is defensive).
+  it('drops children that are missing from the workspace (silent)', () => {
+    // A child id that doesn't resolve in the workspace — partial-load
+    // case, not an adapter bug. Schema validation upstream is the
+    // canonical gate; the helper is defensive only.
     const i1 = makeIteration({
       id: 'I1',
       iterationNumber: 1,
       principlesEmitted: 1,
     })
-    const camp = makeCampaign(['I1', 'STRANGER'])
-    const ws = makeWorkspace([camp, i1]) // STRANGER missing → filtered
+    const camp = makeCampaign(['I1', 'MISSING'])
+    const ws = makeWorkspace([camp, i1])
     expect(nousPrinciplesTempo(camp, ws)).toEqual([
       { iterationNumber: 1, principlesEmitted: 1 },
     ])
+  })
+
+  it('drops children whose extension.kind is not nous-iteration (with warn)', () => {
+    // A child resolves to a wrong-kind extension — schema invariant
+    // violation in practice; the helper drops it and warns.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      principlesEmitted: 1,
+    })
+    // Synthesize a wrong-kind child: a nous-iteration child id that
+    // resolves to an intent with a non-iteration extension.
+    const stranger = {
+      ...makeIteration({ id: 'STRANGER', iterationNumber: 99 }),
+      extension: { kind: 'coral-attempt' as const },
+    } as unknown as Intent
+    const camp = makeCampaign(['I1', 'STRANGER'])
+    const ws = makeWorkspace([camp, i1, stranger])
+    expect(nousPrinciplesTempo(camp, ws)).toEqual([
+      { iterationNumber: 1, principlesEmitted: 1 },
+    ])
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/coral-attempt/)
+    warnSpy.mockRestore()
   })
 })
 

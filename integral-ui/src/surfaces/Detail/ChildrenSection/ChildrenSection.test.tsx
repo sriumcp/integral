@@ -11,8 +11,13 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { IntentKindSchema, type Intent } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import {
+  IntentKindSchema,
+  type Intent,
+  type IntentState,
+  type Workspace,
+} from '@/schema'
+import { fixtureWorkspace, sri } from '@/fixtures/workspace'
 import { ChildrenSection } from './ChildrenSection'
 
 const KINDS = IntentKindSchema.options
@@ -193,5 +198,360 @@ describe('ChildrenSection', () => {
     // through aria-label "no score yet" or the data-score="" attribute is fine.
     const gauge = container.querySelector('[data-score]')
     expect(gauge).not.toBeNull()
+  })
+
+  /**
+   * NousProgressVisuals — the cross-adapter atom composition site.
+   *
+   * The fixture's nous-campaign has 1 iteration with sparse data, so it
+   * sits BELOW the meaningful-rendering thresholds for both atoms. The
+   * tests below construct synthetic multi-iteration nous campaigns that
+   * land on either side of the threshold, so the gate logic itself is
+   * exercised — not just the happy path.
+   */
+  describe('NousProgressVisuals — gate logic', () => {
+    function makeIter(opts: {
+      id: string
+      iterationNumber: number
+      principles?: number
+      hMain?: 'pending' | 'confirmed' | 'refuted' | 'inconclusive'
+      hAblation?: ReadonlyArray<
+        'pending' | 'confirmed' | 'refuted' | 'inconclusive'
+      >
+    }): Intent {
+      return {
+        id: opts.id,
+        schema_version: '0.1.0',
+        kind: 'nous-iteration',
+        declaration: {
+          title: `iter-${opts.iterationNumber}`,
+          summary: '',
+          success_criterion: '',
+        },
+        holder: { mode: 'human-held', parties: [sri] },
+        lifetime: { kind: 'discrete', started_at: '2026-01-01T00:00:00Z' },
+        decomposition: { children: [] },
+        provenance: {
+          declared_by: sri,
+          declared_at: '2026-01-01T00:00:00Z',
+          motivated_by: [],
+        },
+        knowledge_refs: [],
+        tags: [],
+        state_ref: opts.id + '-STATE',
+        extension: {
+          kind: 'nous-iteration',
+          iteration_number: opts.iterationNumber,
+          hypothesis_bundle: {
+            h_main: {
+              statement: 'main',
+              prediction: 'p',
+              conditions: [],
+              ...(opts.hMain ? { result: opts.hMain } : {}),
+            },
+            h_ablation: (opts.hAblation ?? []).map((r, i) => ({
+              statement: `ab-${i}`,
+              prediction: 'p',
+              conditions: [],
+              result: r,
+            })),
+          },
+          principles_emitted: opts.principles
+            ? Array.from({ length: opts.principles }, (_, i) => ({
+                kind: 'observation',
+                observation: `principle-${i}`,
+              }))
+            : [],
+        },
+      } as unknown as Intent
+    }
+
+    function makeNousCampaign(childIds: string[], status: IntentState['status'] = 'active'): {
+      campaign: Intent
+      state: IntentState
+    } {
+      const campaign = {
+        id: 'CAMP-X',
+        schema_version: '0.1.0',
+        kind: 'nous-campaign',
+        declaration: {
+          title: 'synth campaign',
+          summary: '',
+          success_criterion: '',
+        },
+        holder: { mode: 'human-held', parties: [sri] },
+        lifetime: { kind: 'campaign', started_at: '2026-01-01T00:00:00Z' },
+        decomposition: { children: childIds },
+        provenance: {
+          declared_by: sri,
+          declared_at: '2026-01-01T00:00:00Z',
+          motivated_by: [],
+        },
+        knowledge_refs: [],
+        tags: [],
+        state_ref: 'CAMP-X-STATE',
+        extension: {
+          kind: 'nous-campaign',
+          research_question: 'q',
+          open_hypothesis_bundles: [],
+          gate_status: {},
+        },
+      } as unknown as Intent
+      const state = {
+        intent_id: 'CAMP-X',
+        schema_version: '0.1.0',
+        status,
+        last_advanced_at: '2026-01-01T00:00:00Z',
+        history: [],
+      } as unknown as IntentState
+      return { campaign, state }
+    }
+
+    function makeWs(intents: Intent[], states: IntentState[] = []): Workspace {
+      return {
+        schema_version: '0.1.0',
+        intents,
+        states,
+        evidence_links: [],
+        operations: [],
+      } as unknown as Workspace
+    }
+
+    it('renders no progress visuals when below tempo + grid thresholds (sparse 1-iter)', () => {
+      // 1 iteration with 1 principle + h_main pending — the screenshot
+      // case. Both atoms below threshold; whole wrapper should be absent.
+      const i1 = makeIter({
+        id: 'I1',
+        iterationNumber: 1,
+        principles: 1,
+        hMain: 'pending',
+      })
+      const { campaign, state } = makeNousCampaign(['I1'])
+      const ws = makeWs([campaign, i1], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="detail"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-progress-visuals]')
+      ).toBeNull()
+    })
+
+    it('renders progress visuals + tempo when ≥3 iterations + ≥2 principles', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, principles: 1 }),
+        makeIter({ id: 'I2', iterationNumber: 2, principles: 0 }),
+        makeIter({ id: 'I3', iterationNumber: 3, principles: 1 }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-progress-visuals="nous"]')
+      ).not.toBeNull()
+      expect(
+        container.querySelector('[data-atom="principles-tempo"]')
+      ).not.toBeNull()
+    })
+
+    it('omits the grid at structure zoom even when grid threshold is met', () => {
+      // Grid is detail-zoom-only. At structure zoom, only tempo
+      // renders (when above its own threshold).
+      const iters = [
+        makeIter({
+          id: 'I1',
+          iterationNumber: 1,
+          principles: 1,
+          hMain: 'confirmed',
+          hAblation: ['pending'],
+        }),
+        makeIter({
+          id: 'I2',
+          iterationNumber: 2,
+          principles: 1,
+          hMain: 'confirmed',
+          hAblation: ['refuted'],
+        }),
+        makeIter({
+          id: 'I3',
+          iterationNumber: 3,
+          principles: 0,
+          hMain: 'confirmed',
+          hAblation: ['confirmed'],
+        }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-atom="principles-tempo"]')
+      ).not.toBeNull()
+      expect(
+        container.querySelector('[data-atom="hypothesis-grid"]')
+      ).toBeNull()
+    })
+
+    it('renders the grid at detail zoom when ≥2 iterations + ≥2 distinct hypotheses with results', () => {
+      const iters = [
+        makeIter({
+          id: 'I1',
+          iterationNumber: 1,
+          hMain: 'confirmed',
+          hAblation: ['pending'],
+        }),
+        makeIter({
+          id: 'I2',
+          iterationNumber: 2,
+          hMain: 'confirmed',
+          hAblation: ['refuted'],
+        }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="detail"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-atom="hypothesis-grid"]')
+      ).not.toBeNull()
+    })
+
+    it('omits the grid when only ONE distinct hypothesis has results across iterations', () => {
+      // Two iterations, h_main probed in both — one *distinct* hypothesis,
+      // not 2×2. Below the grid's structural-meaning threshold.
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, hMain: 'pending' }),
+        makeIter({ id: 'I2', iterationNumber: 2, hMain: 'confirmed' }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="detail"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-atom="hypothesis-grid"]')
+      ).toBeNull()
+    })
+
+    it('omits all progress visuals at overview zoom regardless of data', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, principles: 2, hMain: 'confirmed', hAblation: ['confirmed'] }),
+        makeIter({ id: 'I2', iterationNumber: 2, principles: 1, hMain: 'refuted', hAblation: ['confirmed'] }),
+        makeIter({ id: 'I3', iterationNumber: 3, principles: 1, hMain: 'confirmed', hAblation: ['refuted'] }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="overview"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-progress-visuals]')
+      ).toBeNull()
+    })
+
+    it('omits all progress visuals for non-Nous kinds (e.g. coral-optimization)', () => {
+      // Wire the gate: coral-optimization should NEVER render the
+      // Nous-shaped progress visuals.
+      const coral = intentFor('coral-optimization')
+      const { container } = render(
+        <ChildrenSection
+          intent={coral}
+          workspace={fixtureWorkspace}
+          zoom="detail"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-progress-visuals]')
+      ).toBeNull()
+    })
+
+    it('paints the tempo last point in --amber when campaign is active (live)', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, principles: 1 }),
+        makeIter({ id: 'I2', iterationNumber: 2, principles: 1 }),
+        makeIter({ id: 'I3', iterationNumber: 3, principles: 1 }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'], 'active')
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      const lastPoint = container.querySelector('[data-last-point="true"]')
+      expect(lastPoint?.getAttribute('data-current')).toBe('true')
+    })
+
+    it('falls back from --amber on terminal-state campaigns (satisfied)', () => {
+      // Single-amber commitment: the rightmost point loses its amber
+      // signal once the campaign is no longer live. Otherwise --amber
+      // would mean "this campaign is awaiting" + "this campaign is done"
+      // simultaneously — diluting the substrate's reserved signal slot.
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, principles: 1 }),
+        makeIter({ id: 'I2', iterationNumber: 2, principles: 1 }),
+        makeIter({ id: 'I3', iterationNumber: 3, principles: 1 }),
+      ]
+      const { campaign, state } = makeNousCampaign(
+        ['I1', 'I2', 'I3'],
+        'satisfied'
+      )
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      const lastPoint = container.querySelector('[data-last-point="true"]')
+      expect(lastPoint?.getAttribute('data-current')).toBe('false')
+    })
   })
 })

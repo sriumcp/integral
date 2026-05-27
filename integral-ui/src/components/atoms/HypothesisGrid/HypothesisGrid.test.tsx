@@ -5,7 +5,7 @@
  *  - Assert structural attributes + per-cell `data-result` hooks; never
  *    SVG path data, never specific coordinates.
  *  - The atom is pure presentational. Surfaces decide whether to render.
- *  - Visual register matches the v0.1.5 cross-adapter discipline:
+ *  - Visual register matches the substrate's instrument genre:
  *    confirmed = `--sage`, refuted = `--rose`, inconclusive/pending =
  *    `--mute-2`, blank = no cell. We only test the data-* hooks here;
  *    color is verified via visual baselines.

@@ -91,19 +91,41 @@ export function ChildrenSection({
 }
 
 /**
- * NousProgressVisuals — composes the v0.1.5 cross-adapter atoms for
- * Nous campaigns. PrinciplesTempo at structure + detail zoom;
- * HypothesisGrid at detail zoom only (full-width, scannable).
+ * Minimum-viable thresholds for the progress atoms. A plot below its
+ * threshold doesn't carry signal — it carries noise. The substrate's
+ * "figures conditional on data threshold" commitment lives here.
  *
- * Gated on data availability: PrinciplesTempo renders only when ≥1
- * principle has been extracted; HypothesisGrid renders only when ≥1
- * hypothesis has been probed. Empty campaigns surface no placeholder
- * noise — the atoms' built-in placeholders are reserved for the
- * structurally-empty intrinsic case (zero iterations).
+ * - PrinciplesTempo: needs ≥3 iterations AND ≥2 principles for the
+ *   cumulative-step shape to bend visibly. At N=1 the line collapses
+ *   to a single dot; at total=1 the line is one step with no slope to
+ *   read.
+ * - HypothesisGrid: needs ≥2 iterations AND ≥2 distinct hypotheses
+ *   with results — the matrix story requires at least 2×2. A single
+ *   row or column reads as a status strip, not a grid.
+ */
+const TEMPO_MIN_ITERATIONS = 3
+const TEMPO_MIN_PRINCIPLES = 2
+const GRID_MIN_ITERATIONS = 2
+const GRID_MIN_HYPOTHESES = 2
+
+/**
+ * NousProgressVisuals — composes the cross-adapter visual atoms for
+ * Nous campaigns. PrinciplesTempo at structure + detail zoom (when
+ * the cumulative shape carries signal); HypothesisGrid at detail
+ * zoom only (when the matrix has at least 2×2 of meaningful content).
+ *
+ * Gated on *meaningful-rendering* thresholds, not just non-empty data.
+ * The atoms' built-in placeholders are reserved for the structurally-
+ * empty intrinsic case (length 0); the surface gates on the "do you
+ * have enough to actually show?" threshold so degenerate plots (a
+ * single dot, a single cell) never reach the user.
  *
  * Other intent kinds render nothing here (early-return). Coral's
- * BestSoFarLine wires in via this same composition site in v0.1.5
- * Phase 2.
+ * `BestSoFarLine` and other future per-adapter visuals slot into
+ * this same composition pattern. The `current` flag on
+ * PrinciplesTempo paints the rightmost cumulative point in `--amber`
+ * only when the campaign is in a live status (active or gated) —
+ * preserving the substrate's reserved single-amber signal slot.
  */
 function NousProgressVisuals({
   intent,
@@ -119,23 +141,40 @@ function NousProgressVisuals({
 
   const tempoData = nousPrinciplesTempo(intent, workspace)
   const tempoTotal = tempoData.reduce((acc, d) => acc + d.principlesEmitted, 0)
+  const showTempo =
+    tempoData.length >= TEMPO_MIN_ITERATIONS &&
+    tempoTotal >= TEMPO_MIN_PRINCIPLES
 
   const gridData =
     zoom === 'detail' ? nousHypothesisGrid(intent, workspace) : []
-  const gridHasResults =
+  const distinctHypothesesWithResults = new Set<string>()
+  for (const iter of gridData) {
+    for (const h of iter.hypotheses) {
+      if (h.result !== undefined) distinctHypothesesWithResults.add(h.label)
+    }
+  }
+  const showGrid =
     zoom === 'detail' &&
-    gridData.some((iter) =>
-      iter.hypotheses.some((h) => h.result !== undefined)
-    )
+    gridData.length >= GRID_MIN_ITERATIONS &&
+    distinctHypothesesWithResults.size >= GRID_MIN_HYPOTHESES
 
-  if (tempoTotal === 0 && !gridHasResults) return null
+  if (!showTempo && !showGrid) return null
+
+  // Live campaign? Drives whether PrinciplesTempo paints its last
+  // point in --amber (active/gated) vs --ink-2 (terminal states).
+  const state = workspace.states.find((s) => s.intent_id === intent.id)
+  const isLive = state?.status === 'active' || state?.status === 'gated'
 
   return (
     <div className={styles.progressVisuals} data-progress-visuals="nous">
-      {tempoTotal > 0 && (
-        <PrinciplesTempo data={tempoData} title="principles emitted" />
+      {showTempo && (
+        <PrinciplesTempo
+          data={tempoData}
+          title="principles emitted"
+          current={isLive}
+        />
       )}
-      {gridHasResults && (
+      {showGrid && (
         <HypothesisGrid iterations={gridData} title="hypothesis ledger" />
       )}
     </div>

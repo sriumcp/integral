@@ -8,8 +8,8 @@
  *    SVG goes out. Composition + threshold policy is the surface's job;
  *    the atom only renders a placeholder when the *intrinsic* data shape
  *    is invalid (empty input, zero total).
- *  - Tests cover the v0.1.5 cross-adapter genre commitments (aria-label
- *    text, data-* contract, caption render).
+ *  - Tests cover the substrate's genre commitments (aria-label text,
+ *    data-* contract, caption render, single-amber signal discipline).
  */
 
 import { render, screen } from '@testing-library/react'
@@ -117,11 +117,33 @@ describe('PrinciplesTempo', () => {
     expect(svg?.getAttribute('data-total')).toBe('2')
   })
 
-  it('renders an annotated last point (data-last-cumulative attr present)', () => {
+  it('renders exactly one annotated last point (data-last-point hook)', () => {
     // The "current" / last point gets visual emphasis (--amber in CSS);
-    // tests assert the attribute hook, not the color.
+    // tests assert the attribute hook, not the color. Strengthening
+    // beyond mere presence: there must be exactly one such marker, so
+    // a regression placing it on every step doesn't ship green.
+    const { container } = render(<PrinciplesTempo data={SIMPLE_DATA} />)
+    const lastPoints = container.querySelectorAll('[data-last-point="true"]')
+    expect(lastPoints).toHaveLength(1)
+  })
+
+  it('marks the last point data-current="true" by default (live campaigns)', () => {
+    // Default behavior: the rightmost point reads as "current iteration"
+    // and paints in --amber. The CSS class differentiation is
+    // verified at the surface integration tests + visual baselines.
     const { container } = render(<PrinciplesTempo data={SIMPLE_DATA} />)
     const lastPoint = container.querySelector('[data-last-point="true"]')
-    expect(lastPoint).not.toBeNull()
+    expect(lastPoint?.getAttribute('data-current')).toBe('true')
+  })
+
+  it('marks the last point data-current="false" when current={false} (terminal states)', () => {
+    // Single-amber discipline: when the campaign is no longer live
+    // (satisfied/abandoned), the rightmost point falls back from
+    // --amber to --ink-2 so the reserved amber slot stays exclusive.
+    const { container } = render(
+      <PrinciplesTempo data={SIMPLE_DATA} current={false} />
+    )
+    const lastPoint = container.querySelector('[data-last-point="true"]')
+    expect(lastPoint?.getAttribute('data-current')).toBe('false')
   })
 })
