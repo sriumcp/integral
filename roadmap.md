@@ -215,27 +215,28 @@ The expansion is done when **all** of the following hold:
 6. **`semantics-v0.1.md` updated** — any S-component that changed status (e.g., S-1 promoted from "not implemented" to "implemented for Nous kinds") reflects in the doc.
 7. **CLAUDE.md "Current state" reflects ship state** — test counts, current adapters, current operations.
 
-After v0.1 expansion: regroup, design v0.1.5 (per-adapter outcome cleanup, see next section), then v0.2 (schema bump + Paper adapter + orchestrator).
+After v0.1 expansion: regroup, design v0.1.5 (Nous + Paper-authoring focus, see next section), then v0.2 (Nous schema bump + Paper adapter + findings plots). Coral parity, full feature-development integration, and the cross-kind orchestrator are scoped to v0.3+.
 
 ---
 
-## v0.1.5 — make each adapter actually serve its user's outcome
+## v0.1.5 — Nous and Paper-authoring focus
 
 **Phase position:** between v0.1 ship and v0.2 substrate work. Not a polish pass; a re-framing.
 
-**Essence:** v0.1 made the substrate work. v0.1.5 makes each adapter useful for what its user is actually trying to do — not just legible to read.
+**Scope decision (2026-05-27):** v0.1.5 + v0.2 focus exclusively on the **Nous + Paper-authoring axis**. All Coral and GitHub-issues / feature-development work is deferred to **v0.3+** — see the new "Coral parity tier" and "GitHub-issues / feature-development tier" sections under `## v0.3+`. The existing read-only Coral + GitHub adapters (B1, B2) stay shipped and functional; we just don't extend them in v0.1.5 / v0.2. This concentrates substrate energy on the research-paper authoring loop (the most ambitious cross-tree story Integral commits to: paper-claim → nous-iteration via `EvidenceLink`).
 
-**The framing question:** *"what is each adapter's user trying to accomplish, and where does the chrome help vs. just display?"* The answer differs per adapter, so the cleanup differs per adapter — but the discipline is the same: cut affordances that don't serve the primary outcome, add the ones that do, and let the legibility issues from `.notes-v0.1.5.md` (loading states, empty states, stale-data signals) fall out as consequences of doing the outcome work right.
+**Essence:** v0.1 made the substrate work. v0.1.5 makes the *research-to-paper* loop actually useful — Nous moves a research question through shape → run → read → iterate, and Paper authoring grounds claims in the iterations that produced them.
 
-**Why this isn't v0.2 work.** v0.2 expands the substrate (schema bump, Paper adapter, cross-kind orchestrator, per-kind writeback). v0.1.5 stays inside the v0.1 substrate and asks: with what's already shipped, can each adapter help its user finish the job? The schema and the adapter contracts don't change. Only the chrome over them does.
+**The framing question:** *"what is the researcher trying to accomplish, and where does the chrome help vs. just display?"* For Nous, the shape end works (A4.6 LLM-driven shaping); the read-and-iterate handoff is weak. For Paper, the chrome renders paper intents but doesn't yet make the cross-tree story (claim ← evidence ← iteration) prominent.
+
+**Why this isn't v0.2 work.** v0.2 expands the substrate (schema bump, Paper adapter, per-kind writeback for Nous + Paper, findings plots). v0.1.5 stays inside the v0.1 substrate and asks: with what's already shipped, can the Nous and Paper chromes help the researcher finish the job? The schema and the adapter contracts don't change. Only the chrome over them does — except for cases where the Paper adapter starter slides forward into v0.1.5 (TBD per the Paper subsection below).
 
 ### Per-adapter primary outcome
 
 | Adapter | What the user is trying to accomplish |
 |---|---|
 | **Nous** | Move a research question through an iterative cycle: shape → run → read → iterate. Today the shape end works; the read-and-iterate handoff is weak. |
-| **Coral** | Steer a population-based optimization: what's the leader, what's gaming, what's the trend, what should I try next. Today the chrome reads but doesn't help steer. |
-| **GitHub-issues** | Triage work in a repo: what needs me, what's blocked, what's in flight, what's connected. Today the chrome shows the issue tree but nothing else. |
+| **Paper** | Author a paper grounded in upstream Nous campaigns: claim → evidence → iteration → principle. Today the chrome renders paper intents (per fixture) but the cross-tree narrative isn't surfaced; the Paper adapter itself is v0.2 work. |
 
 ### Nous — the shaper goes from transcription to enablement
 
@@ -249,30 +250,33 @@ The shaper exists (A4.6) and works as a chat that fills declaration fields. To m
 6. **Visible commit audit** — show what's about to be written, where, and what command will run. Mutation visibility *before* the click.
 7. **Concerns inline, not paneled** — move the LLM's concerns next to the fields they're about, like spell-check underlines for shape-quality.
 
-### Coral — read-comprehension that lets the user steer
+### Paper-authoring — surface the cross-tree story
 
-Coral is read-only in v0.1. v0.2 brings shaping + orchestration. v0.1.5's job is to make the read affordances actually serve the steering outcome:
+Paper authoring is the substrate's most ambitious commitment: a paper-claim doesn't just declare an assertion — it *anchors to* upstream Nous iterations via `EvidenceLink`s. The fixture already encodes this; v0.1.5 makes the chrome surface it. Paper adapter (reading real `papers/<name>/draft.md` + `refs.bib`) is v0.2 work — v0.1.5 either operates against the fixture, or slides a Paper adapter starter forward (TBD; see "Open scope" below).
 
-1. **Best-so-far chart.** The single most useful Coral artifact is the leader trend over attempts. Currently no visualization. Folded into the cross-adapter visual vocabulary below as the `BestSoFarLine` atom (Phase 3).
-2. **Gaming-detection signal.** The `math.pi` attempt hit the 1e12 cap — that's a structural tell, not a real solution. Mark suspicious attempts visibly ("score = grader cap; verify").
-3. **Side-by-side attempt diff.** Click two attempts → see the diff in `solution.py`. Coral is fundamentally about variation; the chrome should make variation legible.
-4. **Agent personalities visible.** Each `roles/agent-N.md` is a typed agent identity (G-C-4 lossy today). Show the persona inline on attempt cards — "agent-2 (strategic analyst)."
-5. **Notes-as-principles, in context.** G-C-10 lossy mapping today; surface note bodies (or excerpts) on the campaign Detail. The user's mental model of the run depends on the synthesis their notes capture.
+Outcomes worth shipping in v0.1.5 (against the fixture; subject to user refinement):
 
-### GitHub-issues — make the queue actually triagable
+1. **Cross-tree evidence prominence on `paper-claim` Detail.** Today the chrome renders evidence-edges in the `EvidenceEdges` section. For paper-claims specifically, the *upstream chain* (claim → evidence → iteration → principle) is the load-bearing story — promote it from a side-section to the primary detail body. Each upstream iteration shows its own confirmation status + principles emitted.
+2. **Section-level claim coherence on `paper-section` Detail.** A paper section composes multiple claims. Surface them as a coherent set: which claims are evidence-grounded, which are stated without backing, which conflict.
+3. **Outline navigation on `paper-campaign` Map / Detail.** TreeCard for `paper-campaign` should expand to show §1, §2, §3… as nested cards (mirrors the `nous-campaign → iterations` decomposition pattern), not just a flat "paper · 4 sections" hint.
+4. **Bibliography integration.** Paper claims often cite external references; surface the cited-works set per claim and per campaign, with `ExternalAnchor` URIs visible.
+5. **(Stretch) Claim drafting affordances.** Could v0.1.5 ship a "shape this claim" UX analogous to A4.6's Nous shaping? Likely no — claim drafting needs the Paper adapter and writeback (v0.2) to be useful. Mark as v0.2.
 
-GitHub is read-only in v0.1. Issue creation / commenting from chrome is v0.2 writeback. v0.1.5's job is to make the *triage* outcome work:
+**Open scope (TBD — fill in with the user before starting):**
+- Does v0.1.5 ship the Paper adapter starter (read-only `draft.md` + `refs.bib`) or wait for v0.2?
+- What's the Nous→Paper handoff workflow? When a Nous campaign reaches a "principle ready to publish" state, does the substrate prompt "shape a paper-claim from this"?
+- Should paper-claim drafting intersect with Shaping (the typed phase with mutable declaration) — i.e., is a `paper-claim` "shaped" before being written into `draft.md`?
+- Does the visual vocabulary need a Paper-specific atom (e.g., a "claim-evidence sankey" visualizing how iterations support claims)? Held; no new atom in v0.1.5 without concrete falsification.
 
-1. **Timeline events + comments loaded.** Promote G-F-7 + G-F-8 from candidate to v0.1.5 commitment. Activity Strip on GitHub Detail is silent today; making it speak is the highest-leverage GitHub fix. ("agent-bot commented 2h ago: blocked on review.")
-2. **Linked PRs as references.** GitHub's `linked_pull_requests` field exists on issues. Surface as a chip on Detail ("linked: PR#123 ci-failing") — typed as an `EvidenceLink` reference, not yet a full `feature-pr` Intent.
-3. **Stale-data signal honest.** When the Map says "5 active" but reality has shifted on github.com, surface "synced 12m ago · refresh →." (Theme C from `.notes-v0.1.5.md`, framed as serving triage — you can't triage on stale data.)
-4. **Markdown body rendering on Detail.** Issues use markdown — checklists, links, code blocks. Render them. Closest in-spec substitute for the missing projection plugin.
-5. **Body-search / jump-to-issue.** With 50+ issues, scrolling is dead time. `/` keyboard shortcut → narrow to substring matches → jump.
-6. **One-click jump to github.com to comment.** Until v0.2 brings issue writeback, surface the Detail header link prominently.
+**Falsification candidates (subject to user refinement):**
+- The chrome makes "this paper-claim is grounded in Nous iter-2 of the v3 plateau study" a single click + 2-second read on the claim's Detail surface.
+- A reader landing on a `paper-section` Detail can tell which of its claims have evidence and which don't, without reading prose.
 
-### Cross-adapter visual vocabulary — the progress pillar
+### Visual vocabulary — Nous progress pillar
 
-**Phase position:** atom-level commitment. Composes into the per-adapter projection plugins above. Distinguished from v0.2 *findings* plots: this section ships **progress trackers** (plots about a campaign's meta-state — how many iterations, which hypotheses are confirmed, when gates transitioned), not **findings plots** (plots about the data the campaign produced — those need a schema bump and live in v0.2).
+**Phase position:** atom-level commitment. Composes into the Nous projection plugins above. Distinguished from v0.2 *findings* plots: this section ships **progress trackers** (plots about a campaign's meta-state — how many iterations, which hypotheses are confirmed, when gates transitioned), not **findings plots** (plots about the data the campaign produced — those need a schema bump and live in v0.2).
+
+**Scope contraction (2026-05-27):** the originally-planned Coral atom (`BestSoFarLine`) is deferred to v0.3+ alongside all other Coral parity work. The visual vocabulary in v0.1.5 is now Nous-only. Paper-side visualizations (if any) emerge from the Paper-authoring scope above as concrete falsification needs surface.
 
 **Architecture: hand-tuned static SVG. No chart library.** Atoms in `src/components/atoms/` extend the existing `Sparkline` / `ScoreGauge` / `HypothesisBars` vocabulary. Each atom takes typed structured data and renders inline SVG. Per-kind projection plugins compose them. The "no library" choice is load-bearing — these atoms set the aesthetic register against which v0.2's Observable Plot output will be visually tested.
 
@@ -294,55 +298,59 @@ GitHub is read-only in v0.1. Issue creation / commenting from chrome is v0.2 wri
 - A reader who's never seen this codebase reads the plot the same way as a senior researcher.
 - One-line human-authored summary above each plot (no LLM in v0.1.5 — atoms author their own captions).
 
-**The three atoms** (revised after schema audit — `IterationTrajectory` deferred to v0.2):
+**The Nous atoms** (revised after schema audit — `IterationTrajectory` deferred to v0.2; `BestSoFarLine` deferred to v0.3+):
 
-| Atom | Renders | Data threshold | Schema fields consumed | First adapter consumer |
+| Atom | Renders | Data threshold | Schema fields consumed | Adapter consumer |
 |---|---|---|---|---|
-| **`PrinciplesTempo`** | Stepped line of cumulative principles extracted per iteration; gaps in the slope tell the user "we learned in bursts" | ≥1 principle | `nous-iteration.extension.principles_emitted: Reference[]` + `iteration_number` | Nous (`nous-campaign + structure`) |
-| **`HypothesisGrid`** | 2D grid: rows = hypothesis position (h_main · h_ablation[i] · h_super_additivity · h_control_negative · h_robustness[i]), columns = iterations, cells = `--sage` ✓ / `--rose` − / `--mute-2` ? / blank | ≥1 hypothesis with ≥1 probe | `nous-iteration.extension.hypothesis_bundle.*.result: 'pending' \| 'confirmed' \| 'refuted' \| 'inconclusive'` | Nous (`nous-campaign + detail`) |
-| **`BestSoFarLine`** | Step-line of best score across attempts; gaming attempts marked with `--rose` triangles | ≥3 attempts | `coral-attempt.extension.score: number` + `coral-attempt` ordering | Coral (`coral-optimization + structure`) — replaces the existing v0.1.5 Coral outcome #1 |
+| **`PrinciplesTempo`** ✓ shipped | Stepped line of cumulative principles extracted per iteration; gaps in the slope tell the user "we learned in bursts" | ≥3 iterations AND ≥2 principles | `nous-iteration.extension.principles_emitted: Reference[]` + `iteration_number` | Nous (`nous-campaign + structure`) |
+| **`HypothesisGrid`** ✓ shipped | 2D grid: rows = hypothesis position (h_main · h_ablation[i] · h_super_additivity · h_control_negative · h_robustness[i]), columns = iterations, cells = `--sage` ✓ / `--rose` − / `--mute-2` ? / blank | ≥2 iterations AND ≥2 distinct hypotheses with results | `nous-iteration.extension.hypothesis_bundle.*.result: 'pending' \| 'confirmed' \| 'refuted' \| 'inconclusive'` | Nous (`nous-campaign + detail`) |
+| **`HMainTimeline`** *(proposed; not yet shipped)* | Single horizontal strip of cells showing `h_main` result across iterations: `[✓ ✓ − ✓ ?]` — confirmation streak vs. contested hypothesis story | ≥3 iterations with ≥2 results on `h_main` | `nous-iteration.extension.hypothesis_bundle.h_main.result` | Nous (`nous-campaign + structure`) |
 
-**Schema audit note (load-bearing):** the originally-planned fourth atom `IterationTrajectory` ("sparkline of the campaign's main metric") was deferred. The v0.1 `nous-iteration.extension` schema carries no numeric metric field — that gap is **G-N-4** (`prediction_accuracy` aggregate) and **G-N-9** (`control/robustness/ablation outcomes`), both v0.2 schema-bump candidates. Plotting a metric trajectory would either require fabricating data or building against a schema that doesn't yet exist. Both fail the "don't pretend to have data we don't have" discipline. Once G-N-4 lands in v0.2, the trajectory work *naturally folds into the existing v0.2 `trajectory` directive* (Observable Plot output, LLM-emitted) — there is no separate atom to build later. The directive grammar already covers it.
+**Schema audit note (load-bearing):** the originally-planned `IterationTrajectory` ("sparkline of the campaign's main metric") is deferred. The v0.1 `nous-iteration.extension` schema carries no numeric metric field — that gap is **G-N-4** (`prediction_accuracy` aggregate) and **G-N-9** (`control/robustness/ablation outcomes`), both v0.2 schema-bump candidates. Plotting a metric trajectory would require fabricating data. Once G-N-4 lands in v0.2, the trajectory work folds into the v0.2 `trajectory` directive (Observable Plot output, LLM-emitted) — no separate atom to build later.
 
-Each atom: one component file + one CSS module + one behavioral test file. Tests assert structural attributes (axis labels, annotation text, `data-*` hooks) but never SVG path data — same discipline as `IntegralGlyph.test.tsx:5-6`. Estimated ~500-700 lines total across the three atoms.
+**HypothesisGrid threshold today:** under v0.1 schema + current adapter, only `h_main` lands with a `result` (the adapter at `ledger.ts:227` sets `h_ablation: []` because v0.1 has no schema home for `ablation_results` / `control_result` / `robustness_result`). Grid stays hidden across all v0.1 nous campaigns — by design, the threshold is correct. Grid lights up the moment G-N-9 promotes in v0.2 (no atom changes needed). HMainTimeline exists *because* the grid is hidden today: a 1×N strip of h_main results is real signal that doesn't pretend to be a 2D matrix.
 
-**Per-adapter composition:**
-- **Nous** — structure projection composes `PrinciplesTempo` (full-width or compact at ≥1024px); detail projection adds `HypothesisGrid` (full-width). Trajectory plot deferred to v0.2 alongside G-N-4.
-- **Coral** — structure projection composes `BestSoFarLine` (full-width) with gaming markers tied to G-C-6 status mapping; folds the existing v0.1.5 Coral outcome #1 into the cross-adapter atom.
-- **GitHub-issues** — no progress visualization in v0.1.5; issues don't carry numeric trajectory data. Markdown body rendering (GitHub outcome #4 above) covers the read pillar instead.
+Each atom: one component file + one CSS module + one behavioral test file. Tests assert structural attributes (axis labels, annotation text, `data-*` hooks) but never SVG path data — same discipline as `IntegralGlyph.test.tsx:5-6`.
 
-**Timeline / sequencing (v0.1.5):**
+**Per-adapter composition (Nous-only in v0.1.5):**
+- **Nous** — structure projection composes `PrinciplesTempo` + (if shipped) `HMainTimeline`; detail projection adds `HypothesisGrid` (which stays hidden today by threshold; will light up post-G-N-9 in v0.2). Trajectory plot deferred to v0.2 alongside G-N-4.
+- **Coral / GitHub** — no atom work in v0.1.5 (deferred to v0.3+).
 
-1. **Phase 1 — `PrinciplesTempo` + `HypothesisGrid`.** Both consume `nous-iteration.extension` data — `PrinciplesTempo` reads `principles_emitted.length` per iteration; `HypothesisGrid` reads `hypothesis_bundle.*.result`. Atoms ship together as one atom-pair PR with shared data-pipeline patterns. `PrinciplesTempo` wires into Nous structure projection; `HypothesisGrid` into Nous detail projection. Acceptance: a Nous campaign with ≥1 principle + ≥1 hypothesis renders both atoms without LLM dependency; v3 plateau study's hypothesis ledger reads cleanly with no legend. **~2-3 days.**
-2. **Phase 2 — `BestSoFarLine` + Coral integration.** Different data shape (Coral attempts carry numeric `score`); built once Phase 1's atom-architecture patterns are proven. Wires into Coral structure projection. Acceptance: pi-mc's `math.pi` gaming attempt renders with `--rose` triangle; legitimate attempts form a clean step-line. **~1-2 days.**
-3. **Phase 3 — Visual baseline regen + cross-adapter aesthetic review.** All three atoms rendered side-by-side at 1440×900 should read as one substrate, not three grafted pieces. **~½ day.**
+**Timeline / sequencing (v0.1.5 visual vocabulary remaining):**
 
-**Total scope:** ~3-4 days of focused work. Ships as 2-3 PRs.
+1. ✓ **Phase 1 — `PrinciplesTempo` + `HypothesisGrid`.** Shipped commit `3161b05` + threshold-hardening + a11y follow-up `ed96e0f`.
+2. **Phase 2 — `HMainTimeline` (Nous addition).** Single-strip atom; same discipline. Wires into Nous structure projection. Acceptance: a Nous campaign with ≥3 iterations probing h_main renders a [✓/−/?] strip whose epistemic story (confirmation streak vs. contested) is legible at a glance. **~1-2 hours, 1 small commit.**
+3. **Phase 3 — Visual baseline regen + Nous aesthetic review.** Lock the chrome at this milestone. **~½ day.**
+
+**Total remaining scope:** ~½ day for the rest. Phase 2 trade-off described in earlier session: defer if the user prefers to keep Phase 1 standalone; ship if they want richer Nous Detail before paper-authoring chrome lands.
 
 **Falsification per atom (the stop conditions):**
-- `PrinciplesTempo`: a campaign extracting 4 principles across iterations 2/5/7/12 communicates "burst learning, not steady" visually.
-- `HypothesisGrid`: the v3 plateau study renders as a clean grid distinguishing confirmed / refuted / inconclusive without a legend.
-- `BestSoFarLine`: pi-mc gaming attempts mark visibly as `--rose`; legitimate attempts form a clean step.
-- **Cross-cut**: visual baseline diff against pre-v0.1.5 Detail surfaces shows the new atoms inheriting tokens cleanly, no foreign aesthetic.
+- `PrinciplesTempo`: a campaign extracting principles across multiple iterations communicates "burst learning, not steady" visually. ✓ shipped.
+- `HypothesisGrid`: the v3 plateau study renders as a clean grid distinguishing confirmed / refuted / inconclusive without a legend (gates on G-N-9 schema bump in v0.2; intentionally hidden in v0.1.5). ✓ atom shipped, threshold gates render.
+- `HMainTimeline` (proposed): a 5-iteration h_main confirmation streak reads as a uniform `--sage` strip in 2 seconds; a contested hypothesis reads as a mixed strip in the same time.
+- **Cross-cut**: visual baseline diff against pre-v0.1.5 Detail surfaces shows new atoms inheriting tokens cleanly, no foreign aesthetic.
 
 ### What v0.1.5 leaves to v0.2
 
-The outcome framing makes the v0.2 boundary cleaner:
+The Nous + Paper focus makes the v0.2 boundary cleaner:
 
-- **Coral writeback / task shaping.** Coral's "shape a task" is structurally a writeback story — needs `task.yaml` serializer + LLM shape-handler with Coral-specific prompts. Defer.
-- **GitHub issue creation / commenting from chrome.** Same shape — writeback. Defer.
-- **Cross-kind orchestrator** (run from chrome). Defer.
-- **Schema bump** (G-C-* / G-F-* promotions). Defer.
-- **Paper adapter.** Defer.
-- **Findings plots** (charts of the data the campaign produced — scatter, ablation grids, distributions, etc., authored via LLM-emitted directives + Observable Plot rendering). Depends on G-N-9 + Coral analogues being promoted. Distinct from the v0.1.5 progress trackers above. See "Findings plots" subsection under v0.2 below.
+- **Paper adapter.** Real `papers/<name>/draft.md` + `refs.bib` reading + cross-references to upstream Nous campaigns. May slide forward to v0.1.5 in starter form (TBD per Paper subsection).
+- **Nous schema bump** (G-N-* promotions). G-N-9 unlocks HypothesisGrid's full 2D content + the `trajectory` findings directive.
+- **Per-kind writeback** for Nous (already shipped, hardened) + Paper (new).
+- **Findings plots** (charts of the data the campaign produced — scatter, ablation grids, distributions, etc., authored via LLM-emitted directives + Observable Plot rendering). Depends on G-N-9. Distinct from the v0.1.5 progress trackers above. See "Findings plots" subsection under v0.2 below — now scoped to Nous + Paper only.
+
+### What v0.1.5 leaves to v0.3+
+
+- **All Coral parity work** — writeback, shaping, projection plugins, Phase-4 ops, run-command plugin, `BestSoFarLine` atom, schema bumps (G-C-*).
+- **All GitHub-issues / feature-development work** — timeline events, linked PRs, body rendering, body-search, jump-to-github, full feature-dev adapter (git log + PR API + CI status), schema bumps (G-F-*).
+- **Cross-kind execution orchestrator** (touches all four adapters). Promoted to v0.3+ since it can't be designed without cross-kind evidence and we're now scoping v0.2 to Nous + Paper only.
 
 ### Falsification per adapter
 
-Each cleanup needs a checkable stop condition (analogous to "the schema accepts this without modification" for B1/B2). Picked at brainstorm time:
+Each cleanup needs a checkable stop condition (analogous to "the schema accepts this without modification" for B1/B2):
 
 - **Nous:** the spec-gaming nous-campaign that passes commit gating today should fail it under v0.1.5's pre-flight validation OR the user is shown the validation failure inline. (Concrete: shape a campaign with a non-existent `repo_path` → committing is gated until the path exists.)
-- **Coral:** the `math.pi` spec-gaming attempt is visually marked as "score = grader cap; verify" on the campaign Detail. (Concrete: open pi-mc Detail → both attempts have a suspicious-cap chip.)
-- **GitHub-issues:** the Activity Strip on a GitHub Detail surface shows ≥1 timeline event for an issue that has comments. (Concrete: open issue #1 Detail → ≥1 event, not "no activity yet.")
+- **Paper:** the chrome makes "this paper-claim is grounded in Nous iter-2 of the v3 plateau study" a single click + 2-second read on the claim's Detail surface. (Concrete: open a fixture `paper-claim` whose `evidence_links` point at a `nous-iteration` → upstream chain is the primary detail body, not a side-section.)
 
 ### Companion files
 
@@ -351,78 +359,66 @@ Each cleanup needs a checkable stop condition (analogous to "the schema accepts 
 
 ### Implementation note
 
-v0.1.5 is **scoped to chrome work** — no new schema, no new adapter contracts, no new endpoints (with the exception of GitHub timeline / comments fetch, which is a strict additive read on top of the existing `gh-cli-source.ts`). If a v0.1.5 candidate requires substrate change, it slides to v0.2.
+v0.1.5 is **scoped to chrome work on the Nous + Paper axis** — no new schema, no new adapter contracts (with one possible exception: the Paper adapter starter, if the user opts to slide it forward from v0.2). If a v0.1.5 candidate requires substrate change beyond that, it slides to v0.2. Coral and GitHub-issues are explicitly out of scope for v0.1.5 — see v0.3+ tiers.
 
 ---
 
-## v0.2 — schema bump + writeback hardening + last adapter
+## v0.2 — Nous schema bump + Paper adapter + findings plots
 
-Promoted from "Deferred" — v0.2 has explicit scope now, not just a non-goals list.
+**Scope contraction (2026-05-27):** v0.2 is now scoped to **Nous + Paper only**. All Coral parity work and full feature-development integration have moved to v0.3+. This concentrates substrate energy on the research-paper authoring loop and on landing the cross-tree provenance test (paper-claim → nous-iteration via `EvidenceLink`) the substrate's design has been promising since v0.1.
 
-**Schema bump (the v0.2 schema design pass).**
-Promote candidates from `gaps.md`. Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
+**Nous schema bump (the v0.2 schema design pass).**
+Promote G-N-* candidates from `gaps.md`. Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
 
-*From Nous (G-N series, surfaced during A1+A2):* G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), G-N-9 (control/robustness/ablation outcomes), G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload), G-N-12 (principle-extraction `OperationKind`).
+*From Nous (G-N series, surfaced during A1+A2):* G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), **G-N-9 (control/robustness/ablation outcomes — load-bearing for findings plots and HypothesisGrid 2D content)**, G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload), G-N-12 (principle-extraction `OperationKind`).
 
-*From Coral (G-C series, surfaced during B1):* G-C-1 (`success_criterion` source — same shape as G-N-8; promote together), G-C-2 (`direction: maximize|minimize` on `CoralOptimizationExtension`), G-C-3 (`search_algorithm` enum reflects nothing real), G-C-4 (`Party` is too thin for role-evolution history), G-C-5 (no campaign-level "done" signal), G-C-6 (`coral-attempt.status` enum mapping), G-C-7 (`evaluator_feedback` field on attempt), G-C-8 (`corpus_snapshot_hash` — typed `shared_state_hash`), G-C-9 (`budget_class` field on attempt), G-C-10 (notes-as-typed-knowledge — same shape as G-N-2; **two adapters independently want this, so it promotes from "candidate" to "v0.2 commitment" per the gaps.md two-adapter rule**), G-C-11 (pre-installed personas as `KnowledgeRef`s), G-C-12 (pre-installed skills as `KnowledgeRef`s), G-C-13 (operational state stays out — observability, not intent semantics), G-C-14 (Coral agent-worktree anchor kind name).
+*Paper schema work:* validate that `paper-campaign` / `paper-section` / `paper-claim` extensions carry what the Paper adapter needs. Likely candidates surface during adapter implementation: a `paper-claim.evidence_chain` typed walk over `EvidenceLink` upstream-iterations, a `paper-section.completion_state` enum (drafted / argued / cited), a `paper-campaign.draft_anchor` `ExternalAnchor` to `draft.md`. Catalog as G-P-* gaps as they emerge during adapter design.
 
-*From B2 (TBD):* G-F-* once GitHub-issues adapter lands. Promotions land then.
+*Coral and GitHub schema bumps (G-C-*, G-F-*) deferred to v0.3+.*
 
-**Writeback hardening.**
-Generalize Track A's writeback (A4) beyond Nous. Each adapter declares its writeback schema; UI affords commit/declare/refine for every kind, not just Nous. Filesystem auto-watch replaces the refresh button (the v0.1.1 ambition realized later than planned).
+**Writeback hardening (Nous + Paper).**
+Generalize Track A's writeback (A4) to Paper. Filesystem auto-watch replaces the refresh button.
 
 Per-adapter scope:
 - **Nous writeback already shipped** (A4) — keep, harden against multi-source races.
-- **Coral writeback (new in v0.2):** `task.yaml` serializer (`src/adapters/coral/writeback.ts`) + `/api/coral/writeback` endpoint (`vite-plugin-nous-adapter/coral-writeback-handler.ts`) + a `CoralWritebackConfig` schema covering `task.{name, description}` + `grader.{entrypoint, direction, timeout, args}` + `agents.{count, runtime, model}` + `workspace.repo_path`. Refuse-overwrite semantics mirror Nous's. Today's `writeback-handler.ts` early-rejects `source.kind !== 'nous'` with 400 — that guard inverts when the Coral handler lands.
-- **GitHub-issue writeback (B2 promotion):** open/close/comment/assign via `gh` CLI or REST. Read-only B2 doesn't write; the writeback story rides v0.2.
-- **Paper writeback (Adapter #4 v0.2):** edits to `draft.md` sections via section-anchored edits; bibliography additions to `refs.bib`.
+- **Paper writeback (Adapter #4 v0.2):** edits to `draft.md` sections via section-anchored edits; bibliography additions to `refs.bib`. Section anchors are the load-bearing trick — multiple `paper-section`s in one draft.md means writes need to target a specific section without touching the rest.
+- *Coral and GitHub writeback deferred to v0.3+.*
 
-**Acceptance:** all four kinds reach declare-edit-refine parity through the chrome. Backwards-compat: existing Nous writeback path stays intact.
-
-**Execution orchestrator (promoted from the original A5 framing).**
-Build the in-chrome execution capability as a substrate-level concern, not a per-kind UI button. A workspace-watcher service observes intent state and policies (auto-fire on declare? gate on human approval per kind?); a generic process manager handles spawn/track/kill/log; per-kind runners (`nous-runner`, `coral-runner`, `feature-dev-runner`, `paper-runner`) plug in. The chrome adds a `▶ run` affordance that calls the same orchestrator API a background watcher would. Cross-restart idempotency and process-tracking design happen here, once, with cross-kind evidence in hand. The v0.1 `RunCommand` panel from A5 stays as the manual fallback for environments where the orchestrator isn't running.
-
-Per-kind run-command plugins (the small per-kind piece; each one mirrors `src/lib/run-command-plugins/nous-campaign.ts`):
-- `coral-optimization` → `cd <root> && coral run` (or whatever Coral's CLI entrypoint is). Composes from `task.yaml`'s presence + the run timestamp dir.
-- `feature-campaign` → invocation TBD when B2's full feature-dev story lands.
-- `paper-campaign` → invocation TBD with Adapter #4.
+**Acceptance:** Nous + Paper reach declare-edit-refine parity through the chrome. Backwards-compat: existing Nous writeback path stays intact.
 
 **Adapter #4 — Paper.**
-The original 4th-of-4 in the v0.1 plan. Read `papers/<name>/draft.md` + `refs.bib` + cross-references to upstream Nous campaigns. Tests cross-tree provenance via `EvidenceLink` (paper-claim → nous-iteration). The structural test that's been deferred from v0.1 expansion.
+The original 4th-of-4 in the v0.1 plan, now centralized in v0.2. Read `papers/<name>/draft.md` + `refs.bib` + cross-references to upstream Nous campaigns. Tests cross-tree provenance via `EvidenceLink` (paper-claim → nous-iteration). The structural test that's been deferred from v0.1 expansion.
 
-**Coral parity with Nous (the explicit follow-up list from B1).**
-B1 shipped Coral as read-only Phases 1+2. Bringing it to Nous parity is several discrete v0.2 items, listed here so future sessions can pick them up independently:
+Per-kind structure:
+- **`paper-campaign`** — root intent for one paper draft. `decomposition.children` = `paper-section` IDs in document order. `ExternalAnchor` points at the draft.md file root.
+- **`paper-section`** — one §N section. `decomposition.children` = `paper-claim` IDs. `ExternalAnchor` points at the section's anchor in draft.md.
+- **`paper-claim`** — one assertion. `evidence_links` (outgoing) → `nous-iteration` IDs upstream. Optional `external_citations` → `refs.bib` entries.
 
-1. **Coral writeback** — covered under "Writeback hardening" above. Mirrors A4 for Coral.
-2. **Coral LLM-driven shaping (mirrors A4.6).** New `+ new coral campaign` button on `MapSurface.topRow`. New shape-handler variant — the existing `vite-plugin-nous-adapter/shape-handler.ts` carries a Nous-specific system prompt that knows about `research_question`, `target_system`, etc. Coral needs its own prompt scoped to graders + agents + seed dirs, OR the handler refactors to dispatch on `intent.kind`. Recommended: dispatch + per-kind prompt files, so Adapter #4 (Paper) and full feature-dev slot in similarly. `shape-patch.ts` is already kind-agnostic — patches apply to any draft Intent regardless of kind, so that piece is reusable as-is.
-3. **Coral run-command plugin** — covered under "Execution orchestrator" above. Mirrors A5 for Coral.
-4. **Coral projection plugins.** B1 deliberately shipped without these. The projection engine is kind-pluggable (`src/lib/projection.ts` indexed by `(intent.kind, zoom)`); B1 left the slots empty so all Coral kinds fall back to raw fields with `data-projection-source="fallback"`. v0.2 fills four cells:
-   - `src/lib/projection-plugins/coral-optimization.ts` — structure (≤800 chars: best score, attempt count, agent count, recent-leader narrative) + detail (unbounded: full attempt-tree narrative, principle highlights, gaming-attempt callouts).
-   - `src/lib/projection-plugins/coral-attempt.ts` — structure (score + status + lineage one-liner) + detail (attempt rationale, parent comparison, feedback prose).
-   - Register both in `vite-plugin-nous-adapter/index.ts:55-58`'s `projectionPlugins` map.
-   - Reason for deferring: pi-mc is one Coral run; prompt design overfits without cross-validation against more Coral runs. Fill once we have at least two real Coral fixtures.
-5. **Coral Phase-4 operations diff.** B1 left ops empty — `buildCoralWorkspace`'s `BuildCoralWorkspaceOpts.prior` is reserved but ignored. The generic `diffWorkspaces` engine in `src/lib/workspace-diff.ts` is adapter-agnostic; Coral's job in v0.2 is to plug in. **The load-bearing v0.2 test:** Coral's DAG-shaped decomposition is structurally different from Nous's tree-shaped decomposition (each parent attempt potentially has multiple children via parent_hash chains). The diff engine's `KIND_DISPOSITIONS` map needs no changes — `decompose` already covers "parent's children grew" — but the test is whether DAG growth produces clean ops without double-counting when an attempt's parent-attempt-id is also a child of the campaign at the schema level. **This is the validation B1 deferred** — Coral as the second adapter through `diffWorkspaces` is the breadth-of-decomposition-shape test the engine needs.
-6. **CoralWritebackConfig schema gaps.** When v0.2 designs Coral writeback, expect the same fields surfaced in G-C-1..G-C-3 + G-C-7..G-C-9 to surface again as writeback config fields. Promote those gaps before designing the writeback to avoid round-tripping through a schema that drops user input.
+Adapter responsibilities (v0.2):
+1. Read draft.md, parse §-headers + claim markers (TBD format — a comment syntax like `<!-- claim: X -->` or front-matter blocks).
+2. Read refs.bib via a typed parser (`@article{key, …}`).
+3. Resolve cross-tree links: a claim's `evidence_links` must point at typed `nous-iteration` intents in the workspace. The `EvidenceLink` validation already enforces this; the adapter just needs to populate it.
+4. Filesystem auto-watch on draft.md + refs.bib so chrome refreshes when the author edits in their preferred editor (the substrate doesn't host a draft.md editor; it surfaces what's there).
 
-Each of (1)-(5) is independently shippable and small enough to land per-PR. Sequencing recommendation: **(4) projection plugins first** (no schema dependencies, smallest surface, fastest feedback on Coral chrome quality), then **(2) shaping + (1) writeback together** (couple naturally), then **(3) + (5) under the orchestrator umbrella** (need cross-kind design).
+**Execution / orchestrator scoping.**
+The cross-kind orchestrator (`▶ run` affordance + workspace-watcher + per-kind runners) is now **deferred to v0.3+** — it can't be designed without cross-kind evidence (Nous + Coral + Paper together), and v0.2 is Nous + Paper only. The v0.1 `RunCommand` panel (manual `cd <root> && nous run` invocation) stays as the canonical Nous run path. Paper "execution" is editing draft.md / refs.bib in the user's editor — there's no `▶ run` for paper authoring.
 
-**Full feature-development adapter.**
-Promote the GitHub-issues stand-in (B2) to the full feature-dev story: git log + PR API + CI status + repo-scoped `CLAUDE.md` as a scoped knowledge corpus. Most expensive integration; benefits from schema lessons of three other adapters.
+The Nous-specific run-command plugin (`src/lib/run-command-plugins/nous-campaign.ts`) stays as is. Paper has no analog — it's not a run-shaped artifact.
 
-**Semantic-model promotion.**
-- S-1 projection generator filled out for Coral kinds + B2's `feature-campaign` + Adapter #4's paper kinds. v0.1 ships only Nous projection plugins; v0.2 fills the remaining `(IntentKind × ZoomLevel)` cells. See "Coral parity with Nous" item (4) above for Coral specifics.
-- S-2 per-kind status grammars made explicit (hover tooltips on status chips; `Kind × Status → Meaning` table). Coral status mapping is currently `'improved' → satisfied`, default → `'active'` (G-C-6); v0.2 nails down the full Coral enum.
-- S-4 evidence narratives (one-line generated narrative per `EvidenceLink`).
-- S-5 principles-as-typed-objects (depends on G-N-2 + G-C-10 joint schema bump — two adapters independently want this).
+**Semantic-model promotion (Nous + Paper).**
+- S-1 projection generator filled out for `paper-campaign`, `paper-section`, `paper-claim` (Adapter #4's three kinds). v0.1 ships only Nous projection plugins; v0.2 adds three Paper cells × {structure, detail} = up to 6 plugin cells.
+- S-2 per-kind status grammars: nail down `paper-claim.status` semantics (drafted? argued? evidence-grounded? satisfied means published?).
+- S-4 evidence narratives (one-line generated narrative per `EvidenceLink`) — load-bearing for paper-claim's upstream chain rendering.
+- S-5 principles-as-typed-objects (depends on G-N-2 schema bump — Nous side only in v0.2 since Coral is deferred).
 - C-4 architectural decision: adapter-side vs. generator-side projections. Recommended generator-side; v0.2 commits.
-- Two-audiences API surface: documented `/api/intents/<id>?zoom=...` endpoints; operation endpoints symmetric with chrome buttons.
+- Two-audiences API surface: documented `/api/intents/<id>?zoom=...` endpoints.
 
 **Calculus semantics (cautious).**
-v0.1 declares operation signatures; v0.2 may add per-kind validity (when can `gate` fire on a `paper-claim`? When does `decompose` make sense for `coral-attempt`?). Reduction rules / composition theorems only if a pattern is forced by real adapter behavior. **Resist formalizing prematurely.**
+v0.1 declares operation signatures; v0.2 may add per-kind validity for Nous + Paper kinds (when can `gate` fire on a `paper-claim`? When does `satisfy` make sense for a `paper-section`?). Reduction rules / composition theorems only if a pattern is forced by real adapter behavior. **Resist formalizing prematurely.**
 
 ### Findings plots — declarative chart authoring (Observable Plot)
 
-**Phase position:** v0.2 atom-level commitment built on top of the schema bump. **Hard dependency** on G-N-9 (and Coral analogues) being promoted from `gaps.md` candidates to actual schema fields — cannot ship without that schema work landing first.
+**Phase position:** v0.2 atom-level commitment built on top of the schema bump. **Hard dependency** on G-N-9 being promoted from `gaps.md` candidate to an actual schema field — cannot ship without that schema work landing first. (Coral analogue G-C-* deferred to v0.3+ alongside Coral findings-plot rollout.)
 
 **The distinction restated:** v0.1.5 progress trackers describe *the campaign's meta-state* (how many iterations, which hypotheses confirmed). v0.2 findings plots describe *the data the campaign produced* — scatter plots of experimental results, ablation comparisons, training curves, distribution histograms, hyperparameter heatmaps. They compose on the same Detail surface but answer different questions; they share aesthetic discipline but use different rendering primitives (atoms vs. Plot).
 
@@ -474,14 +470,14 @@ LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Ea
 - Caption + plot must answer "what's the takeaway in 5 seconds?" together. If a reader needs to read both fully to understand, the plot has failed.
 - Each catalog wrapper has hand-authored *inline annotations* (e.g., scatter highlights the focused data point; compare grid annotates the leading panel). Annotations are part of the catalog, not LLM-driven.
 
-**Per-adapter rollout:**
+**Per-adapter rollout (Nous + Paper only):**
 
 | Adapter | Findings plot consumers | Notes |
 |---|---|---|
-| **Nous** | `nous-iteration + detail` shows ablation/control/robustness scatter or compare plots; `nous-campaign + detail` shows aggregate findings across iterations | Phase 1 — most data-rich; first to validate the directive grammar |
-| **Coral** | `coral-optimization + detail` shows attempt-population scatter (parent_hash → child relationships visible as edges); `coral-attempt + detail` shows scatter of solution attributes | Phase 2 — second adapter; tests directive generality across kinds |
-| **Paper** | `paper-claim + detail` shows the figure referenced by the claim, fetched via `ExternalAnchor` (not stored in Integral) | Phase 3 — tests cross-tree findings (paper claims pointing at upstream Nous figures) |
-| **Feature-campaign** | None — declarative work, not data-producing | Excluded by design |
+| **Nous** | `nous-iteration + detail` shows ablation/control/robustness scatter or compare plots; `nous-campaign + detail` shows aggregate findings across iterations | Phase 1 — most data-rich; validates the directive grammar |
+| **Paper** | `paper-claim + detail` shows the figure referenced by the claim — including, crucially, plots derived from upstream Nous iteration data via `EvidenceLink` resolution. *This is the load-bearing cross-tree v0.2 demo*: a paper-claim's plot is literally the rendering of its upstream Nous iteration's findings, surfacing the evidence chain in the visual itself. | Phase 2 — tests cross-tree findings (paper claims pointing at upstream Nous figures via `EvidenceLink`) |
+
+*Coral findings plots and feature-campaign decisions deferred to v0.3+.*
 
 **Test discipline:**
 - LLM mocked in directive emission tests. Mock returns canned directives; assertions verify the projection plugin produces the right directive given canned data. Same pattern as v0.1 projection prose tests.
@@ -489,16 +485,16 @@ LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Ea
 - Snapshot tests on rendered Plot output for small fixture datasets, behind a feature flag — snapshots regenerate intentionally, never silently.
 - LLM isolation discipline preserved: real Plot calls are pure JS (no network); real LLM calls do not happen in tests.
 
-**Timeline / sequencing (v0.2):**
+**Timeline / sequencing (v0.2 findings plots, Nous + Paper):**
 
-1. **Phase 0 — Schema prerequisite.** G-N-9 promotion (typed `ResultBundle` on `Iteration`) + Coral analogues. Writes `intent-schema-v0.2.md` alongside v0.1. **~1 PR, schema design pass.**
-2. **Phase 1 — Adapter pass-through.** Stop dropping G-N-9 fields in `src/adapters/nous/`; pass `results` through. Coral analogues. **~3 PRs (Nous, Coral, Paper data-pass-through).**
+1. **Phase 0 — Schema prerequisite.** G-N-9 promotion (typed `ResultBundle` on `Iteration`). Writes `intent-schema-v0.2.md` alongside v0.1. **~1 PR, schema design pass.**
+2. **Phase 1 — Adapter pass-through.** Stop dropping G-N-9 fields in `src/adapters/nous/`; pass `results` through. Paper adapter (Adapter #4) reads draft.md / refs.bib + resolves cross-tree `EvidenceLink`s. **~2 PRs (Nous data-pass-through, Paper adapter starter).**
 3. **Phase 2 — Directive grammar + Zod schemas.** Define the 7 directive kinds in `src/lib/charts/directive.ts` + tests. **~1 PR.**
 4. **Phase 3 — Plot catalog + renderer module.** `src/lib/charts/plots/<kind>.ts` for each directive kind + `src/lib/charts/render.ts` (the directive → Plot output dispatcher). **~6-7 PRs (one per directive kind, batchable).**
-5. **Phase 4 — LLM directive emission in projection plugins.** Update `src/lib/projection-plugins/{nous-iteration,nous-campaign,coral-*}.ts` to emit directives in addition to prose. **~3 PRs (per-kind plugin updates).**
-6. **Phase 5 — Cross-adapter aesthetic review.** Visual diffs against v0.1.5 progress trackers — the chart family must look like one substrate, not two grafted layers. **~½ day; may surface catalog tweaks.**
+5. **Phase 4 — LLM directive emission in projection plugins.** Update `src/lib/projection-plugins/{nous-iteration,nous-campaign,paper-*}.ts` to emit directives in addition to prose. Paper claims emit directives *that resolve through their upstream nous-iteration evidence* — the cross-tree visual demo. **~2-3 PRs (Nous + Paper plugin updates).**
+6. **Phase 5 — Aesthetic review.** Visual diffs against v0.1.5 Nous progress trackers — the Plot output must look like one substrate with the v0.1.5 atoms, not two grafted layers. **~½ day; may surface catalog tweaks.**
 
-**Total scope:** ~3-4 weeks of focused work, ~12-15 PRs across the v0.2 cycle. Lands alongside the schema bump and after the Paper adapter so the cross-tree case is real.
+**Total scope:** ~2-3 weeks of focused work, ~10-12 PRs across the v0.2 cycle (smaller than the original Coral-inclusive plan). Lands alongside the Nous schema bump and the Paper adapter so the cross-tree case is real.
 
 **Falsification per directive type (the stop conditions):**
 - `scatter`: a Nous iteration's ablation results render as a scatter with the focused condition in `--amber`; reading "x correlates with y" is faster than reading the LLM's prose.
@@ -523,7 +519,60 @@ LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Ea
 
 ---
 
-## v0.3+ — collaboration tier
+## v0.3+ — Coral parity + feature-development + collaboration tier
+
+Absorbs all work deferred from v0.1.5 + v0.2 by the 2026-05-27 scope decision (Nous + Paper focus). Three independent tiers — they can ship in any order.
+
+### Coral parity tier
+
+B1 shipped Coral as read-only Phases 1+2 (2026-05-24). Bringing Coral to Nous-parity requires several discrete items, each independently shippable:
+
+1. **Coral schema bump (G-C-* promotions).** From `gaps.md`: G-C-1 (`success_criterion` source — same shape as G-N-8; ideally promotes alongside it), G-C-2 (`direction: maximize|minimize`), G-C-3 (`search_algorithm` enum reflects nothing real), G-C-4 (`Party` thin for role-evolution), G-C-5 (no campaign-level "done" signal), G-C-6 (`coral-attempt.status` enum mapping), G-C-7 (`evaluator_feedback` field), G-C-8 (`shared_state_hash`), G-C-9 (`budget_class`), G-C-10 (notes-as-typed-knowledge — joint with G-N-2 which lands in v0.2; G-C-10 catches up here), G-C-11 (pre-installed personas as `KnowledgeRef`s), G-C-12 (pre-installed skills as `KnowledgeRef`s), G-C-13 (operational state stays out — observability), G-C-14 (Coral agent-worktree anchor kind name).
+2. **Coral writeback.** `task.yaml` serializer (`src/adapters/coral/writeback.ts`) + `/api/coral/writeback` endpoint + `CoralWritebackConfig` schema covering `task.{name, description}` + `grader.{entrypoint, direction, timeout, args}` + `agents.{count, runtime, model}` + `workspace.repo_path`. Refuse-overwrite semantics mirror Nous's. Today's `writeback-handler.ts` early-rejects `source.kind !== 'nous'` with 400 — that guard inverts when the Coral handler lands.
+3. **Coral LLM-driven shaping (mirrors A4.6).** New `+ new coral campaign` button on `MapSurface.topRow`. Per-kind shape-handler dispatch — the existing `vite-plugin-nous-adapter/shape-handler.ts` carries a Nous-specific system prompt; refactor to dispatch on `intent.kind` so Coral and Paper slot in similarly. `shape-patch.ts` is already kind-agnostic.
+4. **Coral projection plugins.** B1 deliberately shipped without these; v0.2 deferred them; v0.3+ fills four cells:
+   - `src/lib/projection-plugins/coral-optimization.ts` — structure (≤800 chars: best score, attempt count, agent count, recent-leader narrative) + detail (unbounded: full attempt-tree narrative, principle highlights, gaming-attempt callouts).
+   - `src/lib/projection-plugins/coral-attempt.ts` — structure (score + status + lineage one-liner) + detail (attempt rationale, parent comparison, feedback prose).
+   - Reason for original deferral: pi-mc was one Coral run; prompt design overfits without cross-validation against more Coral runs.
+5. **Coral Phase-4 operations diff.** B1 left ops empty — `buildCoralWorkspace`'s `BuildCoralWorkspaceOpts.prior` is reserved but ignored. The generic `diffWorkspaces` engine in `src/lib/workspace-diff.ts` is adapter-agnostic; Coral's job is to plug in. **The load-bearing test:** Coral's DAG-shaped decomposition is structurally different from Nous's tree-shaped decomposition — DAG growth must produce clean ops without double-counting when an attempt's parent-attempt-id is also a child of the campaign at the schema level.
+6. **`BestSoFarLine` atom (visual vocabulary, deferred from v0.1.5 Phase 2).** Step-line of best score across attempts; gaming attempts marked with `--rose` triangles. Threshold: ≥3 attempts. Wires into `coral-optimization + structure` projection. Replaces the original v0.1.5 Coral outcome #1 ("best-so-far chart").
+7. **Coral outcome cleanup (chrome that helps the user *steer* the optimization).** Originally listed under v0.1.5; defers to here:
+   - Gaming-detection signal (the `math.pi` attempt hit the 1e12 cap — mark suspicious attempts visibly).
+   - Side-by-side attempt diff (click two attempts → see the diff in `solution.py`).
+   - Agent personalities visible (each `roles/agent-N.md` rendered inline; G-C-4 lossy today).
+   - Notes-as-principles in context (G-C-10 surfaces note bodies / excerpts on campaign Detail).
+8. **Coral findings plots (v0.2 work that now defers).** Per the v0.2 findings-plot rollout that originally listed Coral as Phase 2: `coral-optimization + detail` shows attempt-population scatter (parent_hash → child relationships visible as edges); `coral-attempt + detail` shows scatter of solution attributes. Depends on Coral schema bump (G-C-* analogues to G-N-9).
+9. **Coral run-command plugin** (per-kind small plugin mirroring `src/lib/run-command-plugins/nous-campaign.ts`). `cd <root> && coral run` (or whatever Coral's CLI entrypoint is). Composes from `task.yaml`'s presence + the run timestamp dir.
+
+Sequencing recommendation: **(1) schema bump → (2) writeback + (3) shaping together → (4) projection plugins → (5) Phase-4 ops → (6) BestSoFarLine atom → (7) outcome chrome → (8) findings plots → (9) run plugin.** Each is independently shippable; per-PR scope.
+
+### GitHub-issues / feature-development tier
+
+B2 shipped GitHub-issues as read-only Phases 1+2 (2026-05-25). Promoting it to the full feature-development story is the most expensive integration (git log + PR API + CI status + repo-scoped `CLAUDE.md` as a scoped knowledge corpus); benefits from schema lessons of three other adapters.
+
+1. **GitHub-issues schema bump (G-F-* promotions).** Cataloged in `gaps.md`; 13 G-F-* gaps recorded during B2. Promotions land here.
+2. **GitHub-issue writeback** (open / close / comment / assign via `gh` CLI or REST). Read-only B2 doesn't write; the writeback story rides this tier.
+3. **GitHub-issues outcome cleanup** (chrome that helps the user *triage*). Originally listed under v0.1.5; defers to here:
+   - Timeline events + comments loaded — promotes G-F-7 + G-F-8. Activity Strip on GitHub Detail is silent today; making it speak is the highest-leverage GitHub fix.
+   - Linked PRs as references — surface `linked_pull_requests` as a chip on Detail ("linked: PR#123 ci-failing"), typed as `EvidenceLink`.
+   - Stale-data signal honest — "synced 12m ago · refresh →" when reality has shifted on github.com.
+   - Markdown body rendering on Detail (closest in-spec substitute for the missing projection plugin).
+   - Body-search / jump-to-issue (`/` keyboard shortcut → narrow to substring matches).
+   - One-click jump to github.com to comment (until writeback lands).
+4. **Full feature-development adapter.** Promote the GitHub-issues stand-in (B2) to the full feature-dev story: git log + PR API + CI status + repo-scoped `CLAUDE.md` as scoped knowledge corpus.
+5. **`feature-campaign` projection plugins** (`src/lib/projection-plugins/feature-{campaign,pr}.ts`).
+6. **Findings-plot decision for `feature-campaign`.** Originally "excluded by design" because feature work is declarative not data-producing. Re-decide here: do feature campaigns produce data that earns plots (CI metrics, PR latency distributions, review-cycle times)? If yes, slot into the directive grammar.
+
+### Cross-kind execution orchestrator (deferred from v0.2)
+
+Build the in-chrome execution capability as a substrate-level concern, not a per-kind UI button. A workspace-watcher service observes intent state and policies (auto-fire on declare? gate on human approval per kind?); a generic process manager handles spawn/track/kill/log; per-kind runners (`nous-runner`, `coral-runner`, `feature-dev-runner`) plug in. The chrome adds a `▶ run` affordance that calls the same orchestrator API a background watcher would. Cross-restart idempotency and process-tracking design happen here, once, with cross-kind evidence (Nous + Coral + feature-dev) in hand. The v0.1 `RunCommand` panel from A5 stays as the manual fallback.
+
+Per-kind run-command plugins:
+- `nous-campaign` → ✓ shipped (A5)
+- `coral-optimization` → see Coral parity tier item (9)
+- `feature-campaign` → invocation TBD when the full feature-dev adapter lands
+
+### Collaboration tier (original v0.3+ scope)
 
 High-level only. Not actionable today; listed so future sessions know it exists.
 
