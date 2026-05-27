@@ -1,23 +1,27 @@
-import { Chip } from '@/components/atoms'
 import type { GroupBy, MapView, SortBy } from '@/lib/filter-query'
 import { activeFilterCount } from '@/lib/filter-query'
 import type { SourceEntry } from '@/lib/sources'
 import { FilterBar, type FilterCategory } from '../FilterBar/FilterBar'
 import { GroupSortControls } from '../GroupSortControls/GroupSortControls'
+import { SourcesDropdown } from '../SourcesDropdown'
 import styles from './MapControls.module.css'
 
 /**
  * MapControls — the top region of the Map surface.
  *
- * Composes:
- *  - Counts row (active · awaiting · agents · drafts)
- *  - FilterBar (active chips + + filter disclosure)
+ * Composes (single row):
+ *  - Counts cluster (active · awaiting · agents · drafts)
+ *  - FilterBar (active chips + `+ filter` disclosure)
+ *  - SourcesDropdown (always visible when sources are wired)
  *  - GroupSortControls (only visible when ≥1 filter active)
- *  - + new nous campaign button (when handler provided)
- *  - Source picker chip cluster (existing affordance, lifted in)
+ *  - `+ new nous campaign` button (when handler provided)
  *
- * MapControls owns the topRow layout. MapSurface stays a thin wrapper
- * (controls + section label + forest/empty).
+ * SourcesDropdown sits before GroupSort because data-plane decisions
+ * (which sources to load) precede presentation-plane decisions
+ * (how to filter / group / sort within them) in the user's mental
+ * flow. The dedicated `SOURCES` row that earlier shipped here is
+ * superseded — the AppHeader's scope pills are the read-only display
+ * of source state, this dropdown is the control.
  */
 export interface MapControlsProps {
   view: MapView
@@ -34,8 +38,8 @@ export interface MapControlsProps {
   onRemoveFilter: (key: FilterCategory, value: string) => void
   onChangeGroup: (g: GroupBy) => void
   onChangeSort: (s: SortBy) => void
-  /** Sources picker. When all three are provided the picker chip
-   *  cluster renders on its own row. Omit any to hide. */
+  /** Sources picker. When all three are provided the SourcesDropdown
+   *  renders inline on the filter row. Omit any to hide entirely. */
   knownSources?: ReadonlyArray<SourceEntry>
   enabledSources?: ReadonlySet<string>
   onToggleSource?: (sourceId: string) => void
@@ -83,6 +87,13 @@ export function MapControls({
             onAdd={onAddFilter}
             onRemove={onRemoveFilter}
           />
+          {knownSources && enabledSources && onToggleSource && (
+            <SourcesDropdown
+              knownSources={knownSources}
+              enabledSources={enabledSources}
+              onToggleSource={onToggleSource}
+            />
+          )}
           <GroupSortControls
             group={view.group}
             sort={view.sort}
@@ -102,35 +113,6 @@ export function MapControls({
           )}
         </div>
       </div>
-
-      {knownSources && enabledSources && onToggleSource && (
-        <div
-          className={styles.sourcePicker}
-          role="group"
-          aria-label="data sources"
-          data-testid="source-picker"
-        >
-          <span className={styles.sourcePickerLabel}>sources</span>
-          {knownSources.map((source) => {
-            const enabled = enabledSources.has(source.id)
-            return (
-              <button
-                key={source.id}
-                type="button"
-                onClick={() => onToggleSource(source.id)}
-                data-source={source.id}
-                data-enabled={enabled ? 'true' : undefined}
-                className={styles.sourceButton}
-                aria-pressed={enabled}
-              >
-                <Chip mono tone={enabled ? 'sage' : 'mute'} dot={enabled}>
-                  {source.label}
-                </Chip>
-              </button>
-            )
-          })}
-        </div>
-      )}
     </header>
   )
 }

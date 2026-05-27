@@ -229,11 +229,17 @@ test.describe('Map + Detail (post-landing)', () => {
     await expect(page.getByText(/section-status-changed/)).toBeVisible()
   })
 
-  test('source picker chip cluster renders with fixture chip enabled', async ({ page }) => {
+  test('sources dropdown reflects enabled set from URL', async ({ page }) => {
     await page.goto('/?sources=fixture')
     const picker = page.getByTestId('source-picker')
     await expect(picker).toBeVisible()
-    // Both chips render in the picker.
+    // The trigger summary shows enabled-of-total before any click.
+    await expect(picker.getByTestId('sources-summary')).toContainText(
+      /sources:\s*1\s*of/i
+    )
+    // Open the panel before the toggle buttons become visible —
+    // <details> collapses its panel by default.
+    await picker.getByTestId('sources-summary').click()
     await expect(picker.locator('button[data-source="fixture"]')).toBeVisible()
     await expect(picker.locator('button[data-source="nous"]')).toBeVisible()
     // Fixture is enabled, nous is not (per the URL).
@@ -242,7 +248,7 @@ test.describe('Map + Detail (post-landing)', () => {
     ).toBeVisible()
     await expect(
       picker.locator('button[data-source="nous"][data-enabled="true"]')
-    ).not.toBeVisible()
+    ).toHaveCount(0)
   })
 
   test('TreeCards expose a "via" source chip', async ({ page }) => {
