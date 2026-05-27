@@ -21,7 +21,10 @@ describe('LandingSurface', () => {
     expect(screen.getByRole('img', { name: /integral/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Integral' })).toBeInTheDocument()
     expect(
-      screen.getByText('intent management for humans + agents')
+      screen.getByText('Common ground for humans and agents.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/work in flight.*state of every intent.*audit trail/i)
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /enter/i })).toBeInTheDocument()
   })

@@ -69,10 +69,15 @@ export function LandingSurface({ workspace, me, onEnter }: LandingSurfaceProps) 
   return (
     <main className={styles.surface} data-surface="landing">
       <div className={styles.column}>
-        <IntegralGlyph size={280} tall title="Integral logo" />
+        <IntegralGlyph size={280} tall title="Integral logo" className={styles.glyph} />
         <div className={styles.textBlock}>
           <h1 className={styles.wordmark}>Integral</h1>
-          <p className={styles.tagline}>intent management for humans + agents</p>
+          <div className={styles.tagBlock}>
+            <p className={styles.claim}>Common ground for humans and agents.</p>
+            <p className={styles.tagline}>
+              The work in flight, the state of every intent, the audit trail — in one view.
+            </p>
+          </div>
           <p className={styles.peek}>
             <span>{activeCount} active</span>
             <span aria-hidden="true" className={styles.peekSep}>

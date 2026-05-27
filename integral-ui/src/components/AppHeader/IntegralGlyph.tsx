@@ -14,18 +14,19 @@ export interface IntegralGlyphProps {
    *  When omitted, the glyph is decorative (aria-hidden). */
   title?: string
   /** Optional inline style passthrough for surface-level color/spacing. */
-  style?: CSSProperties
-  className?: string
+  style?: CSSProperties | undefined
+  className?: string | undefined
 }
 
 /**
  * IntegralGlyph — the brand mark.
  *
- * A single hand-drawn squiggle, shaped to approximate an integration
- * symbol: a top arch curling up-and-over for the cap, a mostly-vertical
- * body with a gentle rightward slant, and a mirrored bottom arch
- * curling down-and-under for the tail. Stroke-based so the calligraphic
- * character holds at both 22px (header) and 140px (Landing).
+ * A smooth ∫: small top curl → diagonal body → mirrored bottom curl,
+ * drawn as three cubic Beziers with matching tangent *directions* at
+ * the joins (G1 / geometric continuity — same direction, allowed to
+ * differ in magnitude) so it reads as a single calligraphic gesture
+ * rather than three pieces. Stroke-based so the character holds at
+ * both 22px (header) and 140px (Landing).
  *
  * Stays within a 1-unit margin of the 22×22 viewBox so the glyph never
  * clips against the surface frame regardless of stroke-width tuning.
@@ -59,10 +60,10 @@ export function IntegralGlyph({
     >
       <path
         d="
-          M 15 4
-          C 17 1 10 1 11 4.5
-          L 12 16
-          C 13 20 6 20 7 17
+          M 14.5 4.5
+          C 14.5 2.5 12.5 2.5 12 4.5
+          C 11.5 8 10.5 14 10 17.5
+          C 9.5 19.5 7.5 19.5 7.5 17.5
         "
       />
     </svg>

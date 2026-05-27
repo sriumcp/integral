@@ -6,7 +6,12 @@ import {
   type Workspace,
 } from '@/schema'
 import { shapingFor, blankNousDraftShape } from '@/fixtures/shaping'
-import { AppHeader, type Crumb } from '@/components'
+import { AppHeader, type FocusSegment, type ScopePill } from '@/components'
+import {
+  intentAncestry,
+  intentScope,
+  mapScope as buildMapScope,
+} from '@/lib/header-scope'
 import { MapSurface } from '@/surfaces/Map'
 import { DetailSurface } from '@/surfaces/Detail'
 import { LandingSurface } from '@/surfaces/Landing'
@@ -327,6 +332,29 @@ function Router({
     [workspace]
   )
 
+  // Scope pills for the AppHeader center cluster on Map: the enabled
+  // source set in registry order. Memoized on (registry, enabledSources)
+  // so toggling a source re-renders the header. The pure derivation
+  // lives in `lib/header-scope` and is unit-tested there.
+  const mapScopePills = useMemo<ScopePill[]>(
+    () => buildMapScope(registry, enabledSources),
+    [registry, enabledSources]
+  )
+
+  // Build the focus chain (ancestry root → leaf) for a focused intent.
+  // Ancestors are clickable to navigate up; the leaf has no handler so
+  // the AppHeader renders it as plain text. Pure walk over
+  // `decomposition.children` lives in `lib/header-scope`.
+  const buildFocusChain = (intent: Intent): FocusSegment[] => {
+    const chain = intentAncestry(intent, workspace)
+    return chain.map((node, i) => {
+      const isLeaf = i === chain.length - 1
+      const segment: FocusSegment = { label: node.declaration.title }
+      if (!isLeaf) segment.onClick = () => openIntent(node)
+      return segment
+    })
+  }
+
   const goMap = () => setView({ kind: 'map' })
 
   const openIntent = (intent: Intent) => {
@@ -543,11 +571,8 @@ function Router({
         <>
           <AppHeader
             surface={view.kind}
-            breadcrumbs={[
-              { label: 'workspace', onClick: goMap },
-              { label: 'shaping', onClick: goMap },
-              { label: view.intent.declaration.title },
-            ]}
+            scope={intentScope(view.intent, registry)}
+            focus={buildFocusChain(view.intent)}
             me={ME}
             onLogoClick={onLogoClick}
           />
@@ -561,11 +586,8 @@ function Router({
       <>
         <AppHeader
           surface={view.kind}
-          breadcrumbs={[
-            { label: 'workspace', onClick: goMap },
-            { label: 'shaping', onClick: goMap },
-            { label: view.intent.declaration.title },
-          ]}
+          scope={intentScope(view.intent, registry)}
+          focus={buildFocusChain(view.intent)}
           me={ME}
           onLogoClick={onLogoClick}
           onRefresh={onRefresh}
@@ -585,20 +607,17 @@ function Router({
     )
   }
 
-  const breadcrumbs: Crumb[] =
-    view.kind === 'map'
-      ? [{ label: 'workspace', onClick: goMap }, { label: 'map' }]
-      : [
-          { label: 'workspace', onClick: goMap },
-          { label: 'detail', onClick: goMap },
-          { label: view.intent.declaration.title },
-        ]
+  const headerScope: ScopePill[] =
+    view.kind === 'map' ? mapScopePills : intentScope(view.intent, registry)
+  const headerFocus: FocusSegment[] | undefined =
+    view.kind === 'map' ? undefined : buildFocusChain(view.intent)
 
   return (
     <>
       <AppHeader
         surface={view.kind}
-        breadcrumbs={breadcrumbs}
+        scope={headerScope}
+        focus={headerFocus}
         me={ME}
         onLogoClick={onLogoClick}
       />

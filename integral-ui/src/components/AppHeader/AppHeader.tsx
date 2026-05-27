@@ -4,21 +4,45 @@ import { Chip, PartyChip } from '@/components/atoms'
 import { IntegralGlyph } from './IntegralGlyph'
 import styles from './AppHeader.module.css'
 
-export interface Crumb {
-  /** Display text for this segment. */
+export interface ScopePill {
+  /** Stable source id (matches `SourceEntry.id` and `intent.provenance.source`). */
+  id: string
+  /** Human-readable label rendered in the pill. */
   label: string
-  /** Click handler — when undefined, the segment is the current position
-   *  and renders as plain text rather than a button. */
+}
+
+export interface FocusSegment {
+  /** Display text — typically `intent.declaration.title`. */
+  label: string
+  /** Click handler for ancestor segments. Omit on the leaf (current
+   *  position) so it renders as plain text instead of a button. */
   onClick?: () => void
 }
+
+/** Surfaces that render the header — Landing hides it entirely so it's
+ *  intentionally absent from this union. The literal type is also the
+ *  contract for the `data-surface` attribute that visual tests target. */
+export type HeaderSurface = 'map' | 'detail' | 'shaping'
 
 export interface AppHeaderProps {
   /** Identifier for the current view; written to `data-surface` on the root
    *  so visual tests and surface-scoped CSS can scope assertions. */
-  surface: string
-  /** Breadcrumb path. The first segment is conventionally `workspace`; the
-   *  last is the current position (no `onClick`). */
-  breadcrumbs: ReadonlyArray<Crumb>
+  surface: HeaderSurface
+  /** Sources in scope for the current view — rendered as small mono labels
+   *  in the center cluster, separated by `·` mid-dots. On Map this is the
+   *  enabled-source set in registry order (matching the topRow source
+   *  picker; the picker is the control, the header is the read-only
+   *  display). On Detail/Shaping this is the focused intent's own source.
+   *  Empty array → no scope row. */
+  scope: ReadonlyArray<ScopePill>
+  /** Optional ancestry path leading to the focused intent. Rendered as a
+   *  chevron-separated chain after the scope row (root → leaf). Segments
+   *  with an `onClick` render as buttons that navigate up to that
+   *  ancestor; the final segment (the current position) omits `onClick`
+   *  and renders as plain text. The leaf ellipsis-truncates below 768px
+   *  with the full label preserved as the native tooltip. Empty/missing →
+   *  no focus chain (the Map case). */
+  focus?: ReadonlyArray<FocusSegment> | undefined
   /** The current user — drives the right-cluster me chip. */
   me: Party
   /** Click handler for the brand mark (glyph + wordmark). When present,
@@ -43,10 +67,13 @@ const STALE_AFTER_MS = 60 * 60 * 1000
 /**
  * AppHeader — sticky-top chrome bar across every surface (after Landing).
  *
- * Three clusters (left / center / right) sized by the natural width of
- * their content; the center cluster ellipsis-truncates its long intent-
- * title segment below the 768px breakpoint so the breadcrumb path stays
- * legible without overflowing.
+ * Three clusters: brand mark (left, width-natural), workspace path
+ * (center, flex-grow), surface meta + me chip (right, width-natural).
+ * The center cluster carries a read-only scope row (the sources in
+ * view) followed by an optional focus chain (root → leaf ancestry of
+ * the currently-focused intent). The leaf focus segment ellipsis-
+ * truncates below 768px so the scope row stays legible at narrow
+ * widths.
  *
  * The schema-version chip reads the `SCHEMA_VERSION` literal directly —
  * the chrome cannot silently drift from the schema layer's source of
@@ -54,7 +81,8 @@ const STALE_AFTER_MS = 60 * 60 * 1000
  */
 export function AppHeader({
   surface,
-  breadcrumbs,
+  scope,
+  focus,
   me,
   onLogoClick,
   onRefresh,
@@ -86,38 +114,58 @@ export function AppHeader({
         <div className={styles.left}>{left}</div>
       )}
 
-      <nav className={styles.center} aria-label="breadcrumbs">
-        {breadcrumbs.map((crumb, i) => {
-          const isLast = i === breadcrumbs.length - 1
-          const isLong = i === breadcrumbs.length - 1 && breadcrumbs.length > 2
-          return (
-            <span key={i} className={styles.crumbRow}>
-              {i > 0 && (
-                <span className={styles.crumbSep} aria-hidden="true">
-                  ›
+      <div className={styles.center} aria-label="workspace path">
+        {scope.length > 0 && (
+          <span className={styles.scopeRow} data-scope="true">
+            {scope.map((pill, i) => (
+              <span key={pill.id} className={styles.scopePillWrap}>
+                {i > 0 && (
+                  <span className={styles.scopeSep} aria-hidden="true">
+                    ·
+                  </span>
+                )}
+                <span className={styles.scopePill} data-source-id={pill.id}>
+                  {pill.label}
                 </span>
-              )}
-              {crumb.onClick ? (
-                <button
-                  type="button"
-                  className={styles.crumbBtn}
-                  onClick={crumb.onClick}
-                >
-                  {crumb.label}
-                </button>
-              ) : (
-                <span
-                  className={isLong ? styles.crumbCurrentLong : styles.crumbCurrent}
-                  data-current={isLast ? 'true' : undefined}
-                  title={isLong ? crumb.label : undefined}
-                >
-                  {crumb.label}
+              </span>
+            ))}
+          </span>
+        )}
+        {focus && focus.length > 0 && (
+          <span className={styles.focusRow} data-focus="true">
+            {focus.map((segment, i) => {
+              const isLeaf = i === focus.length - 1
+              const showChevron = i > 0 || scope.length > 0
+              return (
+                <span key={i} className={styles.focusSegmentWrap}>
+                  {showChevron && (
+                    <span className={styles.scopeChevron} aria-hidden="true">
+                      ›
+                    </span>
+                  )}
+                  {segment.onClick && !isLeaf ? (
+                    <button
+                      type="button"
+                      className={styles.focusBtn}
+                      onClick={segment.onClick}
+                    >
+                      {segment.label}
+                    </button>
+                  ) : (
+                    <span
+                      className={isLeaf ? styles.focus : styles.focusAncestor}
+                      data-current={isLeaf ? 'true' : undefined}
+                      title={isLeaf ? segment.label : undefined}
+                    >
+                      {segment.label}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-          )
-        })}
-      </nav>
+              )
+            })}
+          </span>
+        )}
+      </div>
 
       <div className={styles.right}>
         <Chip mono tone="mute" dot={'var(--sage)'}>

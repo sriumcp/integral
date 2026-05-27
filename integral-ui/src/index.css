@@ -16,6 +16,15 @@
   --ink-2: oklch(0.34 0.01 260);
   --mute: oklch(0.52 0.008 260);
   --mute-2: oklch(0.68 0.006 260);
+
+  /* Brand identity — reserved for the Integral mark (glyph + wordmark)
+     only. Teal (hue 195°, between cyan and green), lighter and ~8×
+     more chromatic than body --ink (hue 260°, near-black blue-violet)
+     — far enough from amber's signal slot (hue 65°) that the brand
+     mark and "awaiting your action" never read as the same color.
+     Never apply to non-brand surfaces — that conflates "this is
+     Integral" with whatever else would carry the hue. */
+  --brand-ink: oklch(0.42 0.10 195);
   --line: oklch(0.88 0.006 80);
   --line-2: oklch(0.93 0.005 80);
 

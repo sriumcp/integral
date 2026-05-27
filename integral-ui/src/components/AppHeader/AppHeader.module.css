@@ -1,8 +1,10 @@
 /* AppHeader — sticky chrome bar.
 
-   Layout: three flex clusters separated by auto-margins. Left and right
-   are width-natural; center grows to fill, with the long intent-title
-   crumb ellipsis-truncating below 768px. */
+   Layout: three flex clusters with a 16px header gap. Left and right
+   are width-natural (`flex: none`); center grows to fill (`flex: 1`).
+   The center cluster carries a read-only scope row + optional focus
+   chain (ancestors → leaf); the leaf focus segment ellipsis-truncates
+   below 768px so the scope row stays legible at narrow widths. */
 
 .header {
   position: sticky;
@@ -23,7 +25,7 @@
   align-items: center;
   gap: 10px;
   flex: none;
-  color: var(--ink);
+  color: var(--brand-ink);
 }
 
 /* Clickable left cluster — wired to return to the Landing surface. */
@@ -38,7 +40,7 @@
   align-items: center;
   gap: 10px;
   flex: none;
-  color: var(--ink);
+  color: var(--brand-ink);
   cursor: pointer;
   font: inherit;
   transition: background-color 80ms ease;
@@ -72,19 +74,55 @@
   color: var(--mute);
 }
 
-.crumbRow {
+/* Scope cluster — read-only mono labels for the sources in view.
+   On Map: the enabled-source set (the topRow source picker is the
+   control, this cluster is the display). On Detail/Shaping: the
+   focused intent's own source. */
+.scopeRow {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   min-width: 0;
 }
 
-.crumbSep {
+.scopePillWrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.scopePill {
+  padding: 3px 5px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+
+.scopeSep {
   color: var(--mute-2);
   padding: 0 2px;
 }
 
-.crumbBtn {
+.scopeChevron {
+  color: var(--mute-2);
+  padding: 0 4px;
+}
+
+/* Focus chain — the ancestry path leading to the focused intent.
+   Rendered as a chevron-separated chain (root → leaf). Ancestors are
+   clickable buttons that navigate up; the leaf is plain text in --ink
+   (the eye lands on it first) and ellipsis-truncates below 768px so
+   narrow widths never push the scope row out of view. */
+.focusRow {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.focusSegmentWrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.focusBtn {
   appearance: none;
   background: transparent;
   border: 0;
@@ -93,37 +131,39 @@
   font: inherit;
   color: var(--mute);
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.crumbBtn:hover {
+.focusBtn:hover {
   color: var(--ink-2);
   background: var(--paper-2);
 }
 
-.crumbBtn:focus-visible {
+.focusBtn:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 1px;
 }
 
-.crumbCurrent {
+/* Non-clickable ancestor — used when an ancestor segment lacks an
+   onClick handler. Same typography as the leaf-state focus but in
+   the muted register so the eye continues past it to the leaf. */
+.focusAncestor {
   padding: 3px 5px;
-  color: var(--ink);
+  color: var(--mute);
+  white-space: nowrap;
 }
 
-/* The long intent-title crumb truncates with ellipsis below 768px so
-   narrow viewports still see the full breadcrumb path. The full title
-   stays available via the native title attribute. */
-.crumbCurrentLong {
+.focus {
   padding: 3px 5px;
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
+  min-width: 0;
 }
 
 @media (max-width: 768px) {
-  .crumbCurrentLong {
+  .focus {
     max-width: 14ch;
   }
 }
