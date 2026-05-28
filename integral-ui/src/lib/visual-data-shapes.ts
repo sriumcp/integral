@@ -56,3 +56,20 @@ export interface HypothesisGridIteration {
   iterationNumber: number
   hypotheses: ReadonlyArray<HypothesisGridDatum>
 }
+
+/** HMainTimeline — per-iteration h_main result. The atom renders as a
+ *  1×N strip, semantically a degenerate slice of HypothesisGrid (one
+ *  row, N columns) that earns its own atom because:
+ *    1. It renders on v0.1 data (only h_main lands today; gap G-N-9).
+ *    2. The strip metaphor reads differently from a "matrix" — it's a
+ *       *trajectory* of the main hypothesis, not a comparison of many.
+ *  When G-N-9 promotes, both atoms coexist: HMainTimeline as the
+ *  campaign's spine; HypothesisGrid as the full ablation matrix. */
+export interface HMainTimelineDatum {
+  /** Iteration index. */
+  iterationNumber: number
+  /** Optional result. When undefined, no cell is emitted at this
+   *  position — the iteration ran without probing h_main, or the
+   *  iteration is the synthetic baseline (iter 0). */
+  result?: HypothesisResult
+}

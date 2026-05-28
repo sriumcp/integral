@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Intent, Workspace } from '@/schema'
 import { sri } from '@/fixtures/workspace'
 import {
+  nousHMainTimeline,
   nousHypothesisGrid,
   nousPrinciplesTempo,
 } from './nous-projection-data'
@@ -256,5 +257,69 @@ describe('nousHypothesisGrid', () => {
     const grid = nousHypothesisGrid(camp, ws)
     const hMain = grid[0]!.hypotheses.find((h) => h.label === 'h_main')
     expect(hMain?.result).toBeUndefined()
+  })
+})
+
+describe('nousHMainTimeline', () => {
+  it('returns empty when campaign has no iteration children', () => {
+    const camp = makeCampaign([])
+    const ws = makeWorkspace([camp])
+    expect(nousHMainTimeline(camp, ws)).toEqual([])
+  })
+
+  it('emits one HMainTimelineDatum per child, sorted by iteration_number', () => {
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      hMain: 'confirmed',
+    })
+    const i2 = makeIteration({
+      id: 'I2',
+      iterationNumber: 2,
+      hMain: 'refuted',
+    })
+    const camp = makeCampaign(['I2', 'I1'])
+    const ws = makeWorkspace([camp, i1, i2])
+    expect(nousHMainTimeline(camp, ws)).toEqual([
+      { iterationNumber: 1, result: 'confirmed' },
+      { iterationNumber: 2, result: 'refuted' },
+    ])
+  })
+
+  it('emits a datum without `result` when h_main has no result (synthetic baseline)', () => {
+    // The Nous adapter builds an iter-0 baseline-style intent that may
+    // not carry an h_main result. The atom interprets undefined as
+    // "iteration ran but wasn't probed" — keeps the iteration number
+    // visible without claiming a status.
+    const i0 = makeIteration({ id: 'I0', iterationNumber: 0 })
+    const i1 = makeIteration({
+      id: 'I1',
+      iterationNumber: 1,
+      hMain: 'confirmed',
+    })
+    const camp = makeCampaign(['I0', 'I1'])
+    const ws = makeWorkspace([camp, i0, i1])
+    const timeline = nousHMainTimeline(camp, ws)
+    expect(timeline).toHaveLength(2)
+    expect(timeline[0]).toEqual({ iterationNumber: 0 })
+    expect(timeline[1]).toEqual({ iterationNumber: 1, result: 'confirmed' })
+  })
+
+  it('preserves all four result kinds (pending / confirmed / refuted / inconclusive)', () => {
+    const iters = [
+      makeIteration({ id: 'I1', iterationNumber: 1, hMain: 'pending' }),
+      makeIteration({ id: 'I2', iterationNumber: 2, hMain: 'confirmed' }),
+      makeIteration({ id: 'I3', iterationNumber: 3, hMain: 'refuted' }),
+      makeIteration({ id: 'I4', iterationNumber: 4, hMain: 'inconclusive' }),
+    ]
+    const camp = makeCampaign(['I1', 'I2', 'I3', 'I4'])
+    const ws = makeWorkspace([camp, ...iters])
+    const timeline = nousHMainTimeline(camp, ws)
+    expect(timeline.map((t) => t.result)).toEqual([
+      'pending',
+      'confirmed',
+      'refuted',
+      'inconclusive',
+    ])
   })
 })

@@ -526,6 +526,70 @@ describe('ChildrenSection', () => {
       expect(lastPoint?.getAttribute('data-current')).toBe('true')
     })
 
+    it('renders HMainTimeline when ≥3 iterations probe h_main with ≥2 results', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, hMain: 'confirmed' }),
+        makeIter({ id: 'I2', iterationNumber: 2, hMain: 'confirmed' }),
+        makeIter({ id: 'I3', iterationNumber: 3, hMain: 'refuted' }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-atom="h-main-timeline"]')
+      ).not.toBeNull()
+    })
+
+    it('omits HMainTimeline below threshold (only 1 h_main result across 3 iterations)', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, hMain: 'confirmed' }),
+        makeIter({ id: 'I2', iterationNumber: 2 }), // no h_main
+        makeIter({ id: 'I3', iterationNumber: 3 }), // no h_main
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-atom="h-main-timeline"]')
+      ).toBeNull()
+    })
+
+    it('renders HMainTimeline at structure AND detail zoom (it is not detail-only)', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, hMain: 'confirmed' }),
+        makeIter({ id: 'I2', iterationNumber: 2, hMain: 'confirmed' }),
+        makeIter({ id: 'I3', iterationNumber: 3, hMain: 'confirmed' }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+
+      const { container: structureContainer } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        structureContainer.querySelector('[data-atom="h-main-timeline"]')
+      ).not.toBeNull()
+    })
+
     it('falls back from --amber on terminal-state campaigns (satisfied)', () => {
       // Single-amber commitment: the rightmost point loses its amber
       // signal once the campaign is no longer live. Otherwise --amber

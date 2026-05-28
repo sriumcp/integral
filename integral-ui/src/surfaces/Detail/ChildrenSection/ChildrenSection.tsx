@@ -7,6 +7,7 @@ import type {
 } from '@/schema'
 import {
   Chip,
+  HMainTimeline,
   HypothesisBars,
   HypothesisGrid,
   KindBadge,
@@ -16,6 +17,7 @@ import {
   StatusDot,
 } from '@/components/atoms'
 import {
+  nousHMainTimeline,
   nousHypothesisGrid,
   nousPrinciplesTempo,
 } from '@/lib/nous-projection-data'
@@ -99,12 +101,17 @@ export function ChildrenSection({
  *   cumulative-step shape to bend visibly. At N=1 the line collapses
  *   to a single dot; at total=1 the line is one step with no slope to
  *   read.
+ * - HMainTimeline: needs ≥3 iterations AND ≥2 results on h_main —
+ *   a single-cell strip reads as a status badge, not a *trajectory*.
+ *   Renders on v0.1 data where HypothesisGrid stays hidden (G-N-9).
  * - HypothesisGrid: needs ≥2 iterations AND ≥2 distinct hypotheses
  *   with results — the matrix story requires at least 2×2. A single
  *   row or column reads as a status strip, not a grid.
  */
 const TEMPO_MIN_ITERATIONS = 3
 const TEMPO_MIN_PRINCIPLES = 2
+const HMAIN_TIMELINE_MIN_ITERATIONS = 3
+const HMAIN_TIMELINE_MIN_RESULTS = 2
 const GRID_MIN_ITERATIONS = 2
 const GRID_MIN_HYPOTHESES = 2
 
@@ -145,6 +152,15 @@ function NousProgressVisuals({
     tempoData.length >= TEMPO_MIN_ITERATIONS &&
     tempoTotal >= TEMPO_MIN_PRINCIPLES
 
+  const hMainData = nousHMainTimeline(intent, workspace)
+  const hMainResultCount = hMainData.reduce(
+    (acc, d) => (d.result !== undefined ? acc + 1 : acc),
+    0
+  )
+  const showHMain =
+    hMainData.length >= HMAIN_TIMELINE_MIN_ITERATIONS &&
+    hMainResultCount >= HMAIN_TIMELINE_MIN_RESULTS
+
   const gridData =
     zoom === 'detail' ? nousHypothesisGrid(intent, workspace) : []
   const distinctHypothesesWithResults = new Set<string>()
@@ -158,7 +174,7 @@ function NousProgressVisuals({
     gridData.length >= GRID_MIN_ITERATIONS &&
     distinctHypothesesWithResults.size >= GRID_MIN_HYPOTHESES
 
-  if (!showTempo && !showGrid) return null
+  if (!showTempo && !showHMain && !showGrid) return null
 
   // Live campaign? Drives whether PrinciplesTempo paints its last
   // point in --amber (active/gated) vs --ink-2 (terminal states).
@@ -173,6 +189,9 @@ function NousProgressVisuals({
           title="principles emitted"
           current={isLive}
         />
+      )}
+      {showHMain && (
+        <HMainTimeline data={hMainData} title="h_main timeline" />
       )}
       {showGrid && (
         <HypothesisGrid iterations={gridData} title="hypothesis ledger" />

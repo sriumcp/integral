@@ -18,6 +18,7 @@ import type {
   Workspace,
 } from '@/schema'
 import type {
+  HMainTimelineDatum,
   HypothesisGridDatum,
   HypothesisGridIteration,
   PrinciplesTempoDatum,
@@ -129,4 +130,30 @@ export function nousHypothesisGrid(
 function toGridDatum(label: string, hyp: Hypothesis): HypothesisGridDatum {
   if (hyp.result === undefined) return { label }
   return { label, result: hyp.result }
+}
+
+/**
+ * Per-iteration h_main result for the HMainTimeline atom.
+ *
+ * Returns one HMainTimelineDatum per child iteration in
+ * iteration_number order. The atom expects sorted input — this helper
+ * is the only call site that produces it.
+ *
+ * Iterations whose h_main has no result (the synthetic baseline at
+ * iter 0, or an iteration that didn't probe h_main) emit a datum
+ * with `result: undefined`; the atom interprets that as "iteration
+ * ran but wasn't probed" and skips the cell while keeping the
+ * iteration-number label visible. That's load-bearing for the
+ * "this iteration ran but we don't know the outcome" story.
+ */
+export function nousHMainTimeline(
+  campaign: Intent,
+  workspace: Workspace
+): HMainTimelineDatum[] {
+  const iters = resolveIterations(campaign, workspace)
+  return iters.map(({ ext }) => {
+    const result = ext.hypothesis_bundle.h_main.result
+    if (result === undefined) return { iterationNumber: ext.iteration_number }
+    return { iterationNumber: ext.iteration_number, result }
+  })
 }

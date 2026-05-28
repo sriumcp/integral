@@ -57,5 +57,11 @@ export type {
   HypothesisResult,
 } from './HypothesisGrid/HypothesisGrid'
 
+export { HMainTimeline } from './HMainTimeline/HMainTimeline'
+export type {
+  HMainTimelineDatum,
+  HMainTimelineProps,
+} from './HMainTimeline/HMainTimeline'
+
 export { ZoomToggle } from './ZoomToggle/ZoomToggle'
 export type { ZoomToggleProps } from './ZoomToggle/ZoomToggle'
