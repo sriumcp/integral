@@ -6,18 +6,43 @@
  * the resolved-vs-pending split is verified end-to-end.
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fixtureWorkspace, DRAFT_NOUS_ID, DRAFT_CORAL_ID } from '@/fixtures/workspace'
 import { shapingFor } from '@/fixtures/shaping'
 import type { SourceEntry } from '@/lib/sources'
+import type { PreflightCheck } from '@/lib/nous-preflight'
 import { ShapingSurface } from './ShapingSurface'
 
 const REGISTRY: ReadonlyArray<SourceEntry> = [
   { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
   { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
 ]
+
+/** Default ALL-OK preflight response. Tests that need the failing
+ *  branch override this with mockFetchPreflight(checks). */
+const DEFAULT_OK_CHECKS: PreflightCheck[] = [
+  { name: 'repo-path-exists', status: 'ok' },
+  { name: 'nous-cli-available', status: 'ok' },
+  { name: 'writeback-target-writable', status: 'ok' },
+  { name: 'run-id-not-in-use', status: 'ok' },
+]
+
+function mockFetchPreflight(checks: PreflightCheck[] = DEFAULT_OK_CHECKS) {
+  globalThis.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ checks }),
+  } as Response)
+}
+
+beforeEach(() => {
+  // The surface's usePreflight hook will fire after a 400ms debounce.
+  // Stub fetch so tests don't see a real network call if they wait
+  // long enough for the timer to fire.
+  mockFetchPreflight()
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -335,6 +360,150 @@ describe('ShapingSurface', () => {
       expect(button.disabled).toBe(true)
     })
     resolve({ ok: true })
+  })
+
+  // ─── v0.1.5: pre-flight commit gate ────────────────────────────────────
+
+  describe('preflight commit gate', () => {
+    const FAILING_CHECKS: PreflightCheck[] = [
+      {
+        name: 'repo-path-exists',
+        status: 'fail',
+        message: 'path does not exist: /nonexistent',
+      },
+      { name: 'nous-cli-available', status: 'ok' },
+      { name: 'writeback-target-writable', status: 'ok' },
+      { name: 'run-id-not-in-use', status: 'warn' },
+    ]
+
+    it('disables the commit button when any preflight check fails', async () => {
+      mockFetchPreflight(FAILING_CHECKS)
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      const button = screen.getByRole('button', {
+        name: /commit to active/i,
+      }) as HTMLButtonElement
+
+      // Wait for the debounce + fetch to settle and the gate to kick in.
+      await waitFor(() => {
+        expect(button.disabled).toBe(true)
+      })
+    })
+
+    it('renders failing-check count in the disabled commit reason', async () => {
+      mockFetchPreflight(FAILING_CHECKS)
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      const button = screen.getByRole('button', {
+        name: /commit to active/i,
+      }) as HTMLButtonElement
+      await waitFor(() => {
+        expect(button.disabled).toBe(true)
+      })
+      // The button's aria-label or visible hint should mention the
+      // failed pre-flight check count.
+      const ariaLabel = button.getAttribute('aria-label') ?? ''
+      const visibleText = button.textContent ?? ''
+      const combined = `${ariaLabel} ${visibleText}`
+      expect(combined).toMatch(/preflight|pre-flight|check/i)
+    })
+
+    it('renders fail indicator next to repo_path field on bad path', async () => {
+      mockFetchPreflight(FAILING_CHECKS)
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      await waitFor(() => {
+        expect(screen.getByTestId('preflight-repo-path-exists')).toHaveAttribute(
+          'data-preflight-status',
+          'fail'
+        )
+      })
+    })
+
+    it('warns (does not fail) on missing nous CLI — commit stays unblocked', async () => {
+      const cliMissing: PreflightCheck[] = [
+        { name: 'repo-path-exists', status: 'ok' },
+        {
+          name: 'nous-cli-available',
+          status: 'warn',
+          message: '`nous` CLI not on PATH',
+        },
+        { name: 'writeback-target-writable', status: 'ok' },
+        { name: 'run-id-not-in-use', status: 'ok' },
+      ]
+      mockFetchPreflight(cliMissing)
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      // After preflight settles with only warns, button stays enabled.
+      const button = screen.getByRole('button', {
+        name: /commit to active/i,
+      }) as HTMLButtonElement
+      // Allow time for the debounce + fetch to settle without making the
+      // assertion flaky — wait until the warn indicator appears, then
+      // confirm the button isn't disabled.
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('preflight-nous-cli-available')
+        ).toHaveAttribute('data-preflight-status', 'warn')
+      })
+      expect(button.disabled).toBe(false)
+    })
+
+    it('does not call /api/nous/preflight when no writeback active (Coral path)', async () => {
+      mockFetchPreflight()
+      const intent = intentById(DRAFT_CORAL_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      // Sleep long enough for the debounce to fire if it were going to.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 500))
+      })
+      expect(globalThis.fetch).not.toHaveBeenCalled()
+    })
   })
 
   it('shows the error message when writeback fails (e.g., 409 overwrite)', async () => {

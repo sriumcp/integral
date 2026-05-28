@@ -5,6 +5,7 @@ import type {
 import { NousWritebackConfigSchema } from '@/adapters/nous/writeback'
 import type { WritebackTemplate } from '@/fixtures/shaping'
 import type { SourceEntry } from '@/lib/sources'
+import type { PreflightCheck } from '@/lib/nous-preflight'
 import { SectionLabel } from '@/components/atoms'
 import styles from './WritebackForm.module.css'
 
@@ -22,6 +23,50 @@ export interface WritebackFormProps {
    *  emits a fully-validated `{sourceId, config}` when ready to commit.
    *  ShapingSurface uses this to gate the commit button. */
   onChange: (change: WritebackFormChange | null) => void
+  /** Latest pre-flight check results. `null` before any settle. The
+   *  surface drives the hook (debounced); the form just renders the
+   *  indicator next to the relevant field. */
+  preflight?: ReadonlyArray<PreflightCheck> | null
+}
+
+/** Glyph rendered inside the preflight pill. Kept as text (not SVG) so
+ *  it composes with the `font-mono` baseline + remains accessible to
+ *  screen readers via the test id + title attribute. */
+function statusGlyph(status: PreflightCheck['status']): string {
+  if (status === 'ok') return '✓'
+  if (status === 'warn') return '!'
+  return '✗'
+}
+
+/**
+ * Render the per-check status pill. Returns null if the check isn't
+ * present in the array (preflight hasn't covered it yet, or the
+ * server didn't emit it). The test asserts on `data-testid`, so the
+ * markup contract is: `<span data-testid="preflight-<name>"
+ * data-preflight-status="<status>" title="<message>" />`.
+ */
+function PreflightIndicator({
+  checks,
+  name,
+}: {
+  checks: ReadonlyArray<PreflightCheck> | null | undefined
+  name: string
+}) {
+  if (!checks) return null
+  const check = checks.find((c) => c.name === name)
+  if (!check) return null
+  return (
+    <span
+      className={styles.preflight}
+      data-testid={`preflight-${name}`}
+      data-preflight-status={check.status}
+      role="status"
+      aria-label={`${name}: ${check.status}${check.message ? ` — ${check.message}` : ''}`}
+      {...(check.message ? { title: check.message } : {})}
+    >
+      {statusGlyph(check.status)}
+    </span>
+  )
 }
 
 interface FormState {
@@ -48,6 +93,7 @@ export function WritebackForm({
   registry,
   template,
   onChange,
+  preflight,
 }: WritebackFormProps) {
   const adapterSources = useMemo(
     () => registry.filter((s) => s.kind === 'adapter'),
@@ -138,18 +184,24 @@ export function WritebackForm({
         <label htmlFor={idSource} className={styles.label}>
           target source
         </label>
-        <select
-          id={idSource}
-          className={styles.input}
-          value={state.sourceId}
-          onChange={(e) => set('sourceId', e.target.value)}
-        >
-          {adapterSources.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.label} ({s.id})
-            </option>
-          ))}
-        </select>
+        <div className={styles.inputWrap}>
+          <select
+            id={idSource}
+            className={styles.input}
+            value={state.sourceId}
+            onChange={(e) => set('sourceId', e.target.value)}
+          >
+            {adapterSources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label} ({s.id})
+              </option>
+            ))}
+          </select>
+          <PreflightIndicator
+            checks={preflight}
+            name="writeback-target-writable"
+          />
+        </div>
       </div>
       <div className={styles.row}>
         <label htmlFor={idMax} className={styles.label}>
@@ -192,28 +244,49 @@ export function WritebackForm({
         <label htmlFor={idRepo} className={styles.label}>
           target system repo path
         </label>
-        <input
-          id={idRepo}
-          type="text"
-          className={styles.input}
-          value={state.ts_repo_path}
-          onChange={(e) => set('ts_repo_path', e.target.value)}
-          placeholder="/absolute/path/to/repo"
-        />
+        <div className={styles.inputWrap}>
+          <input
+            id={idRepo}
+            type="text"
+            className={styles.input}
+            value={state.ts_repo_path}
+            onChange={(e) => set('ts_repo_path', e.target.value)}
+            placeholder="/absolute/path/to/repo"
+          />
+          <PreflightIndicator
+            checks={preflight}
+            name="repo-path-exists"
+          />
+        </div>
       </div>
       <div className={styles.row}>
         <label htmlFor={idRunId} className={styles.label}>
           run id (optional)
         </label>
-        <input
-          id={idRunId}
-          type="text"
-          className={styles.input}
-          value={state.run_id}
-          onChange={(e) => set('run_id', e.target.value)}
-          placeholder="auto-derived from title"
-        />
+        <div className={styles.inputWrap}>
+          <input
+            id={idRunId}
+            type="text"
+            className={styles.input}
+            value={state.run_id}
+            onChange={(e) => set('run_id', e.target.value)}
+            placeholder="auto-derived from title"
+          />
+          <PreflightIndicator
+            checks={preflight}
+            name="run-id-not-in-use"
+          />
+        </div>
       </div>
+      {preflight && (
+        <div className={styles.envRow} data-testid="preflight-env-row">
+          <span className={styles.envLabel}>environment</span>
+          <PreflightIndicator
+            checks={preflight}
+            name="nous-cli-available"
+          />
+        </div>
+      )}
     </section>
   )
 }

@@ -6,7 +6,7 @@ Integral is at **v0.1.5 in progress — Nous visual vocabulary done; Paper-autho
 
 **v0.1.5 scope decision (2026-05-27):** v0.1.5 + v0.2 focus exclusively on the **Nous + Paper-authoring axis**. All Coral and GitHub-issues / feature-development work is deferred to **v0.3+**. The existing read-only Coral + GitHub adapters stay shipped; we just don't extend them in v0.1.5 / v0.2. This concentrates substrate energy on the research-paper authoring loop (cross-tree story: paper-claim → nous-iteration via `EvidenceLink`).
 
-**v0.1.5 Nous progress (as of 2026-05-28):** chrome polish shipped (header → scope pills + focus chain replacing breadcrumbs; ancestry breadcrumb on Detail; sources dropdown collapsing the dedicated SOURCES row; Landing two-line tagline; teal `--brand-ink` token; smooth ∫ glyph). Visual vocabulary atoms shipped: `PrinciplesTempo` + `HypothesisGrid` + `HMainTimeline`. **Gap G-N-9 promoted from v0.2 → v0.1.5 done** — adapter populates `h_ablation` / `h_control_negative` / `h_robustness` from runtime ledger, HypothesisGrid lights up on real `inference-sim` campaigns. Remaining v0.1.5 Nous work: shaper outcome-cleanup (real-time YAML preview, pre-flight validation, Socratic prompts, etc.) + Phase 3 visual baseline regen. Paper-authoring chrome is the next phase after Nous outcome cleanup.
+**v0.1.5 Nous progress (as of 2026-05-28):** chrome polish shipped (header → scope pills + focus chain replacing breadcrumbs; ancestry breadcrumb on Detail; sources dropdown collapsing the dedicated SOURCES row; Landing two-line tagline; teal `--brand-ink` token; smooth ∫ glyph). Visual vocabulary atoms shipped: `PrinciplesTempo` + `HypothesisGrid` + `HMainTimeline`. **Gap G-N-9 promoted from v0.2 → v0.1.5 done** — adapter populates `h_ablation` / `h_control_negative` / `h_robustness` from runtime ledger, HypothesisGrid lights up on real `inference-sim` campaigns. **Pre-flight validation shipped (item #2 of Nous outcome subsection)** — `runPreflight` engine (`src/lib/nous-preflight.ts`) + `POST /api/nous/preflight` server handler + debounced `usePreflight` hook + inline `data-preflight-status="ok|warn|fail"` indicator pills next to repo_path / run_id / target source / environment-row CLI check + commit button gates on `failedChecks === 0`. Falsifies the v0.1.5 stop condition (E2E confirms `/nonexistent` repo_path → fail → commit disabled). Remaining v0.1.5 Nous work: real-time YAML preview, Socratic prompts, templates from past campaigns, aftermath integration. Paper-authoring chrome is the next phase after Nous outcome cleanup.
 
 **v0.1 expansion (revised 2026-05-23, A5 scope re-revised 2026-05-24)** ran two parallel tracks: Track A closed the Nous round-trip (writeback + projections + run-command surfacing) ✓ done; Track B falsified the schema across two more kinds (Coral, GitHub-issue feature-campaign). Paper adapter, full feature-dev integration, and the execution orchestrator slid forward as documented above.
 
@@ -149,6 +149,80 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
   - `superpowers:verification-before-completion` — before claiming any milestone done; run `npm run test:run` + `npm run typecheck` + `npm run build` and report exit codes, not assertions.
   - `frontend-design:frontend-design` — when iterating on visuals for a new surface; not for scaffolding or schema work.
   - `senior-frontend:senior-frontend` — at PR-review time for UI code.
+
+## Patterns for new endpoints, hooks, and UI extensions
+
+These are the load-bearing patterns the codebase has converged on. New contributions should follow them; deviations should be motivated by the limitation, not by drift.
+
+### A new `/api/...` endpoint that does I/O
+
+Mirror the writeback / preflight / shape pattern. Three layers:
+
+1. **Pure logic in `src/lib/<feature>.ts`** — accepts a typed `Input` + an injected `Deps` interface for I/O. Returns a typed result. Never throws on dep failure; turn failures into typed result fields. **This is the testable layer.** Heavy unit-testing (with `vi.fn()` mocks of `Deps`) lives next to the file as `<feature>.test.ts`. Example: `src/lib/nous-preflight.ts`.
+2. **Server-side handler in `vite-plugin-nous-adapter/<feature>-handler.ts`** — Zod-validates the wire request, resolves the source via `ConfiguredSource[]`, constructs real `Deps` from `node:fs` / `node:child_process`, calls the pure layer. Optional `deps?: Deps` parameter makes the handler unit-testable. Example: `vite-plugin-nous-adapter/preflight-handler.ts`.
+3. **Middleware wiring in `vite-plugin-nous-adapter/index.ts`** — adds a `server.middlewares.use('/api/...')` block that reads JSON via `readJsonBody`, calls the handler with the resolved sources list, returns the result with appropriate status codes (400 / 404 / 409 / 500).
+
+The `vite-plugin-nous-adapter/` directory is the **architectural barrier**: real I/O + LLM clients live here, never in `src/`. The vitest config picks up `vite-plugin-nous-adapter/**/*.test.ts` so handler tests can sit next to handlers. **Don't write a handler test that imports the real I/O — pass the deps via the optional parameter.** See `preflight-handler.test.ts` for the canonical shape.
+
+### A new browser hook that calls an endpoint
+
+Mirror `usePreflight`. Conventions:
+
+- **Debounce input changes with `setTimeout`**, default 400ms — not `useEffect` retrigger storms. Pair with a sequence-number ref (not `AbortController` — the project pattern is to ignore stale responses by sequence id).
+- **Short-circuit on empty input** so the hook stays inert when there's nothing to fetch (e.g., `usePreflight` skips when `sourceId === ''`).
+- **Mock `globalThis.fetch` in tests** with `vi.fn().mockResolvedValue({ ok, status, json })` — see `ProjectionSection.test.tsx` and `usePreflight.test.ts`. Use `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()` to drive the debounce — **never `waitFor`** with fake timers (it polls real time and deadlocks).
+
+### Per-field UI indicators that compose with E2E + visual baselines
+
+Mirror the `PreflightIndicator` pattern in `WritebackForm.tsx`:
+
+- Render a `<span data-testid="<feature>-<key>" data-preflight-status="..." title="..." aria-label="...">` so behavioral tests assert the data-* contract, not class names or text.
+- Color via `data-status` selectors in the CSS module: `--sage` for ok, `--rose` for fail, `--mute` for warn. **Never use `--amber`** for errors — it's reserved for "current/active/awaiting your action" per the genre commitment.
+- Glyph as plain text (`✓` / `!` / `✗`) — not SVG — so it composes with the mono baseline + screen readers via aria-label.
+- The atom takes `checks: ReadonlyArray<Check> | null | undefined` and returns `null` when checks haven't settled or the named check isn't present. **Never render an unsettled state** — the UI should be invisible during initial fetch, not blocked.
+
+### Commit-button gates that depend on async signals
+
+Mirror the `ShapingSurface.commitEnabled` pattern:
+
+```ts
+const commitEnabled = allResolved && writebackReady && !submitting && !llmLoading && preflightOk
+```
+
+- Each clause is a single boolean. The button's `aria-label` enumerates the *first* failing clause as a reason. Visible hint chips (e.g., `· N pending`) only render when the gate fails.
+- An **unsettled** async signal (`checks === null`) must NOT block — only an explicit `fail` does. Otherwise users see a spinner-like disabled state on first paint.
+
+### Tests for surfaces that mount async hooks
+
+If a surface mounts a hook that fires fetch on mount (or after a debounce), add a `beforeEach` that stubs `globalThis.fetch` with a no-op-success response. Tests that need a specific response override the stub locally with `mockFetchPreflight(checks)`. See the `ShapingSurface.test.tsx` `beforeEach`.
+
+### Visual baseline regeneration
+
+When a chrome shift changes pixel layout (a new row, a new indicator, a new chip):
+1. Run `npm run test:e2e:visual` first to confirm only the expected baselines drift.
+2. Run `npm run test:e2e:visual:update` to regenerate.
+3. Commit the regenerated PNGs **in the same commit** as the chrome shift — never separately. Future bisect needs the chrome ↔ baseline pair to be atomic.
+
+### Verification before claiming done
+
+Run all five canonical commands from `integral-ui/`:
+
+```
+npm run typecheck    # strict TS, must exit 0
+npm run test:run     # all vitest, must exit 0
+npm run test:e2e     # behavioral E2E, must exit 0
+npm run test:e2e:visual   # visual baselines, must exit 0
+npm run build        # production bundle, must exit 0
+```
+
+Plus the LLM-discipline audit grep:
+
+```
+grep -rln "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|tryCreateLLMClient\|api.openai.com\|api.anthropic.com" \
+  --include="*.test.ts" --include="*.test.tsx" --include="*.spec.ts" --include="*.spec.tsx"
+```
+
+Must return zero hits. The barrier is load-bearing.
 
 ## Resolved surface decisions (closed before Map view starts)
 

@@ -16,6 +16,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SourceEntry } from '@/lib/sources'
 import type { WritebackTemplate } from '@/fixtures/shaping'
+import type { PreflightCheck } from '@/lib/nous-preflight'
 import { WritebackForm } from './WritebackForm'
 
 const REGISTRY: ReadonlyArray<SourceEntry> = [
@@ -162,6 +163,118 @@ describe('WritebackForm', () => {
       | { sourceId: string }
       | null
     expect(last?.sourceId).toBe('wb-test')
+  })
+
+  describe('preflight indicators', () => {
+    const ALL_OK: PreflightCheck[] = [
+      { name: 'repo-path-exists', status: 'ok' },
+      { name: 'nous-cli-available', status: 'ok' },
+      { name: 'writeback-target-writable', status: 'ok' },
+      { name: 'run-id-not-in-use', status: 'ok' },
+    ]
+
+    const REPO_FAIL: PreflightCheck[] = [
+      {
+        name: 'repo-path-exists',
+        status: 'fail',
+        message: 'path does not exist: /nonexistent',
+      },
+      { name: 'nous-cli-available', status: 'ok' },
+      { name: 'writeback-target-writable', status: 'ok' },
+      { name: 'run-id-not-in-use', status: 'warn' },
+    ]
+
+    it('renders no indicators when preflight is null (initial state)', () => {
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={null}
+        />
+      )
+      expect(
+        screen.queryByTestId('preflight-repo-path-exists')
+      ).not.toBeInTheDocument()
+    })
+
+    it('renders ok indicator next to the repo_path field on success', () => {
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={ALL_OK}
+        />
+      )
+      const indicator = screen.getByTestId('preflight-repo-path-exists')
+      expect(indicator).toHaveAttribute('data-preflight-status', 'ok')
+    })
+
+    it('renders fail indicator with the message as tooltip when repo-path-exists fails', () => {
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={REPO_FAIL}
+        />
+      )
+      const indicator = screen.getByTestId('preflight-repo-path-exists')
+      expect(indicator).toHaveAttribute('data-preflight-status', 'fail')
+      expect(indicator).toHaveAttribute(
+        'title',
+        'path does not exist: /nonexistent'
+      )
+    })
+
+    it('renders run-id-not-in-use indicator next to the run_id field', () => {
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={REPO_FAIL}
+        />
+      )
+      const indicator = screen.getByTestId('preflight-run-id-not-in-use')
+      expect(indicator).toHaveAttribute('data-preflight-status', 'warn')
+    })
+
+    it('renders writeback-target-writable indicator next to the source picker', () => {
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={ALL_OK}
+        />
+      )
+      expect(
+        screen.getByTestId('preflight-writeback-target-writable')
+      ).toHaveAttribute('data-preflight-status', 'ok')
+    })
+
+    it('renders nous-cli-available indicator (general; non-blocking warn)', () => {
+      const cliMissing: PreflightCheck[] = [
+        ...ALL_OK.filter((c) => c.name !== 'nous-cli-available'),
+        {
+          name: 'nous-cli-available',
+          status: 'warn',
+          message: '`nous` CLI not on PATH',
+        },
+      ]
+      render(
+        <WritebackForm
+          registry={REGISTRY}
+          template={TEMPLATE}
+          onChange={() => {}}
+          preflight={cliMissing}
+        />
+      )
+      const indicator = screen.getByTestId('preflight-nous-cli-available')
+      expect(indicator).toHaveAttribute('data-preflight-status', 'warn')
+    })
   })
 
   it('renders nothing when the registry has no adapter sources', () => {

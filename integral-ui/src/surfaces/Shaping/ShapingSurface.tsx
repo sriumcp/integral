@@ -17,6 +17,7 @@ import {
   WritebackForm,
   type WritebackFormChange,
 } from './WritebackForm/WritebackForm'
+import { usePreflight } from './usePreflight'
 import styles from './ShapingSurface.module.css'
 
 export interface WritebackResult {
@@ -213,8 +214,36 @@ export function ShapingSurface({
   )
 
   const writebackReady = !writebackActive || writebackChange !== null
+
+  // ── Pre-flight ───────────────────────────────────────────────────────────
+  // Only fire when writeback is actually active — Coral drafts (no
+  // writeback_template) and registry-less callers don't trigger any
+  // network I/O. Empty sourceId in the input also short-circuits the
+  // hook so a hidden form doesn't poll.
+  const preflightSourceId =
+    writebackActive && writebackChange ? writebackChange.sourceId : ''
+  const preflightInput = useMemo(
+    () => ({
+      sourceId: preflightSourceId,
+      targetRepoPath:
+        writebackActive && writebackChange
+          ? writebackChange.config.target_system.repo_path
+          : '',
+      runId:
+        writebackActive && writebackChange
+          ? (writebackChange.config.run_id ?? '')
+          : '',
+    }),
+    [preflightSourceId, writebackActive, writebackChange],
+  )
+  const preflight = usePreflight(preflightInput)
+  const failedPreflightCount = preflight.checks
+    ? preflight.checks.filter((c) => c.status === 'fail').length
+    : 0
+  const preflightOk = failedPreflightCount === 0
+
   const commitEnabled =
-    allResolved && writebackReady && !submitting && !llmLoading
+    allResolved && writebackReady && !submitting && !llmLoading && preflightOk
 
   // ── ShapingChat onSend ───────────────────────────────────────────────────
   const handleShapeSend = useCallback(
@@ -325,6 +354,7 @@ export function ShapingSurface({
               registry={registry}
               template={liveDraft.writeback}
               onChange={handleWritebackChange}
+              preflight={preflight.checks}
             />
           )}
           {kindSuggestion && (
@@ -380,13 +410,20 @@ export function ShapingSurface({
                       ? 'submitting'
                       : llmLoading
                         ? 'waiting for shaper'
-                        : 'writeback config invalid'
+                        : !preflightOk
+                          ? `${failedPreflightCount} preflight check${failedPreflightCount === 1 ? '' : 's'} failed`
+                          : 'writeback config invalid'
                 })`
           }
         >
           {submitting ? 'committing…' : 'commit to active'}
           {!allResolved && (
             <span className={styles.commitHint}>· {pendingCount} pending</span>
+          )}
+          {allResolved && !preflightOk && (
+            <span className={styles.commitHint}>
+              · {failedPreflightCount} preflight failed
+            </span>
           )}
         </button>
       </footer>

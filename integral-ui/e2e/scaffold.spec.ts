@@ -32,7 +32,7 @@ test.describe('Landing flow', () => {
     await expect(page.getByRole('img', { name: /integral/i })).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Integral' })).toBeVisible()
     await expect(
-      page.getByText('intent management for humans + agents')
+      page.getByText('Common ground for humans and agents.')
     ).toBeVisible()
     // Fixture: 4 root campaigns; 1 awaiting `sri`.
     await expect(page.getByText(/4 active/)).toBeVisible()
