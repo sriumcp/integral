@@ -3,10 +3,10 @@
  *
  * The Shaping surface, when about to commit a `nous-campaign` draft,
  * needs to know whether the campaign references real things — does the
- * `target_system.repo_path` exist, is the `nous` CLI on PATH, will the
- * runId collide with an existing campaign-X.yaml. Failures surface
- * inline before the commit, not after the user runs `nous run` and
- * gets a stack trace.
+ * `target_system.repo_path` exist as a real directory, is the `nous`
+ * CLI on PATH, will the runId collide with an existing campaign-X.yaml.
+ * Failures surface inline before the commit, not after the user runs
+ * `nous run` and gets a stack trace.
  *
  * This is the **literal v0.1.5 Nous falsification stop condition** per
  * `roadmap.md § Falsification per adapter`: shaping a campaign with a
@@ -19,26 +19,40 @@
  * as the rest of the substrate (LLMClient, NousSource).
  *
  * Browser-safe: this file lives under `src/` so the React layer can
- * import the *types* (PreflightCheck, PreflightStatus). The
- * `runPreflight` function is technically callable in the browser too,
- * but in practice the deps require Node, so it's only ever invoked
- * server-side via `/api/nous/preflight`.
+ * import the types (PreflightCheck, PreflightStatus, PreflightCheckName).
+ * The `runPreflight` function is technically callable in the browser
+ * too, but in practice the deps require Node, so it's only ever
+ * invoked server-side via `/api/nous/preflight`.
  */
+
+/** Stable kebab-case ids for the four canonical checks. New checks
+ *  must extend this union — every consumer that switches on `name`
+ *  becomes an exhaustive compile error until acknowledged. */
+export type PreflightCheckName =
+  | 'repo-path-exists'
+  | 'nous-cli-available'
+  | 'writeback-target-writable'
+  | 'run-id-not-in-use'
 
 export type PreflightStatus = 'ok' | 'warn' | 'fail'
 
-export interface PreflightCheck {
-  /** Stable kebab-case id; used as a UI key + data hook. */
-  name: string
-  status: PreflightStatus
-  /** Human-readable detail; surfaced as tooltip text. */
-  message?: string
-}
+/**
+ * Result of one check. Discriminated on `status`:
+ *  - `ok` carries no message (nothing to surface).
+ *  - `warn` and `fail` MUST carry a message — the UI tooltip relies
+ *    on it, and a missing message would render as an empty hover.
+ *
+ * The runtime invariant ("warn|fail always have a message") is now
+ * type-enforced; consumers no longer need to defensive-render
+ * `check.message ?? '(no detail)'`.
+ */
+export type PreflightCheck =
+  | { name: PreflightCheckName; status: 'ok' }
+  | { name: PreflightCheckName; status: 'warn' | 'fail'; message: string }
 
 export interface PreflightInput {
   /** From `writeback.target_system.repo_path`. May be empty/undefined
-   *  during shaping — pre-flight surfaces that as a fail (the user
-   *  hasn't filled the field yet). */
+   *  during shaping — pre-flight surfaces that as a fail check. */
   targetRepoPath: string | undefined
   /** Resolved filesystem path of the writeback source — i.e. where
    *  `campaign-<runId>.yaml` will be written. */
@@ -49,13 +63,22 @@ export interface PreflightInput {
 }
 
 export interface PreflightDeps {
-  /** Resolves true if `path` is a directory that exists. */
+  /** Resolves true if `path` is a directory that exists. Files at
+   *  `path` MUST resolve false — `nous run` requires a directory.
+   *  ENOENT-style absence resolves false; other errors (permissions,
+   *  symlink loops) MUST throw so the caller surfaces them. */
   pathExists: (path: string) => boolean | Promise<boolean>
-  /** Resolves true if the process can write into `path`. */
+  /** Resolves true if the process can write into `path`. ENOENT and
+   *  EACCES resolve false; other errors MUST throw. */
   isWritable: (path: string) => boolean | Promise<boolean>
-  /** Resolves true if a `nous` executable is on PATH. */
+  /** Resolves true if a `nous` executable is on PATH. ENOENT-style
+   *  "not found" resolves false; ambiguous errors (timeout, EACCES on
+   *  a candidate path) MUST throw so the caller surfaces them as a
+   *  warn with the original message rather than collapsing into "not
+   *  installed." */
   hasNousCli: () => boolean | Promise<boolean>
-  /** Resolves true if `<writebackPath>/campaign-<runId>.yaml` exists. */
+  /** Resolves true if `<writebackPath>/campaign-<runId>.yaml` exists.
+   *  ENOENT resolves false; other errors MUST throw. */
   campaignFileExists: (
     writebackPath: string,
     runId: string,
@@ -64,8 +87,9 @@ export interface PreflightDeps {
 
 /**
  * Run all four canonical checks in parallel; never reject. A dep that
- * throws becomes a `fail` on the corresponding check so the UI gets a
- * uniform "list of statuses" shape regardless of failure mode.
+ * throws becomes a `fail` (or `warn` for the CLI check) on the
+ * corresponding check so the UI gets a uniform "list of statuses"
+ * shape regardless of failure mode.
  *
  * Returns checks in a stable order: repo-path-exists, nous-cli-available,
  * writeback-target-writable, run-id-not-in-use. The order is for
@@ -88,7 +112,7 @@ async function checkRepoPathExists(
   input: PreflightInput,
   deps: PreflightDeps,
 ): Promise<PreflightCheck> {
-  const name = 'repo-path-exists'
+  const name: PreflightCheckName = 'repo-path-exists'
   const path = input.targetRepoPath
   if (!path || path.length === 0) {
     return {
@@ -103,7 +127,7 @@ async function checkRepoPathExists(
       return {
         name,
         status: 'fail',
-        message: `path does not exist: ${path}`,
+        message: `path is not an existing directory: ${path}`,
       }
     }
     return { name, status: 'ok' }
@@ -119,7 +143,7 @@ async function checkRepoPathExists(
 async function checkNousCliAvailable(
   deps: PreflightDeps,
 ): Promise<PreflightCheck> {
-  const name = 'nous-cli-available'
+  const name: PreflightCheckName = 'nous-cli-available'
   try {
     const ok = await deps.hasNousCli()
     if (!ok) {
@@ -144,7 +168,7 @@ async function checkWritebackTargetWritable(
   input: PreflightInput,
   deps: PreflightDeps,
 ): Promise<PreflightCheck> {
-  const name = 'writeback-target-writable'
+  const name: PreflightCheckName = 'writeback-target-writable'
   try {
     const writable = await deps.isWritable(input.writebackPath)
     if (!writable) {
@@ -168,7 +192,7 @@ async function checkRunIdNotInUse(
   input: PreflightInput,
   deps: PreflightDeps,
 ): Promise<PreflightCheck> {
-  const name = 'run-id-not-in-use'
+  const name: PreflightCheckName = 'run-id-not-in-use'
   if (input.runId.length === 0) {
     // The writeback handler derives a runId from the title at commit
     // time — so an empty runId during shaping is normal. Don't block
@@ -199,4 +223,11 @@ async function checkRunIdNotInUse(
       message: `error checking run id: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
+}
+
+/** True iff every check reports `ok`. The commit-button gate uses the
+ *  stronger `phase === 'ok' && noFailures` predicate via the hook —
+ *  this helper exists for callers that already have the array. */
+export function hasFailingCheck(checks: ReadonlyArray<PreflightCheck>): boolean {
+  return checks.some((c) => c.status === 'fail')
 }

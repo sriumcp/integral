@@ -44,6 +44,9 @@ function statusGlyph(status: PreflightCheck['status']): string {
  * server didn't emit it). The test asserts on `data-testid`, so the
  * markup contract is: `<span data-testid="preflight-<name>"
  * data-preflight-status="<status>" title="<message>" />`.
+ *
+ * `message` is type-narrowed via the discriminated `PreflightCheck`:
+ * `ok` carries no message; `warn|fail` always carries one.
  */
 function PreflightIndicator({
   checks,
@@ -55,14 +58,15 @@ function PreflightIndicator({
   if (!checks) return null
   const check = checks.find((c) => c.name === name)
   if (!check) return null
+  const message = check.status === 'ok' ? undefined : check.message
   return (
     <span
       className={styles.preflight}
       data-testid={`preflight-${name}`}
       data-preflight-status={check.status}
       role="status"
-      aria-label={`${name}: ${check.status}${check.message ? ` — ${check.message}` : ''}`}
-      {...(check.message ? { title: check.message } : {})}
+      aria-label={`${name}: ${check.status}${message ? ` — ${message}` : ''}`}
+      {...(message ? { title: message } : {})}
     >
       {statusGlyph(check.status)}
     </span>
@@ -100,10 +104,10 @@ export function WritebackForm({
     [registry]
   )
 
-  // No adapter source = no place to write. Render nothing; ShapingSurface
-  // commits in-memory only (the v0.1 backwards-compat path).
-  // (Hooks must be called unconditionally below; we return null *after*
-  //  declaring all hooks.)
+  // Hooks must run unconditionally per React's rules — we declare all
+  // hooks first, then return null at the bottom of this function when
+  // there's no adapter source to write to (ShapingSurface falls back
+  // to in-memory-only commit in that case).
 
   const [state, setState] = useState<FormState>(() => ({
     sourceId: adapterSources[0]?.id ?? '',

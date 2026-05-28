@@ -19,6 +19,9 @@
 
 import { promises as fs, constants as fsConstants } from 'node:fs'
 import { execFile } from 'node:child_process'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import { z } from 'zod'
 import {
   runPreflight,
   type PreflightCheck,
@@ -26,13 +29,24 @@ import {
 } from '../src/lib/nous-preflight'
 import type { ConfiguredSource } from './sources-config'
 
-/** The wire request from the browser hook. Loosely typed because it
- *  comes from the network; the handler validates it explicitly. */
-export interface PreflightHandlerRequest {
-  sourceId?: unknown
-  target_system?: unknown
-  runId?: unknown
-}
+/**
+ * Wire schema for the request body. Zod-derived to match the project's
+ * convention (writeback handler uses `NousWritebackConfigSchema.safeParse`).
+ *
+ * `target_system.repo_path` is optional because pre-flight surfaces
+ * an empty path as a `fail` check; it doesn't reject the request.
+ * Same for `runId` — empty/missing means "not yet derived."
+ */
+export const PreflightRequestSchema = z.object({
+  sourceId: z.string().min(1),
+  target_system: z
+    .object({
+      repo_path: z.string().optional(),
+    })
+    .passthrough(),
+  runId: z.string().optional(),
+})
+export type PreflightRequest = z.infer<typeof PreflightRequestSchema>
 
 export type PreflightHandlerDeps = PreflightDeps
 
@@ -53,43 +67,26 @@ export type PreflightHandlerResult =
  * fakes; production callers omit it and get the real-deps default.
  */
 export async function handlePreflight(
-  body: PreflightHandlerRequest | object | null,
+  body: unknown,
   configuredSources: ReadonlyArray<ConfiguredSource>,
   deps?: PreflightHandlerDeps,
 ): Promise<PreflightHandlerResult> {
-  // ── Validate inputs ──────────────────────────────────────────────────
-  if (!body || typeof body !== 'object') {
-    return { ok: false, status: 400, error: 'malformed request body' }
-  }
-  const b = body as PreflightHandlerRequest
-
-  if (typeof b.sourceId !== 'string' || b.sourceId.length === 0) {
-    return { ok: false, status: 400, error: 'sourceId is required' }
-  }
-
-  if (!b.target_system || typeof b.target_system !== 'object') {
+  const parsed = PreflightRequestSchema.safeParse(body)
+  if (!parsed.success) {
     return {
       ok: false,
       status: 400,
-      error: 'target_system is required',
+      error: `request rejected by schema: ${JSON.stringify(parsed.error.issues)}`,
     }
   }
-  const ts = b.target_system as { repo_path?: unknown }
-  // repo_path may be empty/undefined — pre-flight surfaces that as a
-  // fail check, not a request error. Only its *type* needs guarding.
-  const repoPath =
-    typeof ts.repo_path === 'string' ? ts.repo_path : undefined
+  const req = parsed.data
 
-  // runId is optional; missing/non-string treated as empty (deferred derivation).
-  const runId = typeof b.runId === 'string' ? b.runId : ''
-
-  // ── Resolve source ───────────────────────────────────────────────────
-  const source = configuredSources.find((s) => s.id === b.sourceId)
+  const source = configuredSources.find((s) => s.id === req.sourceId)
   if (!source) {
     return {
       ok: false,
       status: 404,
-      error: `unknown sourceId: ${b.sourceId}`,
+      error: `unknown sourceId: ${req.sourceId}`,
     }
   }
   if (source.kind !== 'nous') {
@@ -98,16 +95,15 @@ export async function handlePreflight(
       status: 400,
       error:
         `pre-flight target source must be of kind "nous", got "${source.kind}". ` +
-        `Per-adapter pre-flight (coral, github-issues, paper) is v0.2 with the orchestrator.`,
+        `Per-adapter pre-flight is deferred per the v0.1.5 scope decision (CLAUDE.md § Project phase) — coral and github-issues are v0.3+.`,
     }
   }
 
-  // ── Run pre-flight ───────────────────────────────────────────────────
   const checks = await runPreflight(
     {
-      targetRepoPath: repoPath,
+      targetRepoPath: expandHome(req.target_system.repo_path),
       writebackPath: source.path,
-      runId,
+      runId: req.runId ?? '',
     },
     deps ?? defaultDeps(),
   )
@@ -116,56 +112,118 @@ export async function handlePreflight(
 }
 
 /**
+ * Expand a leading `~/` (and bare `~`) to the user's home directory.
+ * Matches `sources-config.ts`'s convention so user-typed paths in the
+ * Shaping form work the same as paths in `integral.config.json`.
+ *
+ * Returns the input unchanged for empty/undefined/absolute paths.
+ * `fs.stat` doesn't perform tilde expansion (that's a shell concern),
+ * so the substrate must do it explicitly at the I/O boundary.
+ */
+export function expandHome(p: string | undefined): string | undefined {
+  if (p === undefined || p.length === 0) return p
+  if (p === '~') return os.homedir()
+  if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2))
+  return p
+}
+
+/**
  * Real-I/O deps factory. Probes the filesystem + PATH using Node
- * primitives. Errors are caught at the per-check level by `runPreflight`,
- * so any throw here surfaces as a check fail rather than a 500.
+ * primitives.
+ *
+ * Error-handling discipline: each dep distinguishes "expected absence"
+ * (ENOENT for paths; ENOENT or non-zero exit for `which`) from
+ * unexpected failures (EACCES, ELOOP, EROFS, timeout). Expected
+ * absence resolves to `false`; unexpected failures THROW so
+ * `runPreflight`'s per-check try/catch surfaces them as `fail`/`warn`
+ * with the original message — never silently degrade EACCES into
+ * "doesn't exist."
  */
 export function defaultDeps(): PreflightHandlerDeps {
   return {
     pathExists: async (p) => {
       try {
         const stat = await fs.stat(p)
-        return stat.isDirectory() || stat.isFile()
-      } catch {
-        return false
+        // `nous run` requires a directory; a file at the given path
+        // is not a valid target. (`/etc/passwd` would otherwise pass
+        // pre-flight but fail downstream.)
+        return stat.isDirectory()
+      } catch (err) {
+        if (isErrnoCode(err, 'ENOENT', 'ENOTDIR')) return false
+        throw err
       }
     },
     isWritable: async (p) => {
       try {
         await fs.access(p, fsConstants.W_OK)
         return true
-      } catch {
-        return false
+      } catch (err) {
+        if (isErrnoCode(err, 'ENOENT', 'EACCES')) return false
+        throw err
       }
     },
     hasNousCli: async () => {
       try {
         await runQuiet('which', ['nous'])
         return true
-      } catch {
-        return false
+      } catch (err) {
+        // `which` exits non-zero when the command isn't on PATH; the
+        // wrapper surfaces that as an Error whose code is undefined
+        // (no `errno`-level code, just a non-zero exit). Treat any
+        // ENOENT-ish or "non-zero exit" as "not installed" → false.
+        // Distinguish timeouts: `child_process` sets `signal: 'SIGTERM'`
+        // and the resulting Error reads "Command failed" but with the
+        // signal property — those should propagate.
+        if (isWhichNotFound(err)) return false
+        throw err
       }
     },
     campaignFileExists: async (writebackPath, runId) => {
       try {
-        // Match writeback-handler: target file is `campaign-<runId>.yaml`
-        // under writebackPath. Use a manual join to avoid a `path` import
-        // mismatch with the writeback handler's identical behavior.
         const target = `${writebackPath.replace(/\/$/, '')}/campaign-${runId}.yaml`
         await fs.access(target)
         return true
-      } catch {
-        return false
+      } catch (err) {
+        if (isErrnoCode(err, 'ENOENT')) return false
+        throw err
       }
     },
   }
 }
 
+/** True when `err` is a NodeJS errno error whose `.code` matches one
+ *  of the supplied codes. Handles non-Error throws + missing code. */
+function isErrnoCode(err: unknown, ...codes: string[]): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const code = (err as { code?: unknown }).code
+  return typeof code === 'string' && codes.includes(code)
+}
+
+/** True when `err` represents "command not found" from a `which`
+ *  invocation — either the spawn itself failed with ENOENT (which
+ *  binary missing on PATH; rare on POSIX) or `which` exited non-zero
+ *  (the more common case: the queried command isn't on PATH). Crucially
+ *  excludes timeouts: `child_process` errors carry a `signal` property
+ *  (SIGTERM) when killed by timeout, and we want those to propagate so
+ *  the caller can distinguish "not installed" from "couldn't determine." */
+function isWhichNotFound(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const e = err as { code?: unknown; signal?: unknown }
+  // Killed by timeout (SIGTERM) — propagate.
+  if (typeof e.signal === 'string' && e.signal.length > 0) return false
+  // `which nous` exited non-zero: e.code is the exit number. Any
+  // non-zero exit means "not found in PATH." ENOENT (Node spawning
+  // `which` itself failed) also means "not installed."
+  if (e.code === 'ENOENT') return true
+  if (typeof e.code === 'number' && e.code !== 0) return true
+  return false
+}
+
 /**
  * Run a subprocess argv-style (no shell interpretation) and resolve
- * with stdout. Rejects on non-zero exit or spawn error. Used to probe
- * the `nous` CLI without shelling out — the ENOENT path is the
- * primary signal here.
+ * with stdout. Rejects on non-zero exit, spawn error, OR the 3000ms
+ * timeout (SIGTERM kill). Used to probe the `nous` CLI without
+ * shelling out.
  */
 function runQuiet(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {

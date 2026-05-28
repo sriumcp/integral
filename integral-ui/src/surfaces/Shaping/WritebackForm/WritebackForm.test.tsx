@@ -181,7 +181,11 @@ describe('WritebackForm', () => {
       },
       { name: 'nous-cli-available', status: 'ok' },
       { name: 'writeback-target-writable', status: 'ok' },
-      { name: 'run-id-not-in-use', status: 'warn' },
+      {
+        name: 'run-id-not-in-use',
+        status: 'warn',
+        message: 'run id will be derived from title at commit time',
+      },
     ]
 
     it('renders no indicators when preflight is null (initial state)', () => {
@@ -257,7 +261,9 @@ describe('WritebackForm', () => {
 
     it('renders nous-cli-available indicator (general; non-blocking warn)', () => {
       const cliMissing: PreflightCheck[] = [
-        ...ALL_OK.filter((c) => c.name !== 'nous-cli-available'),
+        ...ALL_OK.filter(
+          (c): c is PreflightCheck => c.name !== 'nous-cli-available',
+        ),
         {
           name: 'nous-cli-available',
           status: 'warn',

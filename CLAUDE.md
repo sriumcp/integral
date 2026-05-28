@@ -168,8 +168,10 @@ The `vite-plugin-nous-adapter/` directory is the **architectural barrier**: real
 
 Mirror `usePreflight`. Conventions:
 
-- **Debounce input changes with `setTimeout`**, default 400ms — not `useEffect` retrigger storms. Pair with a sequence-number ref (not `AbortController` — the project pattern is to ignore stale responses by sequence id).
+- **Debounce input changes with `setTimeout`**, default 400ms — not `useEffect` retrigger storms. Pair with a sequence-number ref (not `AbortController` — the project pattern is to ignore stale responses by sequence id). Guard the seq on **every** `setState` inside the timer callback, not just on response paths — including the `loading` flip — so a debounce-cancel doesn't flicker the spinner. See `usePreflight.ts` for the canonical shape and `usePreflight.test.ts` "drops a slow earlier response" for the falsification.
+- **Return a discriminated union over phase**, not a `{loading, checks, error}` triple. `PreflightHookResult = { phase: 'idle' } | { phase: 'loading'; previous } | { phase: 'ok'; checks } | { phase: 'error'; error; previous }` is the canonical shape: it admits exactly the 4 valid states (vs. 8 in a 3-flag triple) and forces consumers to check `phase === 'ok'` before trusting any data — fail-closed by construction. Carry `previous: <data> | null` through `loading` and `error` so the UI can show the last-known indicators while a re-fetch settles, but **never** consult `previous` for gating decisions; that's `phase === 'ok'`'s job.
 - **Short-circuit on empty input** so the hook stays inert when there's nothing to fetch (e.g., `usePreflight` skips when `sourceId === ''`).
+- **Validate the response shape on the wire boundary.** `body.checks` could be undefined / null / non-array if the server changes; throw early in `.then` so the catch sets `phase: 'error'` rather than letting `body.checks` crash a downstream `.find()`.
 - **Mock `globalThis.fetch` in tests** with `vi.fn().mockResolvedValue({ ok, status, json })` — see `ProjectionSection.test.tsx` and `usePreflight.test.ts`. Use `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()` to drive the debounce — **never `waitFor`** with fake timers (it polls real time and deadlocks).
 
 ### Per-field UI indicators that compose with E2E + visual baselines
@@ -183,14 +185,31 @@ Mirror the `PreflightIndicator` pattern in `WritebackForm.tsx`:
 
 ### Commit-button gates that depend on async signals
 
-Mirror the `ShapingSurface.commitEnabled` pattern:
+**Fail-closed by default.** A gate that depends on an async signal must require positive `phase === 'ok'` evidence — never read "absence of failures" (e.g., `failedCount === 0` over a possibly-null array) as success. The latter is fail-OPEN: a transport error, an unsettled fetch, or a malformed response all look identical to "all clear," and the user commits state that was never validated. See `ShapingSurface.tsx` for the canonical shape:
 
 ```ts
+const preflightActive = writebackActive
+const preflightOk =
+  !preflightActive ||
+  (preflight.phase === 'ok' &&
+    !preflight.checks.some(c => c.status === 'fail'))
 const commitEnabled = allResolved && writebackReady && !submitting && !llmLoading && preflightOk
 ```
 
-- Each clause is a single boolean. The button's `aria-label` enumerates the *first* failing clause as a reason. Visible hint chips (e.g., `· N pending`) only render when the gate fails.
-- An **unsettled** async signal (`checks === null`) must NOT block — only an explicit `fail` does. Otherwise users see a spinner-like disabled state on first paint.
+- Each clause is a single boolean. The button's `aria-label` enumerates the *first* failing clause as a reason via a precedence-ordered helper (`disabledReason` in `ShapingSurface.tsx`); visible hint chips (`· N pending`) render only when the gate fails.
+- The `preflightActive` short-circuit lets backwards-compat callers (Coral drafts; registry-less callers) skip the check entirely. Only the active-writeback path is fail-closed.
+- Tests must verify all four phases gate correctly: `idle`, `loading`, `error`, `ok-with-failures`. See the `truth table` test in `ShapingSurface.test.tsx` for parametrized coverage.
+
+### Real-I/O deps in server handlers
+
+Server handlers (`vite-plugin-nous-adapter/*-handler.ts`) construct real I/O deps via the optional `deps?` injection seam. The deps factory must distinguish "expected absence" (ENOENT for paths; non-zero exit for `which`-style probes) from "unexpected failure" (EACCES, ELOOP, EROFS, timeout):
+
+- **Expected absence resolves to `false`.** The pure check engine treats this as a `fail` or `warn` with a generic message.
+- **Unexpected failures THROW.** The pure engine's per-check `try/catch` then surfaces them with the *original error message* preserved — so the user sees `EACCES on /protected/dir`, not "doesn't exist." Bare `catch {}` blocks that swallow distinct errno classes are forbidden — they make EACCES, ELOOP, and timeout indistinguishable from "path missing," masking real bugs.
+- **Paths that demand a directory** (writeback targets, `nous run` repos) must check `stat.isDirectory()`, not `isFile() || isDirectory()`. A regular file at the path is NOT a valid target — `/etc/passwd` would otherwise pass pre-flight.
+- **Subprocess probes** (`execFile('which', ...)`) must distinguish ENOENT/non-zero-exit ("not found" → false) from timeout/SIGTERM (ambiguous → throw). See `defaultDeps.hasNousCli` + `isWhichNotFound` in `preflight-handler.ts`.
+
+Test the dep contract with real temp directories under `os.tmpdir()`. See `preflight-handler.test.ts` "defaultDeps — real filesystem probes" for the canonical pattern.
 
 ### Tests for surfaces that mount async hooks
 

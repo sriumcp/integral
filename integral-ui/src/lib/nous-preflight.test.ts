@@ -7,14 +7,16 @@
  *
  * Coverage targets the literal v0.1.5 Nous falsification stop condition
  * from `roadmap.md § Falsification per adapter`:
- *  - repo-path-exists fails when the path is missing
+ *  - repo-path-exists fails when the path is missing OR is a file
  *  - run-id-not-in-use fails when campaign-<runId>.yaml already exists
  *  - nous-cli-available warns (not fails) when the CLI is missing
  *  - writeback-target-writable fails when the source dir isn't writable
+ *  - dep throws surface as a typed `fail`/`warn` with the original message
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import {
+  hasFailingCheck,
   runPreflight,
   type PreflightCheck,
   type PreflightDeps,
@@ -51,6 +53,18 @@ function findCheck(
   return found
 }
 
+/** Helper that narrows to the warn|fail branch of the discriminated
+ *  union. Throws if the check is `ok` (which has no `message` field
+ *  by construction), so tests that assert on messages can't silently
+ *  drift to the `ok` branch. */
+function assertHasMessage(
+  check: PreflightCheck,
+): asserts check is { name: PreflightCheck['name']; status: 'warn' | 'fail'; message: string } {
+  if (check.status === 'ok') {
+    throw new Error(`expected warn|fail, got ok for ${check.name}`)
+  }
+}
+
 describe('runPreflight — happy path', () => {
   it('returns ok for every check when env is healthy', async () => {
     const deps = happyDeps()
@@ -83,7 +97,8 @@ describe('runPreflight — repo-path-exists', () => {
     const results = await runPreflight(happyInput(), deps)
     const check = findCheck(results, 'repo-path-exists')
     expect(check.status).toBe('fail')
-    expect(check.message).toMatch(/exist/i)
+    assertHasMessage(check)
+    expect(check.message).toMatch(/directory/i)
   })
 
   it('fails when targetRepoPath is empty string', async () => {
@@ -101,7 +116,8 @@ describe('runPreflight — repo-path-exists', () => {
     )
     const check = findCheck(results, 'repo-path-exists')
     expect(check.status).toBe('fail')
-    expect(check.message).toBeDefined()
+    assertHasMessage(check)
+    expect(check.message.length).toBeGreaterThan(0)
   })
 
   it('does not call pathExists when targetRepoPath is empty', async () => {
@@ -123,6 +139,7 @@ describe('runPreflight — nous-cli-available', () => {
     const results = await runPreflight(happyInput(), deps)
     const check = findCheck(results, 'nous-cli-available')
     expect(check.status).toBe('warn')
+    assertHasMessage(check)
     expect(check.message).toMatch(/nous/i)
   })
 })
@@ -136,6 +153,7 @@ describe('runPreflight — writeback-target-writable', () => {
     const results = await runPreflight(happyInput(), deps)
     const check = findCheck(results, 'writeback-target-writable')
     expect(check.status).toBe('fail')
+    assertHasMessage(check)
     expect(check.message).toMatch(/writ/i)
   })
 })
@@ -149,6 +167,7 @@ describe('runPreflight — run-id-not-in-use', () => {
     const results = await runPreflight(happyInput(), deps)
     const check = findCheck(results, 'run-id-not-in-use')
     expect(check.status).toBe('fail')
+    assertHasMessage(check)
     expect(check.message).toMatch(/already/i)
   })
 
@@ -177,7 +196,7 @@ describe('runPreflight — run-id-not-in-use', () => {
 })
 
 describe('runPreflight — multiple failures compose', () => {
-  it('reports all failures independently — they don\'t short-circuit', async () => {
+  it("reports all failures independently — they don't short-circuit", async () => {
     const deps: PreflightDeps = {
       pathExists: vi.fn(async () => false),
       isWritable: vi.fn(async () => false),
@@ -193,7 +212,7 @@ describe('runPreflight — multiple failures compose', () => {
 })
 
 describe('runPreflight — dep error containment', () => {
-  it('surfaces a dep throw as a check fail rather than rejecting', async () => {
+  it('surfaces a pathExists throw as a check fail with the original message', async () => {
     const deps: PreflightDeps = {
       ...happyDeps(),
       pathExists: vi.fn(async () => {
@@ -203,6 +222,83 @@ describe('runPreflight — dep error containment', () => {
     const results = await runPreflight(happyInput(), deps)
     const check = findCheck(results, 'repo-path-exists')
     expect(check.status).toBe('fail')
+    assertHasMessage(check)
     expect(check.message).toMatch(/EACCES/)
+  })
+
+  it('surfaces an isWritable throw as a writeback-target fail with the original message', async () => {
+    const deps: PreflightDeps = {
+      ...happyDeps(),
+      isWritable: vi.fn(async () => {
+        throw new Error('EROFS read-only filesystem')
+      }),
+    }
+    const results = await runPreflight(happyInput(), deps)
+    const check = findCheck(results, 'writeback-target-writable')
+    expect(check.status).toBe('fail')
+    assertHasMessage(check)
+    expect(check.message).toMatch(/EROFS/)
+  })
+
+  it('surfaces a hasNousCli throw as a warn with the original message (not a generic "not on PATH")', async () => {
+    const deps: PreflightDeps = {
+      ...happyDeps(),
+      hasNousCli: vi.fn(async () => {
+        throw new Error('subprocess timeout after 3000ms')
+      }),
+    }
+    const results = await runPreflight(happyInput(), deps)
+    const check = findCheck(results, 'nous-cli-available')
+    expect(check.status).toBe('warn')
+    assertHasMessage(check)
+    // Critical: the original error message survives — the user can
+    // distinguish "timeout" from "not installed."
+    expect(check.message).toMatch(/timeout/)
+  })
+
+  it('surfaces a campaignFileExists throw as a run-id fail with the original message', async () => {
+    const deps: PreflightDeps = {
+      ...happyDeps(),
+      campaignFileExists: vi.fn(async () => {
+        throw new Error('ELOOP too many symbolic links')
+      }),
+    }
+    const results = await runPreflight(happyInput(), deps)
+    const check = findCheck(results, 'run-id-not-in-use')
+    expect(check.status).toBe('fail')
+    assertHasMessage(check)
+    expect(check.message).toMatch(/ELOOP/)
+  })
+})
+
+describe('hasFailingCheck', () => {
+  it('returns true when any check is fail', () => {
+    expect(
+      hasFailingCheck([
+        { name: 'repo-path-exists', status: 'ok' },
+        {
+          name: 'nous-cli-available',
+          status: 'fail',
+          message: 'broken',
+        },
+      ]),
+    ).toBe(true)
+  })
+
+  it('returns false when only warns are present', () => {
+    expect(
+      hasFailingCheck([
+        { name: 'repo-path-exists', status: 'ok' },
+        {
+          name: 'nous-cli-available',
+          status: 'warn',
+          message: 'maybe',
+        },
+      ]),
+    ).toBe(false)
+  })
+
+  it('returns false on empty', () => {
+    expect(hasFailingCheck([])).toBe(false)
   })
 })

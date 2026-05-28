@@ -237,10 +237,33 @@ export function ShapingSurface({
     [preflightSourceId, writebackActive, writebackChange],
   )
   const preflight = usePreflight(preflightInput)
-  const failedPreflightCount = preflight.checks
-    ? preflight.checks.filter((c) => c.status === 'fail').length
-    : 0
-  const preflightOk = failedPreflightCount === 0
+
+  // Fail-closed gate (PR review CRITICAL #1, #2): when writeback is
+  // active, the commit button stays disabled UNTIL pre-flight has
+  // affirmatively settled with no failing checks. `idle`, `loading`,
+  // and `error` all keep the gate closed — silence is not consent.
+  const preflightActive = writebackActive
+  const preflightOk =
+    !preflightActive ||
+    (preflight.phase === 'ok' &&
+      !preflight.checks.some((c) => c.status === 'fail'))
+
+  // Surface checks for indicator rendering. During `loading` or
+  // `error`, fall back to the previous settled checks so the UI
+  // doesn't flicker during re-fetch — but the gate above ignores
+  // `previous`; only `phase: 'ok'` opens it.
+  const preflightChecksForUI =
+    preflight.phase === 'ok'
+      ? preflight.checks
+      : preflight.phase === 'loading' || preflight.phase === 'error'
+        ? preflight.previous
+        : null
+  const preflightError =
+    preflight.phase === 'error' ? preflight.error : null
+  const failedPreflightCount =
+    preflight.phase === 'ok'
+      ? preflight.checks.filter((c) => c.status === 'fail').length
+      : 0
 
   const commitEnabled =
     allResolved && writebackReady && !submitting && !llmLoading && preflightOk
@@ -354,7 +377,7 @@ export function ShapingSurface({
               registry={registry}
               template={liveDraft.writeback}
               onChange={handleWritebackChange}
-              preflight={preflight.checks}
+              preflight={preflightChecksForUI}
             />
           )}
           {kindSuggestion && (
@@ -386,6 +409,15 @@ export function ShapingSurface({
             {writebackError}
           </span>
         )}
+        {preflightError && (
+          <span
+            className={styles.writebackError}
+            role="alert"
+            data-testid="preflight-error"
+          >
+            pre-flight error: {preflightError}
+          </span>
+        )}
         {llmShapingActive && llmStatus === 'ready-to-commit' && allResolved && (
           <span
             className={styles.readyHint}
@@ -403,32 +435,75 @@ export function ShapingSurface({
           aria-label={
             commitEnabled
               ? 'commit to active'
-              : `commit to active (disabled — ${
-                  !allResolved
-                    ? `${pendingCount} pending`
-                    : submitting
-                      ? 'submitting'
-                      : llmLoading
-                        ? 'waiting for shaper'
-                        : !preflightOk
-                          ? `${failedPreflightCount} preflight check${failedPreflightCount === 1 ? '' : 's'} failed`
-                          : 'writeback config invalid'
-                })`
+              : `commit to active (disabled — ${disabledReason({
+                  allResolved,
+                  pendingCount,
+                  submitting,
+                  llmLoading,
+                  writebackReady,
+                  preflightActive,
+                  preflightPhase: preflight.phase,
+                  failedPreflightCount,
+                })})`
           }
         >
           {submitting ? 'committing…' : 'commit to active'}
           {!allResolved && (
             <span className={styles.commitHint}>· {pendingCount} pending</span>
           )}
-          {allResolved && !preflightOk && (
+          {allResolved && writebackReady && !preflightOk && preflightActive && (
             <span className={styles.commitHint}>
-              · {failedPreflightCount} preflight failed
+              · {commitHintForPreflight(preflight.phase, failedPreflightCount)}
             </span>
           )}
         </button>
       </footer>
     </main>
   )
+}
+
+/**
+ * Map the disabled commit-button state to a single human-readable
+ * reason. Order matters — earlier branches dominate later ones; this
+ * is the precedence the aria-label exposes to screen readers and the
+ * truth-table tests assert against.
+ */
+function disabledReason(args: {
+  allResolved: boolean
+  pendingCount: number
+  submitting: boolean
+  llmLoading: boolean
+  writebackReady: boolean
+  preflightActive: boolean
+  preflightPhase: 'idle' | 'loading' | 'ok' | 'error'
+  failedPreflightCount: number
+}): string {
+  if (!args.allResolved) return `${args.pendingCount} pending`
+  if (args.submitting) return 'submitting'
+  if (args.llmLoading) return 'waiting for shaper'
+  if (!args.writebackReady) return 'writeback config invalid'
+  if (args.preflightActive) {
+    if (args.preflightPhase === 'idle' || args.preflightPhase === 'loading') {
+      return 'waiting for preflight'
+    }
+    if (args.preflightPhase === 'error') {
+      return 'preflight error — see message above'
+    }
+    if (args.failedPreflightCount > 0) {
+      return `${args.failedPreflightCount} preflight check${args.failedPreflightCount === 1 ? '' : 's'} failed`
+    }
+  }
+  return 'unknown'
+}
+
+/** Visible-hint copy for the commit button when preflight gates it. */
+function commitHintForPreflight(
+  phase: 'idle' | 'loading' | 'ok' | 'error',
+  failedCount: number,
+): string {
+  if (phase === 'idle' || phase === 'loading') return 'preflight pending'
+  if (phase === 'error') return 'preflight error'
+  return `${failedCount} preflight failed`
 }
 
 function handleRestructure(op: RestructureOp) {

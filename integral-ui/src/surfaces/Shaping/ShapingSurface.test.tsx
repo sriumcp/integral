@@ -54,6 +54,19 @@ function intentById(id: string) {
   return found
 }
 
+/** Wait for the fail-closed pre-flight gate to open. Tests that
+ *  exercise the post-commit path need pre-flight to have settled
+ *  before clicking commit, otherwise the gate keeps the button
+ *  disabled and the click is a no-op. */
+async function waitForCommitEnabled(): Promise<void> {
+  await waitFor(() => {
+    const button = screen.getByRole('button', {
+      name: /commit to active/i,
+    }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+  })
+}
+
 describe('ShapingSurface', () => {
   it('renders both panes (dialog + draft) and the title', () => {
     const intent = intentById(DRAFT_NOUS_ID)
@@ -280,6 +293,8 @@ describe('ShapingSurface', () => {
         onBack={() => {}}
       />
     )
+    // Fail-closed gate: wait for preflight to settle before clicking.
+    await waitForCommitEnabled()
     await user.click(screen.getByRole('button', { name: /commit to active/i }))
     await waitFor(() => {
       expect(onWriteback).toHaveBeenCalledTimes(1)
@@ -312,6 +327,7 @@ describe('ShapingSurface', () => {
         onBack={() => {}}
       />
     )
+    await waitForCommitEnabled()
     await user.click(screen.getByRole('button', { name: /commit to active/i }))
     await waitFor(() => {
       expect(onWriteback).toHaveBeenCalled()
@@ -355,6 +371,7 @@ describe('ShapingSurface', () => {
     const button = screen.getByRole('button', {
       name: /commit to active/i,
     }) as HTMLButtonElement
+    await waitForCommitEnabled()
     await user.click(button)
     await waitFor(() => {
       expect(button.disabled).toBe(true)
@@ -373,7 +390,11 @@ describe('ShapingSurface', () => {
       },
       { name: 'nous-cli-available', status: 'ok' },
       { name: 'writeback-target-writable', status: 'ok' },
-      { name: 'run-id-not-in-use', status: 'warn' },
+      {
+        name: 'run-id-not-in-use',
+        status: 'warn',
+        message: 'run id will be derived from title at commit time',
+      },
     ]
 
     it('disables the commit button when any preflight check fails', async () => {
@@ -412,18 +433,26 @@ describe('ShapingSurface', () => {
           onBack={() => {}}
         />
       )
+      // Wait for the SETTLED failing state (phase: ok with failures) —
+      // simply waiting for `disabled === true` would race the
+      // intermediate `loading` phase, which also disables the button
+      // but with a different reason ("waiting for preflight").
+      await waitFor(() => {
+        expect(
+          screen.getByTestId('preflight-repo-path-exists')
+        ).toHaveAttribute('data-preflight-status', 'fail')
+      })
       const button = screen.getByRole('button', {
         name: /commit to active/i,
       }) as HTMLButtonElement
-      await waitFor(() => {
-        expect(button.disabled).toBe(true)
-      })
-      // The button's aria-label or visible hint should mention the
-      // failed pre-flight check count.
+      expect(button.disabled).toBe(true)
+      // The button's aria-label or visible hint MUST mention the
+      // failed pre-flight check count specifically — a bug that
+      // dropped the number would slip past a looser /check/i match.
       const ariaLabel = button.getAttribute('aria-label') ?? ''
       const visibleText = button.textContent ?? ''
       const combined = `${ariaLabel} ${visibleText}`
-      expect(combined).toMatch(/preflight|pre-flight|check/i)
+      expect(combined).toMatch(/\d+ preflight/i)
     })
 
     it('renders fail indicator next to repo_path field on bad path', async () => {
@@ -485,6 +514,126 @@ describe('ShapingSurface', () => {
       expect(button.disabled).toBe(false)
     })
 
+    it('renders preflight error inline when phase is `error`', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error('connection refused'))
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      // After the debounce + rejected fetch settle, the surface must
+      // surface the error to the user — silence is forbidden.
+      await waitFor(() => {
+        expect(screen.getByTestId('preflight-error')).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('preflight-error').textContent).toMatch(
+        /connection refused/i
+      )
+
+      // And the commit button stays gated — fail-closed on transport error.
+      const button = screen.getByRole('button', {
+        name: /commit to active/i,
+      }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+    })
+
+    it('keeps commit DISABLED on initial mount before preflight settles (no fail-open gap)', async () => {
+      // Hold fetch indefinitely so the hook stays in `loading` forever.
+      const heldFetch = new Promise<Response>(() => {
+        /* never resolves */
+      })
+      globalThis.fetch = vi.fn().mockReturnValue(heldFetch)
+      const intent = intentById(DRAFT_NOUS_ID)
+      render(
+        <ShapingSurface
+          intent={intent}
+          shape={shapingFor(intent.id)!}
+          registry={REGISTRY}
+          onCommit={() => {}}
+          onWriteback={async () => ({ ok: true })}
+          onBack={() => {}}
+        />
+      )
+      const button = screen.getByRole('button', {
+        name: /commit to active/i,
+      }) as HTMLButtonElement
+      // Even after the debounce window elapses and the fetch is in
+      // flight (loading phase), the button stays disabled. Silent-
+      // failure-hunter CRITICAL #2: an unsettled preflight must NOT
+      // open the gate.
+      await new Promise((r) => setTimeout(r, 600))
+      expect(button.disabled).toBe(true)
+    })
+
+    it('truth table — gate stays closed for each individual disabling conjunct', async () => {
+      // Phase 'idle' (no source) — but writeback isn't active, so
+      // gate falls back to the in-memory-only path (button enabled).
+      // Phases 'loading'/'error' with writeback active — disabled.
+      // Test the writeback-active branches end-to-end below.
+
+      const cases: Array<{
+        label: string
+        fetch: ReturnType<typeof vi.fn>
+        expectedDisabledReason: RegExp
+      }> = [
+        {
+          label: 'preflight loading (debounce + held fetch)',
+          fetch: vi.fn().mockReturnValue(new Promise<Response>(() => {})),
+          expectedDisabledReason: /waiting for preflight/i,
+        },
+        {
+          label: 'preflight error (network rejection)',
+          fetch: vi.fn().mockRejectedValue(new Error('econnreset')),
+          expectedDisabledReason: /preflight error/i,
+        },
+        {
+          label: 'preflight ok with one fail check',
+          fetch: vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              checks: FAILING_CHECKS,
+            }),
+          } as Response),
+          expectedDisabledReason: /preflight check/i,
+        },
+      ]
+
+      for (const c of cases) {
+        globalThis.fetch = c.fetch as unknown as typeof globalThis.fetch
+        const intent = intentById(DRAFT_NOUS_ID)
+        const { unmount } = render(
+          <ShapingSurface
+            intent={intent}
+            shape={shapingFor(intent.id)!}
+            registry={REGISTRY}
+            onCommit={() => {}}
+            onWriteback={async () => ({ ok: true })}
+            onBack={() => {}}
+          />
+        )
+        await new Promise((r) => setTimeout(r, 600))
+        const button = screen.getByRole('button', {
+          name: /commit to active/i,
+        }) as HTMLButtonElement
+        expect(
+          button.disabled,
+          `expected button disabled for case: ${c.label}`,
+        ).toBe(true)
+        const aria = button.getAttribute('aria-label') ?? ''
+        expect(aria, `expected reason for case: ${c.label}`).toMatch(
+          c.expectedDisabledReason,
+        )
+        unmount()
+      }
+    })
+
     it('does not call /api/nous/preflight when no writeback active (Coral path)', async () => {
       mockFetchPreflight()
       const intent = intentById(DRAFT_CORAL_ID)
@@ -523,6 +672,7 @@ describe('ShapingSurface', () => {
         onBack={() => {}}
       />
     )
+    await waitForCommitEnabled()
     await user.click(screen.getByRole('button', { name: /commit to active/i }))
     await waitFor(() => {
       expect(screen.getByText(/already exists/i)).toBeInTheDocument()

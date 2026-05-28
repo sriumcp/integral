@@ -16,16 +16,28 @@ export interface PreflightHookInput {
   runId: string
 }
 
-export interface PreflightHookResult {
-  /** True while a fetch is in flight; false otherwise. Initial render
-   *  reads false (no fetch has been queued yet). */
-  loading: boolean
-  /** Latest checks from the server, or null if none have settled yet. */
-  checks: PreflightCheck[] | null
-  /** Last network/parse error message, if any. Cleared on the next
-   *  successful response. */
-  error: string | null
-}
+/**
+ * Discriminated union over the four valid hook states. Replaces the
+ * earlier `{loading, checks, error}` triple, which admitted impossible
+ * states (loading + error simultaneously) and — more dangerously —
+ * left the commit-button gate fail-OPEN: when `checks === null`
+ * (initial mount or transport error), `failedPreflightCount === 0`
+ * read as "all OK," allowing the user to commit a writeback that
+ * pre-flight had never validated. (PR review CRITICAL #1, #2.)
+ *
+ * The phase shape forces consumers to check `phase === 'ok'` before
+ * trusting `checks` — fail-closed by construction.
+ *
+ * `previous` is carried through `loading` and `error` so the UI can
+ * keep showing the last-known indicators while a re-fetch is in
+ * flight or has just failed (less flicker, no stale-trust). The
+ * commit gate ignores `previous` — only `phase: 'ok'` opens it.
+ */
+export type PreflightHookResult =
+  | { phase: 'idle' }
+  | { phase: 'loading'; previous: PreflightCheck[] | null }
+  | { phase: 'ok'; checks: PreflightCheck[] }
+  | { phase: 'error'; error: string; previous: PreflightCheck[] | null }
 
 const DEBOUNCE_MS = 400
 
@@ -34,40 +46,49 @@ const DEBOUNCE_MS = 400
  *
  * On every change to `(sourceId, targetRepoPath, runId)`, schedules a
  * fetch after `DEBOUNCE_MS` of quiet. In-flight requests for stale
- * inputs are ignored — a sequence of edits within the debounce window
- * results in exactly one network call against the latest values.
+ * inputs are dropped via a sequence-number ref — a sequence of edits
+ * within the debounce window results in exactly one network call
+ * against the latest values, AND a slow earlier response can't
+ * clobber a newer one (PR review pr-test #1).
  *
- * Returns `{loading, checks, error}`. The Shaping surface uses
- * `checks` to render per-field status indicators and to gate the
- * commit button on `!checks.some(c => c.status === 'fail')`.
+ * Returns a discriminated `PreflightHookResult`. The Shaping surface
+ * gates the commit button on `phase === 'ok' && !hasFailingCheck(checks)`.
  *
  * Empty `sourceId` short-circuits — there's no source to validate
- * against, so the hook stays inert.
+ * against, so the hook stays in `phase: 'idle'`. Note: `idle` does NOT
+ * unblock the commit gate when writeback is active; the caller must
+ * separately decide whether preflight applies (e.g., Coral drafts
+ * have no writeback so preflight is irrelevant).
  */
 export function usePreflight(input: PreflightHookInput): PreflightHookResult {
-  const [state, setState] = useState<PreflightHookResult>({
-    loading: false,
-    checks: null,
-    error: null,
-  })
+  const [state, setState] = useState<PreflightHookResult>({ phase: 'idle' })
 
   // Each scheduled fetch carries a sequence number; only the latest
   // sequence is allowed to write to React state. This is simpler than
   // AbortController for our purposes (the server response is small +
-  // cheap; we just discard the result).
+  // cheap; we just discard the result). The same ref guards loading
+  // setState (so a debounce-cancel doesn't flicker the spinner) AND
+  // success/error setState (so a slow earlier response can't clobber
+  // a newer one).
   const seqRef = useRef(0)
 
   useEffect(() => {
     if (input.sourceId.length === 0) {
-      // Nothing to validate against — leave state inert.
+      // Nothing to validate against — leave state in `idle`.
       return
     }
 
     const mySeq = ++seqRef.current
     const timer = setTimeout(() => {
-      // Mark loading at fetch-fire time (not at debounce-schedule time)
-      // so very-rapid edits don't show a spinner that never settles.
-      setState((prev) => ({ ...prev, loading: true }))
+      // Re-check the seq before flipping to loading: a debounce that's
+      // about to fire could be racing a newer rerender that's already
+      // bumped seqRef. Without this guard we'd flicker the loading
+      // indicator for an effect that's about to be cleaned up.
+      if (mySeq !== seqRef.current) return
+      setState((prev) => ({
+        phase: 'loading',
+        previous: extractChecks(prev),
+      }))
 
       fetch('/api/nous/preflight', {
         method: 'POST',
@@ -80,21 +101,26 @@ export function usePreflight(input: PreflightHookInput): PreflightHookResult {
       })
         .then(async (res) => {
           if (!res.ok) throw new Error(`pre-flight failed: ${res.status}`)
-          const body = (await res.json()) as { checks: PreflightCheck[] }
+          const body = (await res.json()) as { checks?: unknown }
+          if (!Array.isArray(body.checks)) {
+            throw new Error('pre-flight response missing or invalid `checks`')
+          }
+          // Drop the result if a newer fetch has been scheduled —
+          // see test "drops a slow earlier response when a faster
+          // later one wins" for the falsification.
           if (mySeq !== seqRef.current) return
-          setState({
-            loading: false,
-            checks: body.checks,
-            error: null,
-          })
+          setState({ phase: 'ok', checks: body.checks as PreflightCheck[] })
         })
         .catch((err: unknown) => {
+          // Same staleness guard for errors: a slow earlier rejection
+          // must not flip phase to `error` after a fresher fetch has
+          // already settled to `ok`.
           if (mySeq !== seqRef.current) return
-          setState({
-            loading: false,
-            checks: null,
+          setState((prev) => ({
+            phase: 'error',
             error: err instanceof Error ? err.message : String(err),
-          })
+            previous: extractChecks(prev),
+          }))
         })
     }, DEBOUNCE_MS)
 
@@ -104,4 +130,20 @@ export function usePreflight(input: PreflightHookInput): PreflightHookResult {
   }, [input.sourceId, input.targetRepoPath, input.runId])
 
   return state
+}
+
+/** Pull the most recent settled checks out of any phase. Used to seed
+ *  `previous` when transitioning into `loading` or `error`, so the UI
+ *  can keep showing the prior indicators rather than blanking out. */
+function extractChecks(state: PreflightHookResult): PreflightCheck[] | null {
+  switch (state.phase) {
+    case 'idle':
+      return null
+    case 'loading':
+      return state.previous
+    case 'ok':
+      return state.checks
+    case 'error':
+      return state.previous
+  }
 }
