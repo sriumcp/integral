@@ -257,7 +257,7 @@ These files are normative together. Cross-references between them are load-beari
 - `intent-schema-v0.1.md` — typed object model. Inputs to the semantic model.
 - `intent-ux-sketch-v0.1.md` — UX surfaces. Where projections render.
 - `intents-and-harnesses.md` — catalog of harnesses. What the substrate is generalizing across.
-- `gaps.md` — schema-fit issues found while sizing adapters. The G-N series (Nous, 12 entries) + G-C series (Coral, 14 entries) + G-F series (GitHub-issues, 13 entries) accumulate the falsification evidence; many gaps (G-N-2 / G-C-10 jointly, G-N-9, G-N-11, G-F-7/8) are *also* semantic gaps that v0.2 promotion will resolve.
+- `gaps.md` — schema-fit issues found while sizing adapters. The G-N series (Nous, 12 entries) + G-C series (Coral, 14 entries) + G-F series (GitHub-issues, 13 entries) accumulate the falsification evidence; many gaps (G-N-2 / G-C-10 jointly, G-N-11, G-F-7/8) are *also* semantic gaps that v0.2 promotion will resolve. **G-N-9 was resolved in v0.1.5** (adapter-side, no schema bump needed) — see `gaps.md § G-N-9`.
 - `roadmap.md` — v0.1 expansion items. v0.1 ships through B2 + C1 + a small `semantics-v0.1.md` refresh (this file). v0.2's "Semantic-model promotion" subsection lists the S-component status flips that the next phase commits to.
 - `CLAUDE.md` — operating conventions. § Resolved surface decisions and § Implementation order encode several semantic commitments (S-2, S-7, S-8).
 - `integral-ui/.notes-v0.1.5.md` — pre-brainstorm notes for the chrome polish phase between v0.1 and v0.2. Many of v0.1.5's themes are direct consequences of S-1's partial implementation surfacing through real adapter data.

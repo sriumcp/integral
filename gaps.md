@@ -81,16 +81,23 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
 - **Loss:** The Detail header's "success" line is empty for every adapter-emitted nous-campaign. Users can't see what would constitute satisfaction without reading the YAML's `research_question` (which is closer to a question than a criterion).
 - **v0.2 candidate:** Either (a) extract success criteria from the campaign declaration LLM-side as part of projection, (b) add a `success_criterion` field to the Nous YAML schema upstream, or (c) make `success_criterion` optional on `Declaration` so its absence is visible rather than rendered as a blank chip.
 
-### G-N-9. Iteration runtime fields with no schema home
+### G-N-9. Iteration runtime fields with no schema home — **RESOLVED in v0.1.5 (commit pending)**
 
 - **Evidence (Phase 2 ledger ingestion):** Every `ledger.json` entry carries `candidate_id` (the human-readable handle, e.g., `iter-2`), `ablation_results: Record<string, "CONFIRMED" | "REFUTED" | …>` (per-ablation outcomes keyed by ablation id), `control_result` (a `HypothesisResult`-like string for the negative control), `robustness_result` (similarly for the robustness check), and `frontier_update` (covered separately by G-N-5).
-- **v0.1 schema:** `NousIterationExtension` has `hypothesis_bundle.h_main` + `h_ablation[]` + `h_control_negative?` + `h_robustness?[]`. The ledger's `*_result` fields could *in principle* attach to the matching `Hypothesis.result`, but the v0.1 phase-2 adapter takes the lossy mapping `h_main_result → h_main.result` and **drops `ablation_results`, `control_result`, `robustness_result`** on the floor. `candidate_id` collapses into the iteration's intent id suffix (used as the parent-scoped suffix in `nous:<source>:<run>:<candidate>`).
-- **Loss:** Hypothesis bars on Detail show only `h_main`'s outcome; the ablation/control/robustness hypotheses come back empty. Side-by-side comparison of "main confirmed but ablations refuted" cases is invisible.
-- **v0.2 candidates:**
-  - Either: synthesize `Hypothesis` records inside `h_ablation` / `h_control_negative` / `h_robustness` from the ledger's `*_result` fields (requires the adapter to fabricate `statement` / `prediction` strings — bad).
-  - Or: relax `Hypothesis` to allow `result`-only entries with optional `statement` / `prediction`, so bare outcome rows can survive ingestion.
-  - Or: split `HypothesisOutcome` from `Hypothesis` — outcomes are runtime-emitted from the ledger; full hypotheses come from the campaign's design phase. The schema currently fuses them.
-- **Severity:** Low for chrome rendering, high for analysis fidelity. Two of three iteration-level signals (control + robustness) are silently dropped.
+- **v0.1 schema:** `NousIterationExtension` has `hypothesis_bundle.h_main` + `h_ablation[]` + `h_control_negative?` + `h_robustness?[]`. The ledger's `*_result` fields could *in principle* attach to the matching `Hypothesis.result`, and the v0.1 schema *did* support this — but the v0.1 phase-2 adapter took the lossy mapping `h_main_result → h_main.result` only, and **dropped `ablation_results`, `control_result`, `robustness_result`** on the floor.
+- **v0.1 loss (now resolved):** HypothesisGrid atom rendered no cells beyond `h_main` because only `h_main` carried a `result`. Side-by-side comparison of "main confirmed but ablations refuted" cases was invisible.
+- **v0.1.5 resolution (commit pending):** the gap was *adapter-side, not schema-side*. Took the synthesize-templated-Hypothesis option:
+  - `parseLedger` now extracts `ablation_results` (defensively: dict only, drops non-string values, treats array-shaped legacy data as missing).
+  - `interpretIteration` (`integral-ui/src/adapters/nous/ledger.ts`) populates `h_ablation` from the dict (sorted by key for stable row-order in HypothesisGrid), `h_control_negative` from `control_result`, `h_robustness` from `robustness_result` (wrapped in a 1-element array since the schema's `h_robustness` is array-shaped while runtime carries a single result).
+  - Mapping function generalized: `mapHmainResultToHypothesisResult` → `mapResultStringToHypothesisResult` (back-compat alias preserved). `PARTIALLY_CONFIRMED → inconclusive` per G-N-1 still applies.
+  - Synthesized statements use clearly-templated form (`'ablation: ${key}'`, `'control: campaign predictions do not generalize…'`, `'robustness: main outcome holds under perturbations.'`) so future readers can tell prose is structural, not researcher-authored. Once a future schema adds `statement` / `prediction` to the runtime ledger format, the adapter switches to real strings without changing the schema shape.
+  - 11 new adapter tests pin the contract: ablation dict extraction, sorted-by-key population, control + robustness population, optional/null branches, PARTIALLY_CONFIRMED → inconclusive across all three.
+- **Outcome:** HypothesisGrid atom now lights up on real `inference-sim` campaigns. `ordering-theorem` shows h_main + 2 ablations + control + robustness = 5 rows × 5 iterations.
+- **Remaining v0.2 candidates** (deferred):
+  - Relax `Hypothesis` to allow `result`-only entries with optional `statement` / `prediction`, eliminating the synthesized-template workaround.
+  - Or: split `HypothesisOutcome` from `Hypothesis` — outcomes are runtime-emitted; full hypotheses come from the campaign's design phase. The schema currently fuses them.
+  - These are nice-to-haves; the v0.1.5 resolution is sufficient for chrome.
+- **Severity (was Low/High; now resolved):** Adapter loss closed. Schema-cleanliness opportunity remains for v0.2 if `Hypothesis` is split.
 
 ### G-N-10. `principles_extracted` actions don't map to a typed lifecycle
 

@@ -298,35 +298,37 @@ Outcomes worth shipping in v0.1.5 (against the fixture; subject to user refineme
 - A reader who's never seen this codebase reads the plot the same way as a senior researcher.
 - One-line human-authored summary above each plot (no LLM in v0.1.5 — atoms author their own captions).
 
-**The Nous atoms** (revised after schema audit — `IterationTrajectory` deferred to v0.2; `BestSoFarLine` deferred to v0.3+):
+**The Nous atoms** (revised after schema audit + G-N-9 promotion in v0.1.5; `IterationTrajectory` still deferred to v0.2; `BestSoFarLine` deferred to v0.3+):
 
 | Atom | Renders | Data threshold | Schema fields consumed | Adapter consumer |
 |---|---|---|---|---|
 | **`PrinciplesTempo`** ✓ shipped | Stepped line of cumulative principles extracted per iteration; gaps in the slope tell the user "we learned in bursts" | ≥3 iterations AND ≥2 principles | `nous-iteration.extension.principles_emitted: Reference[]` + `iteration_number` | Nous (`nous-campaign + structure`) |
-| **`HypothesisGrid`** ✓ shipped | 2D grid: rows = hypothesis position (h_main · h_ablation[i] · h_super_additivity · h_control_negative · h_robustness[i]), columns = iterations, cells = `--sage` ✓ / `--rose` − / `--mute-2` ? / blank | ≥2 iterations AND ≥2 distinct hypotheses with results | `nous-iteration.extension.hypothesis_bundle.*.result: 'pending' \| 'confirmed' \| 'refuted' \| 'inconclusive'` | Nous (`nous-campaign + detail`) |
-| **`HMainTimeline`** *(proposed; not yet shipped)* | Single horizontal strip of cells showing `h_main` result across iterations: `[✓ ✓ − ✓ ?]` — confirmation streak vs. contested hypothesis story | ≥3 iterations with ≥2 results on `h_main` | `nous-iteration.extension.hypothesis_bundle.h_main.result` | Nous (`nous-campaign + structure`) |
+| **`HMainTimeline`** ✓ shipped | Single horizontal strip showing `h_main` result across iterations: `[✓ ✓ − ✓ ?]` — confirmation streak vs. contested hypothesis story | ≥3 iterations with ≥2 results on `h_main` | `nous-iteration.extension.hypothesis_bundle.h_main.result` | Nous (`nous-campaign + structure` and `+ detail`) |
+| **`HypothesisGrid`** ✓ shipped — **lights up post-G-N-9** | 2D grid: rows = hypothesis position (`h_main` · `h_ablation[i]` · `h_control_negative` · `h_robustness[i]`), columns = iterations, cells = `--sage` ✓ / `--rose` − / `--mute-2` ? / blank | ≥2 iterations AND ≥2 distinct hypotheses with results | `nous-iteration.extension.hypothesis_bundle.*.result: 'pending' \| 'confirmed' \| 'refuted' \| 'inconclusive'` | Nous (`nous-campaign + detail`) |
 
-**Schema audit note (load-bearing):** the originally-planned `IterationTrajectory` ("sparkline of the campaign's main metric") is deferred. The v0.1 `nous-iteration.extension` schema carries no numeric metric field — that gap is **G-N-4** (`prediction_accuracy` aggregate) and **G-N-9** (`control/robustness/ablation outcomes`), both v0.2 schema-bump candidates. Plotting a metric trajectory would require fabricating data. Once G-N-4 lands in v0.2, the trajectory work folds into the v0.2 `trajectory` directive (Observable Plot output, LLM-emitted) — no separate atom to build later.
+**Schema audit note (load-bearing):** the originally-planned `IterationTrajectory` ("sparkline of the campaign's main metric") is deferred. The v0.1 `nous-iteration.extension` schema carries no numeric metric field — that gap is **G-N-4** (`prediction_accuracy` aggregate), still a v0.2 schema-bump candidate. Plotting a metric trajectory would require fabricating data. Once G-N-4 lands in v0.2, the trajectory work folds into the v0.2 `trajectory` directive (Observable Plot output, LLM-emitted) — no separate atom to build later.
 
-**HypothesisGrid threshold today:** under v0.1 schema + current adapter, only `h_main` lands with a `result` (the adapter at `ledger.ts:227` sets `h_ablation: []` because v0.1 has no schema home for `ablation_results` / `control_result` / `robustness_result`). Grid stays hidden across all v0.1 nous campaigns — by design, the threshold is correct. Grid lights up the moment G-N-9 promotes in v0.2 (no atom changes needed). HMainTimeline exists *because* the grid is hidden today: a 1×N strip of h_main results is real signal that doesn't pretend to be a 2D matrix.
+**G-N-9 promotion (v0.1.5, 2026-05-28):** previously listed as a v0.2 schema-bump candidate. Investigation showed the gap was *adapter-side, not schema-side* — the v0.1 schema's `HypothesisBundle` already supported populated `h_ablation` / `h_control_negative` / `h_robustness`, but the adapter at `ledger.ts:227` was hardcoding `h_ablation: []` and discarding `control_result` + `robustness_result` from the runtime ledger. Promotion landed without any schema change: parser extracts `ablation_results`; `interpretIteration` synthesizes templated `Hypothesis` records (`statement: 'ablation: ${key}'`, etc.) so the schema's `min(1)` constraints are satisfied while making the structural-template nature visible. PARTIALLY_CONFIRMED → inconclusive per G-N-1 still applies. See `gaps.md § G-N-9` for full resolution detail. **HypothesisGrid now renders on real `inference-sim` campaigns** — `ordering-theorem` shows h_main + 2 ablations + control + robustness = 5 rows × 5 iterations.
 
 Each atom: one component file + one CSS module + one behavioral test file. Tests assert structural attributes (axis labels, annotation text, `data-*` hooks) but never SVG path data — same discipline as `IntegralGlyph.test.tsx:5-6`.
 
 **Per-adapter composition (Nous-only in v0.1.5):**
-- **Nous** — structure projection composes `PrinciplesTempo` + (if shipped) `HMainTimeline`; detail projection adds `HypothesisGrid` (which stays hidden today by threshold; will light up post-G-N-9 in v0.2). Trajectory plot deferred to v0.2 alongside G-N-4.
+- **Nous** — structure projection composes `PrinciplesTempo` + `HMainTimeline`; detail projection adds `HypothesisGrid` (now lights up after G-N-9 promotion). Trajectory plot deferred to v0.2 alongside G-N-4.
 - **Coral / GitHub** — no atom work in v0.1.5 (deferred to v0.3+).
 
-**Timeline / sequencing (v0.1.5 visual vocabulary remaining):**
+**Timeline / sequencing (v0.1.5 visual vocabulary):**
 
 1. ✓ **Phase 1 — `PrinciplesTempo` + `HypothesisGrid`.** Shipped commit `3161b05` + threshold-hardening + a11y follow-up `ed96e0f`.
-2. **Phase 2 — `HMainTimeline` (Nous addition).** Single-strip atom; same discipline. Wires into Nous structure projection. Acceptance: a Nous campaign with ≥3 iterations probing h_main renders a [✓/−/?] strip whose epistemic story (confirmation streak vs. contested) is legible at a glance. **~1-2 hours, 1 small commit.**
-3. **Phase 3 — Visual baseline regen + Nous aesthetic review.** Lock the chrome at this milestone. **~½ day.**
+2. ✓ **Phase 2 — `HMainTimeline`.** Shipped commit `8595d1f` (2026-05-28). Single-strip atom; renders on real `ordering-theorem` data.
+3. ✓ **G-N-9 promotion** (commit pending). Adapter populates `h_ablation` / `h_control_negative` / `h_robustness` from runtime ledger fields; HypothesisGrid lights up.
+4. **Phase 3 — Visual baseline regen + Nous aesthetic review.** Lock the chrome at this milestone. Pending. **~½ day.**
 
-**Total remaining scope:** ~½ day for the rest. Phase 2 trade-off described in earlier session: defer if the user prefers to keep Phase 1 standalone; ship if they want richer Nous Detail before paper-authoring chrome lands.
+**Total remaining scope:** Phase 3 visual baseline regen (~½ day) is the only remaining visual-vocabulary item.
 
 **Falsification per atom (the stop conditions):**
-- `PrinciplesTempo`: a campaign extracting principles across multiple iterations communicates "burst learning, not steady" visually. ✓ shipped.
-- `HypothesisGrid`: the v3 plateau study renders as a clean grid distinguishing confirmed / refuted / inconclusive without a legend (gates on G-N-9 schema bump in v0.2; intentionally hidden in v0.1.5). ✓ atom shipped, threshold gates render.
+- `PrinciplesTempo`: a campaign extracting principles across multiple iterations communicates "burst learning, not steady" visually. ✓ shipped + verified on `ordering-theorem`.
+- `HMainTimeline`: a 5-iteration h_main confirmation streak reads as a uniform `--sage` strip in 2 seconds; a contested hypothesis reads as a mixed strip in the same time. ✓ shipped.
+- `HypothesisGrid`: the v3 plateau study renders as a clean grid distinguishing confirmed / refuted / inconclusive without a legend. ✓ shipped + lights up post-G-N-9 promotion in v0.1.5.
 - `HMainTimeline` (proposed): a 5-iteration h_main confirmation streak reads as a uniform `--sage` strip in 2 seconds; a contested hypothesis reads as a mixed strip in the same time.
 - **Cross-cut**: visual baseline diff against pre-v0.1.5 Detail surfaces shows new atoms inheriting tokens cleanly, no foreign aesthetic.
 
@@ -370,7 +372,7 @@ v0.1.5 is **scoped to chrome work on the Nous + Paper axis** — no new schema, 
 **Nous schema bump (the v0.2 schema design pass).**
 Promote G-N-* candidates from `gaps.md`. Each promotion writes a new `intent-schema-v0.2.md` alongside v0.1; old adapters keep referencing v0.1.
 
-*From Nous (G-N series, surfaced during A1+A2):* G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), **G-N-9 (control/robustness/ablation outcomes — load-bearing for findings plots and HypothesisGrid 2D content)**, G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload), G-N-12 (principle-extraction `OperationKind`).
+*From Nous (G-N series, surfaced during A1+A2):* G-N-1 (`partially-confirmed` outcome), G-N-2 (typed `Principle` objects + principles graph), G-N-3 (`family` field on iteration), G-N-4 (`prediction_accuracy` aggregate — load-bearing for the findings-plot `trajectory` directive), G-N-5 (frontier evolution), G-N-6 (typed iteration artifacts/patches), G-N-7 (intra-iteration phases as gate vocabulary), G-N-8 (campaign success criterion source), G-N-10 (typed principle action lifecycle), G-N-11 (KnowledgeRef.version overload), G-N-12 (principle-extraction `OperationKind`). *G-N-9 (control/robustness/ablation outcomes) was originally listed here but resolved in v0.1.5 — see the Visual vocabulary subsection above and `gaps.md § G-N-9`.*
 
 *Paper schema work:* validate that `paper-campaign` / `paper-section` / `paper-claim` extensions carry what the Paper adapter needs. Likely candidates surface during adapter implementation: a `paper-claim.evidence_chain` typed walk over `EvidenceLink` upstream-iterations, a `paper-section.completion_state` enum (drafted / argued / cited), a `paper-campaign.draft_anchor` `ExternalAnchor` to `draft.md`. Catalog as G-P-* gaps as they emerge during adapter design.
 
@@ -418,7 +420,7 @@ v0.1 declares operation signatures; v0.2 may add per-kind validity for Nous + Pa
 
 ### Findings plots — declarative chart authoring (Observable Plot)
 
-**Phase position:** v0.2 atom-level commitment built on top of the schema bump. **Hard dependency** on G-N-9 being promoted from `gaps.md` candidate to an actual schema field — cannot ship without that schema work landing first. (Coral analogue G-C-* deferred to v0.3+ alongside Coral findings-plot rollout.)
+**Phase position:** v0.2 atom-level commitment built on top of the schema bump. **Hard dependencies** on the v0.2 Nous schema work — primarily G-N-4 (`prediction_accuracy` aggregate, for the `trajectory` directive's metric data) and the cross-tree Paper adapter (for the load-bearing claim → iteration findings demo). G-N-9 (control/robustness/ablation outcomes) was originally a hard dependency here too, but it was promoted into v0.1.5 ahead of schedule — the runtime data is now visible via HypothesisGrid + adapter pass-through, which means the directive grammar in v0.2 can compose richer findings plots from data the chrome already surfaces.
 
 **The distinction restated:** v0.1.5 progress trackers describe *the campaign's meta-state* (how many iterations, which hypotheses confirmed). v0.2 findings plots describe *the data the campaign produced* — scatter plots of experimental results, ablation comparisons, training curves, distribution histograms, hyperparameter heatmaps. They compose on the same Detail surface but answer different questions; they share aesthetic discipline but use different rendering primitives (atoms vs. Plot).
 
@@ -427,7 +429,8 @@ v0.1 declares operation signatures; v0.2 may add per-kind validity for Nous + Pa
 **Architectural commitment: the directive seam.**
 
 ```
-Layer 1 — DATA      G-N-9-promoted Iteration.results: ResultBundle?
+Layer 1 — DATA      Iteration.hypothesis_bundle (G-N-9 already populated
+                    in v0.1.5) + G-N-4 numeric aggregate (v0.2)
                     ↓ adapter passes through (no projection)
 Layer 2 — DIRECTIVE LLM emits {type: 'scatter', x: 'model_size', y: 'accuracy', …}
                     ↓ projection plugin (mockable for tests)
@@ -487,8 +490,8 @@ LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Ea
 
 **Timeline / sequencing (v0.2 findings plots, Nous + Paper):**
 
-1. **Phase 0 — Schema prerequisite.** G-N-9 promotion (typed `ResultBundle` on `Iteration`). Writes `intent-schema-v0.2.md` alongside v0.1. **~1 PR, schema design pass.**
-2. **Phase 1 — Adapter pass-through.** Stop dropping G-N-9 fields in `src/adapters/nous/`; pass `results` through. Paper adapter (Adapter #4) reads draft.md / refs.bib + resolves cross-tree `EvidenceLink`s. **~2 PRs (Nous data-pass-through, Paper adapter starter).**
+1. **Phase 0 — Schema prerequisite.** G-N-4 promotion (`prediction_accuracy` aggregate as a typed `Iteration.metric` field). Writes `intent-schema-v0.2.md` alongside v0.1. **~1 PR, schema design pass.** *(G-N-9 already resolved in v0.1.5, so it's not a Phase 0 dependency anymore.)*
+2. **Phase 1 — Adapter pass-through.** Stop dropping G-N-4 numeric fields in `src/adapters/nous/`; pass `metric` through. Paper adapter (Adapter #4) reads draft.md / refs.bib + resolves cross-tree `EvidenceLink`s. **~2 PRs (Nous data-pass-through, Paper adapter starter).**
 3. **Phase 2 — Directive grammar + Zod schemas.** Define the 7 directive kinds in `src/lib/charts/directive.ts` + tests. **~1 PR.**
 4. **Phase 3 — Plot catalog + renderer module.** `src/lib/charts/plots/<kind>.ts` for each directive kind + `src/lib/charts/render.ts` (the directive → Plot output dispatcher). **~6-7 PRs (one per directive kind, batchable).**
 5. **Phase 4 — LLM directive emission in projection plugins.** Update `src/lib/projection-plugins/{nous-iteration,nous-campaign,paper-*}.ts` to emit directives in addition to prose. Paper claims emit directives *that resolve through their upstream nous-iteration evidence* — the cross-tree visual demo. **~2-3 PRs (Nous + Paper plugin updates).**
@@ -505,10 +508,11 @@ LLM emits `{type: <enum>, x: <field>, y?: <field>, color_by?: <field>, …}`. Ea
 - **Cross-cut**: a researcher comparing the Detail surface to their own matplotlib Jupyter scratch finds Integral's plot more readable in <30 seconds.
 
 **Stop conditions for the whole v0.2 chart pillar:**
-- G-N-9 + Coral analogues promoted to schema; adapters surface raw results.
+- G-N-4 promoted to schema; adapter surfaces numeric metric data.
 - Directive grammar finalized; each directive type has a catalog wrapper + tests.
 - Module boundary `src/lib/charts/` enforced — no Plot import outside it (load-bearing test in CI).
 - At least one Nous campaign has its findings rendered as charts on Detail; reads stunningly compared to prose-only.
+- Paper-claim findings plots resolve through their upstream Nous iteration's data via `EvidenceLink` — the cross-tree visual demo shows.
 
 **Recovery plan if Plot stalls or breaks API across versions:**
 - Renderer module is the only Plot consumer. Swap to Vega-Lite (JSON spec emission instead of API calls) by rewriting `src/lib/charts/render.ts` — directive contract + catalog signatures unchanged.

@@ -329,4 +329,197 @@ describe('interpretIteration', () => {
       expect(h.prediction.length).toBeGreaterThan(0)
     }
   })
+
+  // ─── G-N-9 promotion (v0.1.5): h_ablation / h_control_negative /
+  // h_robustness populated from runtime ledger fields ───────────────────────
+
+  it('populates h_ablation from ablation_results dict (G-N-9)', () => {
+    const entry: LedgerEntry = {
+      ...FULL_ENTRY,
+      ablation_results: {
+        'ablation-0': 'CONFIRMED',
+        'ablation-1': 'REFUTED',
+      },
+    }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      const ablations = result.intent.extension.hypothesis_bundle.h_ablation
+      expect(ablations).toHaveLength(2)
+      // Sorted by key for stable row-order in HypothesisGrid.
+      expect(ablations[0]?.statement).toBe('ablation: ablation-0')
+      expect(ablations[0]?.result).toBe('confirmed')
+      expect(ablations[1]?.statement).toBe('ablation: ablation-1')
+      expect(ablations[1]?.result).toBe('refuted')
+    }
+  })
+
+  it('emits empty h_ablation when ablation_results is missing', () => {
+    const entry: LedgerEntry = { ...FULL_ENTRY }
+    delete entry.ablation_results
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      expect(result.intent.extension.hypothesis_bundle.h_ablation).toEqual([])
+    }
+  })
+
+  it('populates h_control_negative from control_result (G-N-9)', () => {
+    const entry: LedgerEntry = { ...FULL_ENTRY, control_result: 'CONFIRMED' }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      const control =
+        result.intent.extension.hypothesis_bundle.h_control_negative
+      expect(control?.result).toBe('confirmed')
+      expect(control?.statement.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('omits h_control_negative when control_result is null', () => {
+    const entry: LedgerEntry = { ...FULL_ENTRY, control_result: null }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      expect(
+        result.intent.extension.hypothesis_bundle.h_control_negative
+      ).toBeUndefined()
+    }
+  })
+
+  it('populates h_robustness as a 1-element array from robustness_result (G-N-9)', () => {
+    // Schema shape is array; runtime carries a single result. Wrap.
+    const entry: LedgerEntry = { ...FULL_ENTRY, robustness_result: 'CONFIRMED' }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      const robust = result.intent.extension.hypothesis_bundle.h_robustness
+      expect(robust).toHaveLength(1)
+      expect(robust?.[0]?.result).toBe('confirmed')
+    }
+  })
+
+  it('omits h_robustness when robustness_result is null', () => {
+    const entry: LedgerEntry = { ...FULL_ENTRY, robustness_result: null }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      expect(
+        result.intent.extension.hypothesis_bundle.h_robustness
+      ).toBeUndefined()
+    }
+  })
+
+  it('PARTIALLY_CONFIRMED on any of {control, robustness, ablation} → inconclusive (G-N-1)', () => {
+    const entry: LedgerEntry = {
+      ...FULL_ENTRY,
+      control_result: 'PARTIALLY_CONFIRMED',
+      robustness_result: 'PARTIALLY_CONFIRMED',
+      ablation_results: { 'ablation-0': 'PARTIALLY_CONFIRMED' },
+    }
+    const result = interpretIteration({
+      runId: 'best-of-field',
+      parentIntentId: PARENT_ID,
+      entry,
+      sourceId: 'fs:/synthetic',
+    })
+    if (result.intent.extension.kind === 'nous-iteration') {
+      const bundle = result.intent.extension.hypothesis_bundle
+      expect(bundle.h_control_negative?.result).toBe('inconclusive')
+      expect(bundle.h_robustness?.[0]?.result).toBe('inconclusive')
+      expect(bundle.h_ablation[0]?.result).toBe('inconclusive')
+    }
+  })
+})
+
+// ─── parseLedger — ablation_results extraction (added during G-N-9) ─────
+
+describe('parseLedger ablation_results extraction', () => {
+  it('extracts ablation_results dict when shape matches', () => {
+    const json = JSON.stringify({
+      iterations: [
+        {
+          iteration: 1,
+          family: 'fam',
+          timestamp: '2026-01-01T00:00:00Z',
+          ablation_results: {
+            'ablation-0': 'CONFIRMED',
+            'ablation-1': 'REFUTED',
+          },
+        },
+      ],
+    })
+    const entries = parseLedger(json)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.ablation_results).toEqual({
+      'ablation-0': 'CONFIRMED',
+      'ablation-1': 'REFUTED',
+    })
+  })
+
+  it('omits ablation_results when missing', () => {
+    const json = JSON.stringify({
+      iterations: [
+        { iteration: 1, family: 'fam', timestamp: '2026-01-01T00:00:00Z' },
+      ],
+    })
+    const entries = parseLedger(json)
+    expect(entries[0]?.ablation_results).toBeUndefined()
+  })
+
+  it('drops non-string values inside ablation_results', () => {
+    const json = JSON.stringify({
+      iterations: [
+        {
+          iteration: 1,
+          family: 'fam',
+          timestamp: '2026-01-01T00:00:00Z',
+          ablation_results: { 'good': 'CONFIRMED', 'bad': 42 },
+        },
+      ],
+    })
+    const entries = parseLedger(json)
+    expect(entries[0]?.ablation_results).toEqual({ good: 'CONFIRMED' })
+  })
+
+  it('treats array-shaped ablation_results as missing (defensive)', () => {
+    // Some legacy ledgers used to carry `ablation_results: ["ablation-0"]`
+    // (array of identifiers, no per-element result). Drop those.
+    const json = JSON.stringify({
+      iterations: [
+        {
+          iteration: 1,
+          family: 'fam',
+          timestamp: '2026-01-01T00:00:00Z',
+          ablation_results: ['ablation-0', 'ablation-1'],
+        },
+      ],
+    })
+    const entries = parseLedger(json)
+    expect(entries[0]?.ablation_results).toBeUndefined()
+  })
 })

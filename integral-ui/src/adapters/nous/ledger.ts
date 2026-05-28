@@ -113,6 +113,21 @@ export function parseLedger(jsonText: string): LedgerEntry[] {
     ) {
       entry.robustness_result = obj.robustness_result as string | null
     }
+    if (
+      obj.ablation_results &&
+      typeof obj.ablation_results === 'object' &&
+      !Array.isArray(obj.ablation_results)
+    ) {
+      // Per real ledger.json data: a dict { "ablation-N": "CONFIRMED"|... }
+      // — keys are ablation labels, values are enum strings.
+      const map: Record<string, string> = {}
+      for (const [k, v] of Object.entries(
+        obj.ablation_results as Record<string, unknown>
+      )) {
+        if (typeof v === 'string') map[k] = v
+      }
+      entry.ablation_results = map
+    }
     if (Array.isArray(obj.principles_extracted)) {
       entry.principles_extracted = obj.principles_extracted
         .filter(
@@ -129,24 +144,35 @@ export function parseLedger(jsonText: string): LedgerEntry[] {
   return out
 }
 
-// ─── h_main_result → HypothesisResult ──────────────────────────────────────
+// ─── runtime result string → HypothesisResult ─────────────────────────────
 
 /**
- * Lossy: `PARTIALLY_CONFIRMED` collapses to `inconclusive` per gaps.md G-N-1.
- * Unknown / empty strings → `pending` (treats as in-flight rather than
- * fabricating an outcome).
+ * Map a runtime ledger result string (h_main_result, control_result,
+ * robustness_result, or any value in ablation_results) to the typed
+ * `HypothesisResult` enum.
+ *
+ * Lossy in one place: `PARTIALLY_CONFIRMED` collapses to `inconclusive`
+ * per gaps.md G-N-1. Unknown / empty / null → `pending` (treats as
+ * in-flight rather than fabricating an outcome).
+ *
+ * Originally named `mapHmainResultToHypothesisResult` — generalized
+ * during G-N-9 promotion in v0.1.5 since the same enum vocabulary
+ * applies to control / robustness / ablation results too.
  */
-export function mapHmainResultToHypothesisResult(
-  hmain: string | null | undefined
+export function mapResultStringToHypothesisResult(
+  raw: string | null | undefined
 ): HypothesisResult {
-  if (hmain === null || hmain === undefined) return 'pending'
-  const norm = hmain.toUpperCase()
+  if (raw === null || raw === undefined) return 'pending'
+  const norm = raw.toUpperCase()
   if (norm === 'CONFIRMED') return 'confirmed'
   if (norm === 'REFUTED') return 'refuted'
   if (norm === 'INCONCLUSIVE') return 'inconclusive'
   if (norm === 'PARTIALLY_CONFIRMED') return 'inconclusive'
   return 'pending'
 }
+
+/** Back-compat alias for callers that still use the original name. */
+export const mapHmainResultToHypothesisResult = mapResultStringToHypothesisResult
 
 // ─── interpretIteration ────────────────────────────────────────────────────
 
@@ -173,8 +199,60 @@ export function interpretIteration({
   const intentId = `${parentIntentId}:${candidateId}`
   const stateId = `${intentId}-STATE`
 
-  const result = mapHmainResultToHypothesisResult(entry.h_main_result)
+  const result = mapResultStringToHypothesisResult(entry.h_main_result)
   const status: Status = result === 'pending' ? 'active' : 'satisfied'
+
+  // G-N-9 promotion (v0.1.5): populate h_ablation / h_control_negative /
+  // h_robustness from runtime ledger fields. The schema already accepts
+  // these — earlier versions of the adapter dropped them because the
+  // runtime data carries only result enums (no statement / prediction
+  // prose). We synthesize structurally-meaningful templates so the
+  // schema's min(1) constraints are satisfied without fabricating
+  // research-authored prose. The HypothesisGrid atom only renders the
+  // result, so the synthesized strings are aria/test surface only.
+  const ablationRecord = entry.ablation_results ?? {}
+  const ablationKeys = Object.keys(ablationRecord).sort()
+  const hAblation = ablationKeys.map((key) => {
+    const r = mapResultStringToHypothesisResult(ablationRecord[key])
+    return {
+      statement: `ablation: ${key}`,
+      prediction: 'Ablated component is necessary for the main effect.',
+      conditions: [],
+      ...(r !== 'pending' ? { result: r } : {}),
+    }
+  })
+
+  const controlRaw = entry.control_result
+  const controlResult =
+    controlRaw === null || controlRaw === undefined
+      ? undefined
+      : mapResultStringToHypothesisResult(controlRaw)
+  const hControlNegative =
+    controlResult !== undefined
+      ? {
+          statement: 'control: campaign predictions do not generalize to negative controls.',
+          prediction: 'Outcome on control should not match outcome on main.',
+          conditions: [],
+          ...(controlResult !== 'pending' ? { result: controlResult } : {}),
+        }
+      : undefined
+
+  const robustnessRaw = entry.robustness_result
+  const robustnessResult =
+    robustnessRaw === null || robustnessRaw === undefined
+      ? undefined
+      : mapResultStringToHypothesisResult(robustnessRaw)
+  const hRobustness =
+    robustnessResult !== undefined
+      ? [
+          {
+            statement: 'robustness: main outcome holds under perturbations.',
+            prediction: 'Same conclusion under varied conditions.',
+            conditions: [],
+            ...(robustnessResult !== 'pending' ? { result: robustnessResult } : {}),
+          },
+        ]
+      : undefined
 
   const principles: Reference[] | undefined =
     entry.principles_extracted && entry.principles_extracted.length > 0
@@ -224,7 +302,9 @@ export function interpretIteration({
           conditions: [],
           ...(result !== 'pending' ? { result } : {}),
         },
-        h_ablation: [],
+        h_ablation: hAblation,
+        ...(hControlNegative ? { h_control_negative: hControlNegative } : {}),
+        ...(hRobustness ? { h_robustness: hRobustness } : {}),
       },
       ...(principles ? { principles_emitted: principles } : {}),
     },
