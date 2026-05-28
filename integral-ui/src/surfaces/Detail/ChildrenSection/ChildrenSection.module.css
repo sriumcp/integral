@@ -20,6 +20,47 @@
   padding: 4px 0 2px;
 }
 
+/* Legend — tiny inline key for the ✓/−/? cell symbols. Renders only
+   when a symbol-using atom is shown (HMainTimeline or HypothesisGrid).
+   Mono mute so it sits below the plots without competing. */
+.progressLegend {
+  margin: 4px 0 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--mute);
+  letter-spacing: 0.02em;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendSep {
+  color: var(--mute-2);
+  padding: 0 2px;
+}
+
+.legendMarkConfirmed {
+  color: var(--sage-fg);
+  font-weight: 600;
+}
+
+.legendMarkRefuted {
+  color: var(--rose-fg);
+  font-weight: 600;
+}
+
+.legendMarkUnresolved {
+  color: var(--mute-2);
+  font-weight: 500;
+}
+
 .overview {
   display: flex;
   flex-direction: column;

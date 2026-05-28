@@ -73,8 +73,13 @@ export function ChildrenSection({
 
   return (
     <section className={styles.section} data-kind={intent.kind}>
-      <ExtensionSummary intent={intent} />
+      {/* Visual summary atoms sit *first* — adjacent to the projection
+          prose summary above (the LLM-generated text in
+          ProjectionSection). They're the picture-summary of what the
+          campaign found; ExtensionSummary's research-question chip and
+          children list follow as orienting context, not as headline. */}
       <NousProgressVisuals intent={intent} workspace={workspace} zoom={zoom} />
+      <ExtensionSummary intent={intent} />
       {childPairs.length > 0 && (
         <>
           <SectionLabel hint={`${childPairs.length}`}>children</SectionLabel>
@@ -181,6 +186,17 @@ function NousProgressVisuals({
   const state = workspace.states.find((s) => s.intent_id === intent.id)
   const isLive = state?.status === 'active' || state?.status === 'gated'
 
+  // Show a tiny inline legend whenever a symbol-using atom renders.
+  // PrinciplesTempo alone doesn't need a legend (its line + dot are
+  // self-evident); HMainTimeline + HypothesisGrid use ✓/−/? cells
+  // whose meaning isn't obvious to a fresh reader. The legend is
+  // small mono mute text — discoverable but not visually competing
+  // with the plots themselves. This is the genre's "annotation >
+  // legend" rule with one allowed concession: when a symbol's
+  // meaning isn't universal (✓ is; − and ? aren't), naming them
+  // once below the plot block is cheaper than per-cell tooltips.
+  const showLegend = showHMain || showGrid
+
   return (
     <div className={styles.progressVisuals} data-progress-visuals="nous">
       {showTempo && (
@@ -195,6 +211,23 @@ function NousProgressVisuals({
       )}
       {showGrid && (
         <HypothesisGrid iterations={gridData} title="hypothesis ledger" />
+      )}
+      {showLegend && (
+        <p className={styles.progressLegend} data-progress-legend="true">
+          <span className={styles.legendItem}>
+            <span className={styles.legendMarkConfirmed}>✓</span> confirmed
+          </span>
+          <span aria-hidden="true" className={styles.legendSep}>·</span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendMarkRefuted}>−</span> refuted
+          </span>
+          <span aria-hidden="true" className={styles.legendSep}>·</span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendMarkUnresolved}>?</span> unresolved
+          </span>
+          <span aria-hidden="true" className={styles.legendSep}>·</span>
+          <span className={styles.legendItem}>blank: not probed</span>
+        </p>
       )}
     </div>
   )

@@ -568,6 +568,52 @@ describe('ChildrenSection', () => {
       ).toBeNull()
     })
 
+    it('renders the symbol legend when HMainTimeline shows', () => {
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, hMain: 'confirmed' }),
+        makeIter({ id: 'I2', iterationNumber: 2, hMain: 'confirmed' }),
+        makeIter({ id: 'I3', iterationNumber: 3, hMain: 'refuted' }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      const legend = container.querySelector('[data-progress-legend="true"]')
+      expect(legend).not.toBeNull()
+      expect(legend?.textContent).toMatch(/confirmed/i)
+      expect(legend?.textContent).toMatch(/refuted/i)
+      expect(legend?.textContent).toMatch(/unresolved/i)
+    })
+
+    it('omits the legend when only PrinciplesTempo renders (no symbol cells)', () => {
+      // Tempo uses a line + dot — no ✓/−/? cells, so the legend
+      // would explain symbols the user can't see.
+      const iters = [
+        makeIter({ id: 'I1', iterationNumber: 1, principles: 1 }),
+        makeIter({ id: 'I2', iterationNumber: 2, principles: 1 }),
+        makeIter({ id: 'I3', iterationNumber: 3, principles: 1 }),
+      ]
+      const { campaign, state } = makeNousCampaign(['I1', 'I2', 'I3'])
+      const ws = makeWs([campaign, ...iters], [state])
+      const { container } = render(
+        <ChildrenSection
+          intent={campaign}
+          workspace={ws}
+          zoom="structure"
+          onOpen={() => {}}
+        />
+      )
+      expect(
+        container.querySelector('[data-progress-legend="true"]')
+      ).toBeNull()
+    })
+
     it('renders HMainTimeline at structure AND detail zoom (it is not detail-only)', () => {
       const iters = [
         makeIter({ id: 'I1', iterationNumber: 1, hMain: 'confirmed' }),

@@ -109,8 +109,14 @@ export function HypothesisGrid({
   }
 
   // Layout — labels live in left and bottom margins; cells form the
-  // body grid.
-  const rowLabelW = 96
+  // body grid. rowLabelW is computed from the longest row label so
+  // wide names like "h_control_negative" don't clip against the SVG
+  // edge. Mono ~7px/char at font-size 10 + 12px padding.
+  const longestLabelChars = rowOrder.reduce(
+    (acc, label) => Math.max(acc, label.length),
+    0
+  )
+  const rowLabelW = Math.max(96, longestLabelChars * 7 + 12)
   const colLabelH = 16
   const padX = 4
   const padY = 4
