@@ -25,6 +25,7 @@ import {
 } from './sources-config'
 import { handleWriteback, readJsonBody } from './writeback-handler'
 import { handleShape, type ShapeRequest } from './shape-handler'
+import { handlePreflight } from './preflight-handler'
 
 /**
  * Vite plugin that exposes the Nous adapter as `/api/workspace` and
@@ -253,6 +254,47 @@ export function nousAdapterPlugin(): Plugin {
               run_id: result.run_id,
             })
           )
+        } catch (err) {
+          res.statusCode = 500
+          res.setHeader('content-type', 'application/json')
+          res.end(
+            JSON.stringify({
+              error: err instanceof Error ? err.message : String(err),
+            })
+          )
+        }
+      })
+
+      // ─── /api/nous/preflight ───────────────────────────────────────────
+      // Pre-flight validation for the Shaping → writeback flow. The
+      // browser hook posts {sourceId, target_system, runId}; the handler
+      // resolves the source path + runs the runPreflight engine with
+      // real fs + PATH probing. Failures gate the commit button. This
+      // is the v0.1.5 Nous falsification stop condition.
+      server.middlewares.use('/api/nous/preflight', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405
+          res.setHeader('content-type', 'application/json')
+          res.end(JSON.stringify({ error: 'POST required' }))
+          return
+        }
+        try {
+          const body = await readJsonBody(req)
+          const sources = await ensureSourcesLoaded(cwd)
+          const result = await handlePreflight(
+            body as object | null,
+            sources,
+          )
+          if (!result.ok) {
+            res.statusCode = result.status
+            res.setHeader('content-type', 'application/json')
+            res.end(JSON.stringify({ error: result.error }))
+            return
+          }
+          res.statusCode = 200
+          res.setHeader('content-type', 'application/json')
+          res.setHeader('cache-control', 'no-store')
+          res.end(JSON.stringify({ checks: result.checks }))
         } catch (err) {
           res.statusCode = 500
           res.setHeader('content-type', 'application/json')
