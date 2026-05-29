@@ -191,16 +191,20 @@ describe('executor — transforms', () => {
       { k: 'a', v: 0, g: '' },
       { k: 'b', v: -5, g: '' },
     ])
+    // emit_empty: true here keeps the figure even though the derived
+    // y column ends up entirely null — the test asserts the *derived
+    // expression's* null-handling, not the figure-drop rule (which is
+    // exercised separately in "drops bar/line/area/dot ... no numeric").
     const div = executeSpec(spec([{
       id: 'f', title: 'F', dataset: 'd',
       transform: [{ op: 'derived', output: 'r', expr: { kind: 'div', num: 'v', den: 'v' } }],
-      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: true,
     }]), evidence, { now: NOW })
     expect(div.figures[0]!.data[0]!.r).toBeNull()
     const log = executeSpec(spec([{
       id: 'f', title: 'F', dataset: 'd',
       transform: [{ op: 'derived', output: 'r', expr: { kind: 'log10', of: 'v' } }],
-      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: true,
     }]), evidence, { now: NOW })
     expect(log.figures[0]!.data[0]!.r).toBeNull()
     expect(log.figures[0]!.data[1]!.r).toBeNull()
@@ -259,6 +263,86 @@ describe('executor — transforms', () => {
     }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })
     expect(out.figures).toHaveLength(1)
     expect(out.figures[0]!.data).toEqual([])
+  })
+
+  it('drops bar/line/area/dot figure when y column has no numeric values (would render empty axes)', () => {
+    // Rows have data but y column is entirely null/string.
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [
+          { name: 'k', type: 'string' },
+          { name: 'v', type: 'string' },
+        ]},
+        rows: [
+          { k: 'a', v: 'one' },
+          { k: 'b', v: 'two' },
+        ],
+        source_ref: { file: 'd.json' },
+      }],
+      excerpts: [], files_seen: [], fingerprint: 'fp',
+    }
+    for (const markType of ['line', 'area', 'dot'] as const) {
+      const out = executeSpec(spec([{
+        id: 'f', title: 'F', dataset: 'd',
+        mark: { type: markType }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+      }]), evidence, { now: NOW })
+      expect(out.figures).toHaveLength(0)
+    }
+    // Vertical bar: same rule as line/area/dot.
+    const bar = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'bar', orientation: 'vertical' },
+      encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(bar.figures).toHaveLength(0)
+  })
+
+  it('keeps figure when y has at least one numeric value (mixed null/numeric)', () => {
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [
+          { name: 'k', type: 'string' },
+          { name: 'v', type: 'number' },
+        ]},
+        rows: [
+          { k: 'a', v: null },
+          { k: 'b', v: 5 },
+        ],
+        source_ref: { file: 'd.json' },
+      }],
+      excerpts: [], files_seen: [], fingerprint: 'fp',
+    }
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'line' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures).toHaveLength(1)
+  })
+
+  it('horizontal bar requires numeric x (not y)', () => {
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [
+          { name: 'cat', type: 'string' },
+          { name: 'count', type: 'number' },
+        ]},
+        rows: [
+          { cat: 'A', count: 3 },
+          { cat: 'B', count: 5 },
+        ],
+        source_ref: { file: 'd.json' },
+      }],
+      excerpts: [], files_seen: [], fingerprint: 'fp',
+    }
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'bar', orientation: 'horizontal' },
+      encodings: { x: 'count', y: 'cat' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures).toHaveLength(1)
   })
 
   it('handles empty dataset gracefully (no rows → empty figure dropped)', () => {

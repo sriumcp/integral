@@ -186,6 +186,21 @@ function systemPreamble(): string {
     'quotations stitched into a clean narrative arc with brief connective',
     'prose between them. Quote sparingly (the strongest 2–4 excerpts) —',
     'do not concatenate every excerpt; choose what tells the story.',
+    '',
+    'FIGURE QUALITY — refuse to ship a chart that wouldn\'t make sense:',
+    '  - For line / area / bar / dot marks the **y** encoding MUST point',
+    '    at a column whose schema type is `number` (or whose value becomes',
+    '    numeric after a `group_by` aggregate / a `derived` op). A bar',
+    '    chart with a string-typed y will render as empty axes; the',
+    '    substrate drops it and your prose will reference a dangling figure.',
+    '  - Bar charts: keep ≤ 8 categories on the x-axis. If a category column',
+    '    has more than 8 distinct values, prefer a `limit: 8` after a sort,',
+    '    or drop the figure.',
+    '  - When choosing what to plot, prefer columns the dataset schema',
+    '    flagged `type: number`. Counts via `group_by + count` are also fine.',
+    '  - Don\'t request a figure unless it tells a real story. Two good',
+    '    figures > four mediocre ones; zero figures > one figure that the',
+    '    substrate has to drop.',
   ].join('\n')
 }
 

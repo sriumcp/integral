@@ -72,6 +72,14 @@ export function executeSpec(
     const data = applyTransforms(ds.rows, fig.transform ?? [], `figures.${fig.id}`)
     if (data.length === 0 && !fig.emit_empty) continue
     validateEncodings(fig, data)
+    // Drop figures that won't produce visible marks. Plot.line / .bar /
+    // .area / .dot all need a numeric y-channel; a figure whose y column
+    // is entirely null/string post-transform renders as empty axes — the
+    // user reads it as a broken chart. The lint-style discipline here:
+    // refuse to render rather than show nothing wrapped in chrome.
+    if (!fig.emit_empty && !hasPlottableEncoding(fig.mark, fig.encodings, data)) {
+      continue
+    }
     figures.push({
       id: fig.id,
       title: fig.title,
@@ -378,6 +386,61 @@ function applyDerived(
 }
 
 // ─── Encodings sanity ─────────────────────────────────────────────────────
+
+/**
+ * Predicate: this mark+encoding combination CAN produce visible marks
+ * given the post-transform data. Used to drop figures that would render
+ * as empty axes.
+ *
+ * Rules:
+ *  - line / area / bar / dot / rule(y) / tick(y): require ≥1 finite
+ *    numeric value in the y-encoded column. (Bar can be horizontal, in
+ *    which case it's the x-encoded column instead.)
+ *  - text: requires ≥1 non-null text-encoded value
+ *  - rule(x) / tick(x): require ≥1 numeric x value
+ *
+ * Conservative — we'd rather skip a borderline figure than render an
+ * unintelligible one.
+ */
+function hasPlottableEncoding(
+  mark: PlotSpec['mark'],
+  encodings: PlotSpec['encodings'],
+  data: TypedRow[]
+): boolean {
+  if (data.length === 0) return false
+  const hasNumeric = (col: string | undefined): boolean => {
+    if (!col) return false
+    for (const r of data) {
+      const v = r[col]
+      if (typeof v === 'number' && Number.isFinite(v)) return true
+    }
+    return false
+  }
+  const hasNonNull = (col: string | undefined): boolean => {
+    if (!col) return false
+    for (const r of data) {
+      const v = r[col]
+      if (v !== null && v !== undefined) return true
+    }
+    return false
+  }
+  switch (mark.type) {
+    case 'line':
+    case 'area':
+    case 'dot':
+      return hasNumeric(encodings.y)
+    case 'bar':
+      return mark.orientation === 'horizontal'
+        ? hasNumeric(encodings.x)
+        : hasNumeric(encodings.y)
+    case 'rule':
+      return hasNumeric(mark.axis === 'x' ? encodings.x : encodings.y)
+    case 'tick':
+      return hasNumeric(mark.axis === 'x' ? encodings.x : encodings.y)
+    case 'text':
+      return hasNonNull(encodings.text ?? encodings.x ?? encodings.y)
+  }
+}
 
 function validateEncodings(fig: PlotSpec, data: TypedRow[]): void {
   if (data.length === 0) return

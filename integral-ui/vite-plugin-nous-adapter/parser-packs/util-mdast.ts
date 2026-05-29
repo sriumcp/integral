@@ -93,8 +93,11 @@ export function parseMarkdown(
         if (text.length === 0) break
         const slug = slugify(text)
         excerpts.push({
+          // The kind tag ('heading') tells the LLM and chrome it's a
+          // heading; we keep the text clean (no `##` prefix) so prose
+          // substitutions don't leak markdown markers mid-sentence.
           id: `${excerptIdPrefix}:h:${slug || ++headingCounter}`,
-          text: '#'.repeat((node as Heading).depth) + ' ' + text,
+          text,
           kind: 'heading' satisfies ExcerptKind,
           source_ref: ref,
         })
