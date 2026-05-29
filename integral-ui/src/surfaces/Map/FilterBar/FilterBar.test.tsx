@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { FilterBar } from './FilterBar'
 import { DEFAULT_FILTER, type FilterQuery } from '@/lib/filter-query'
 
-const NOOP_TAGS: string[] = []
-
 function renderBar(opts: {
   filter?: FilterQuery
-  availableTags?: string[]
   onAdd?: (key: string, value: string) => void
   onRemove?: (key: string, value: string) => void
 } = {}) {
@@ -16,7 +13,6 @@ function renderBar(opts: {
   render(
     <FilterBar
       filter={opts.filter ?? DEFAULT_FILTER}
-      availableTags={opts.availableTags ?? NOOP_TAGS}
       onAdd={onAdd as never}
       onRemove={onRemove as never}
     />
@@ -54,12 +50,16 @@ describe('FilterBar', () => {
     expect(disclosure.hasAttribute('open')).toBe(true)
   })
 
-  it('disclosure shows category headings', () => {
+  it('disclosure shows STATUS / KIND / HOLDER section headings (no TAG)', () => {
     renderBar()
     fireEvent.click(screen.getByText(/\+ filter/i))
     expect(screen.getByText('STATUS')).toBeInTheDocument()
     expect(screen.getByText('KIND')).toBeInTheDocument()
     expect(screen.getByText('HOLDER')).toBeInTheDocument()
+    // TAG was dropped in v0.2.0 — adapter-emitted tags are per-intent
+    // metadata, not workspace-shared categories. They survive on
+    // intents but not as a filter dimension.
+    expect(screen.queryByText('TAG')).toBeNull()
   })
 
   it('clicking a status option calls onAdd("status", value)', () => {
@@ -87,22 +87,6 @@ describe('FilterBar', () => {
       screen.getByRole('button', { name: /remove filter kind:nous-campaign/i })
     )
     expect(onRemove).toHaveBeenCalledWith('kind', 'nous-campaign')
-  })
-
-  it('TAG section is hidden when availableTags is empty', () => {
-    renderBar({ availableTags: [] })
-    fireEvent.click(screen.getByText(/\+ filter/i))
-    expect(screen.queryByText('TAG')).toBeNull()
-  })
-
-  it('TAG section is shown when availableTags is non-empty', () => {
-    cleanup()
-    renderBar({ availableTags: ['urgent', 'blocked'] })
-    fireEvent.click(screen.getByText(/\+ filter/i))
-    expect(screen.getByText('TAG')).toBeInTheDocument()
-    expect(
-      screen.getByRole('menuitem', { name: 'urgent' })
-    ).toBeInTheDocument()
   })
 
   it('options for already-active filters are disabled', () => {

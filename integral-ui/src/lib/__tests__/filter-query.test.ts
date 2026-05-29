@@ -73,9 +73,11 @@ describe('parseFilterQuery', () => {
     ])
   })
 
-  it('parses tag=urgent,blocked', () => {
+  it('silently ignores ?tag= (dropped as a filter dimension in v0.2.0)', () => {
+    // Round-trip: parsing a stale URL with ?tag=... no longer
+    // contributes to the filter, but doesn't crash either.
     const v = parseFilterQuery(new URLSearchParams('tag=urgent,blocked'))
-    expect([...v.filter.tags].sort()).toEqual(['blocked', 'urgent'])
+    expect(Object.keys(v.filter)).not.toContain('tags')
   })
 })
 
@@ -135,7 +137,6 @@ describe('parse/serialize round-trip', () => {
         kinds: new Set(['nous-campaign', 'coral-attempt']),
         statuses: new Set(['active', 'gated']),
         holderModes: new Set(['human-held']),
-        tags: new Set(['urgent']),
       },
       group: 'source',
       sort: 'alphabetical',
@@ -235,21 +236,9 @@ describe('applyFilters', () => {
     for (const i of out) expect(i.kind).toBe('nous-campaign')
   })
 
-  it('tag filter matches OR across multi tags', () => {
-    // Find an intent with at least one tag in the fixture
-    const tagged = intents.find((i) => (i.tags ?? []).length > 0)
-    if (!tagged) return // skip if fixture has no tags
-    const someTag = (tagged.tags ?? [])[0]!
-    const out = applyFilters({
-      intents,
-      states,
-      filter: { ...DEFAULT_VIEW.filter, tags: new Set([someTag]) },
-      isAwaitingMe: ALWAYS_FALSE,
-    })
-    for (const i of out) {
-      expect(i.tags ?? []).toContain(someTag)
-    }
-  })
+  // The "tag filter matches OR across multi tags" test was removed
+  // when v0.2.0 dropped tag-as-filter. Tags survive on intents but
+  // are not a workspace-narrowing dimension.
 
   it('all filters that exclude everything → empty result', () => {
     void ALWAYS_TRUE // keep import alive
@@ -285,9 +274,8 @@ describe('activeFilterCount', () => {
         kinds: new Set(['nous-campaign', 'coral-attempt']),
         statuses: new Set(['active']),
         holderModes: new Set(),
-        tags: new Set(['urgent', 'blocked']),
       })
-    ).toBe(1 + 2 + 1 + 0 + 2)
+    ).toBe(1 + 2 + 1 + 0)
   })
 })
 

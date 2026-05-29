@@ -15,7 +15,6 @@ function renderControls(opts: {
     <MapControls
       view={opts.view ?? DEFAULT_VIEW}
       counts={opts.counts ?? COUNTS}
-      availableTags={[]}
       onAddFilter={NOOP}
       onRemoveFilter={NOOP}
       onChangeGroup={NOOP}
@@ -64,7 +63,6 @@ describe('MapControls', () => {
       <MapControls
         view={DEFAULT_VIEW}
         counts={COUNTS}
-        availableTags={[]}
         onAddFilter={NOOP}
         onRemoveFilter={NOOP}
         onChangeGroup={NOOP}

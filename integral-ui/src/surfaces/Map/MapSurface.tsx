@@ -111,14 +111,6 @@ export function MapSurface({
     return { active, awaiting, working, drafts }
   }, [rootIntents, rootStates, stateById, workspace.intents, me])
 
-  // Available tags across all loaded intents — populates TAG autocomplete.
-  const availableTags = useMemo(() => {
-    const tags = new Set<string>()
-    for (const i of workspace.intents) {
-      for (const t of i.tags ?? []) tags.add(t)
-    }
-    return [...tags].sort()
-  }, [workspace.intents])
 
   // ─── Apply filter → sort → group ─────────────────────────────────────
   const isAwaitingForMe = useMemo(
@@ -188,9 +180,6 @@ export function MapSurface({
           ]),
         }
         break
-      case 'tag':
-        next = { ...f, tags: new Set([...f.tags, value]) }
-        break
     }
     update({ ...view, filter: next })
   }
@@ -220,12 +209,6 @@ export function MapSurface({
         next = { ...f, holderModes: s }
         break
       }
-      case 'tag': {
-        const s = new Set(f.tags)
-        s.delete(value)
-        next = { ...f, tags: s }
-        break
-      }
     }
     update({ ...view, filter: next })
   }
@@ -250,7 +233,6 @@ export function MapSurface({
       <MapControls
         view={view}
         counts={counts}
-        availableTags={availableTags}
         onAddFilter={addFilter}
         onRemoveFilter={removeFilter}
         onChangeGroup={changeGroup}

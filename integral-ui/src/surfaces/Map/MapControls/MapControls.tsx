@@ -28,8 +28,6 @@ export interface MapControlsProps {
     working: number
     drafts: number
   }
-  /** Tags discovered across all loaded intents — populates TAG autocomplete. */
-  availableTags: ReadonlyArray<string>
   onAddFilter: (key: FilterCategory, value: string) => void
   onRemoveFilter: (key: FilterCategory, value: string) => void
   onChangeGroup: (g: GroupBy) => void
@@ -41,7 +39,6 @@ export interface MapControlsProps {
 export function MapControls({
   view,
   counts,
-  availableTags,
   onAddFilter,
   onRemoveFilter,
   onChangeGroup,
@@ -71,7 +68,6 @@ export function MapControls({
         <div className={styles.filterCluster} data-testid="filter-cluster">
           <FilterBar
             filter={view.filter}
-            availableTags={availableTags}
             onAdd={onAddFilter}
             onRemove={onRemoveFilter}
           />

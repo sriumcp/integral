@@ -18,34 +18,25 @@ import styles from './FilterBar.module.css'
  * widget; the cognitive-instrument genre rewards web-platform
  * primitives. Click outside collapses (browser handles it).
  *
- * Filter taxonomy:
+ * Filter taxonomy (v0.2.0):
  *  - STATUS: enum from StatusSchema
  *  - KIND: enum from IntentKindSchema
  *  - HOLDER: HolderModeSchema (plus the special `awaiting:me`)
- *  - TAG: free-form (autocomplete from `availableTags`)
+ *
+ * Tags are intentionally NOT a filter dimension — adapter-emitted tags
+ * are per-intent metadata, not workspace-shared categories. They survive
+ * on `intent.tags` for adapters + decorative card chips, but the picker
+ * stops listing them. See `lib/filter-query.ts` for the rationale.
  */
 export interface FilterBarProps {
   filter: FilterQuery
-  /** All known tag values across the loaded workspace, used to populate
-   *  the TAG autocomplete list. */
-  availableTags: ReadonlyArray<string>
   onAdd: (key: FilterCategory, value: string) => void
   onRemove: (key: FilterCategory, value: string) => void
 }
 
-export type FilterCategory =
-  | 'awaiting'
-  | 'kind'
-  | 'status'
-  | 'holder'
-  | 'tag'
+export type FilterCategory = 'awaiting' | 'kind' | 'status' | 'holder'
 
-export function FilterBar({
-  filter,
-  availableTags,
-  onAdd,
-  onRemove,
-}: FilterBarProps) {
+export function FilterBar({ filter, onAdd, onRemove }: FilterBarProps) {
   const activeChips = useMemo(() => collectActiveChips(filter), [filter])
 
   return (
@@ -103,20 +94,6 @@ export function FilterBar({
               </Item>
             ))}
           </Section>
-
-          {availableTags.length > 0 && (
-            <Section title="TAG">
-              {availableTags.map((t) => (
-                <Item
-                  key={t}
-                  disabled={filter.tags.has(t)}
-                  onClick={() => onAdd('tag', t)}
-                >
-                  {t}
-                </Item>
-              ))}
-            </Section>
-          )}
         </div>
       </details>
     </div>
@@ -136,7 +113,6 @@ function collectActiveChips(filter: FilterQuery): ActiveChip[] {
     out.push({ key: 'status', value: s })
   for (const h of [...filter.holderModes].sort())
     out.push({ key: 'holder', value: h })
-  for (const t of [...filter.tags].sort()) out.push({ key: 'tag', value: t })
   return out
 }
 

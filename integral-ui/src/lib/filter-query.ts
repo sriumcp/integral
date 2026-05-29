@@ -1,10 +1,10 @@
 /**
- * Filter / group / sort state for the Map surface (C1).
+ * Filter / group / sort state for the Map surface.
  *
  * Pure types + parse / serialize / apply. URL state contract:
  *
  *   ?awaiting=me&kind=nous-campaign,coral-attempt
- *      &status=active&holder=human&tag=urgent,blocked
+ *      &status=active&holder=human
  *      &group=source&sort=recency
  *
  * Conventions:
@@ -14,6 +14,13 @@
  *  - Unknown values are silently dropped at parse time (forward-compat).
  *  - Round-trip property: parseFilterQuery(serializeFilterQuery(V)) === V
  *    for any view V (within the supported value set).
+ *
+ * v0.2.0 dropped `tag` as a filter dimension. Adapter-emitted tags are
+ * per-intent metadata, not workspace-shared categories — every campaign
+ * brings its own tag set, so the picker grew linearly with workspace
+ * size while each chip narrowed to 1–3 intents. Tags survive on
+ * `intent.tags` (schema unchanged) for adapters + future search; the
+ * filter system stops pretending they're a peer of kind/status.
  */
 
 import type {
@@ -35,8 +42,6 @@ export interface FilterQuery {
   kinds: ReadonlySet<IntentKind>
   statuses: ReadonlySet<Status>
   holderModes: ReadonlySet<HolderMode>
-  /** Free-form tag values; OR across multiple. */
-  tags: ReadonlySet<string>
 }
 
 export type GroupBy = 'none' | 'source' | 'kind' | 'holder-mode' | 'status'
@@ -58,7 +63,6 @@ export const DEFAULT_FILTER: FilterQuery = {
   kinds: new Set(),
   statuses: new Set(),
   holderModes: new Set(),
-  tags: new Set(),
 }
 
 export const DEFAULT_VIEW: MapView = {
@@ -85,7 +89,8 @@ const SORT_VALUES: ReadonlySet<SortBy> = new Set([
 // ─── Parse ────────────────────────────────────────────────────────────────
 
 /** Parse a URL-search-params object into a MapView. Unknown values are
- *  silently dropped. Defaults fill in for missing params. */
+ *  silently dropped. Defaults fill in for missing params. The `?tag=`
+ *  param is silently ignored (v0.2.0 dropped tag-as-filter). */
 export function parseFilterQuery(params: URLSearchParams): MapView {
   const awaiting = params.get('awaiting')
   const awaitingMe = awaiting === 'me'
@@ -102,10 +107,6 @@ export function parseFilterQuery(params: URLSearchParams): MapView {
     params.get('holder'),
     (v): v is HolderMode => HolderModeSchema.safeParse(v).success
   )
-  // Tags are open-ended strings; we only filter empties.
-  const tags: Set<string> = new Set(
-    splitCsv(params.get('tag')).filter((t) => t.length > 0)
-  )
 
   const groupRaw = params.get('group') ?? 'none'
   const group: GroupBy = (GROUP_VALUES.has(groupRaw as GroupBy)
@@ -118,7 +119,7 @@ export function parseFilterQuery(params: URLSearchParams): MapView {
     : 'awaiting-recency')
 
   return {
-    filter: { awaitingMe, kinds, statuses, holderModes, tags },
+    filter: { awaitingMe, kinds, statuses, holderModes },
     group,
     sort,
   }
@@ -139,9 +140,6 @@ export function serializeFilterQuery(view: MapView): URLSearchParams {
   }
   if (view.filter.holderModes.size > 0) {
     out.set('holder', [...view.filter.holderModes].sort().join(','))
-  }
-  if (view.filter.tags.size > 0) {
-    out.set('tag', [...view.filter.tags].sort().join(','))
   }
   if (view.group !== 'none') out.set('group', view.group)
   if (view.sort !== 'awaiting-recency') out.set('sort', view.sort)
@@ -193,11 +191,6 @@ export function applyFilters(
     ) {
       return false
     }
-    if (args.filter.tags.size > 0) {
-      const intentTags = intent.tags ?? []
-      const anyMatch = intentTags.some((t) => args.filter.tags.has(t))
-      if (!anyMatch) return false
-    }
     return true
   })
 }
@@ -229,8 +222,7 @@ export function activeFilterCount(filter: FilterQuery): number {
     (filter.awaitingMe ? 1 : 0) +
     filter.kinds.size +
     filter.statuses.size +
-    filter.holderModes.size +
-    filter.tags.size
+    filter.holderModes.size
   )
 }
 
@@ -242,7 +234,6 @@ export function defaultView(): MapView {
       kinds: new Set(),
       statuses: new Set(),
       holderModes: new Set(),
-      tags: new Set(),
     },
     group: 'none',
     sort: 'awaiting-recency',
