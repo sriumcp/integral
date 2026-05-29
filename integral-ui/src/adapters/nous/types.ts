@@ -31,6 +31,13 @@ export interface CampaignFiles {
    *  the projection cache key unstable for freshly-shaped campaigns and
    *  triggers a fresh LLM call on every Detail navigation. */
   campaignYamlMtime?: string
+  /** #239: absolute path of the directory holding state.json /
+   *  ledger.json / principles.json for this run. Set by
+   *  `FilesystemNousSource` based on whether the run was discovered at
+   *  the legacy `<root>/.nous/<run>/` location or at
+   *  `$NOUS_CAMPAIGN_PARENT/<run>/`. Optional: in-memory test sources
+   *  may omit it. */
+  workDir?: string
 }
 
 /** Transport contract — abstracts over filesystem / S3 / HTTP / etc. */
@@ -64,10 +71,27 @@ export interface ParsedCampaignYaml {
 
 /** Shape we expect from a parsed `.nous/<run>/state.json`. */
 export interface ParsedNousState {
+  /** Pre-#236 field name. Migrated state.json files (from nous after the
+   *  rename) carry `last_entered_phase` instead. The interpreter reads
+   *  `last_entered_phase ?? phase` so both shapes work. */
   phase?: string
+  /** Post-#236 field name (nous schema rename). Source of truth on
+   *  migrated state.json; orchestrator may also populate `phase` for
+   *  runtime back-compat with older readers, in which case
+   *  `last_entered_phase` wins. */
+  last_entered_phase?: string
   iteration?: number
   run_id?: string
   family?: string | null
   timestamp?: string
+  /** #239: absolute path of the work_dir, recorded at setup_work_dir
+   *  time. Self-describing per-campaign location; survives env-var
+   *  changes between runs. */
+  work_dir?: string
+  /** #239: absolute path of the target repo. Used by Integral's
+   *  `FilesystemNousSource` for multi-source attribution: an env-var-
+   *  located campaign belongs to a source iff state.json.repo_path
+   *  matches that source's root. */
+  repo_path?: string
   [key: string]: unknown
 }

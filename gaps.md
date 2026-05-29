@@ -116,6 +116,16 @@ Evidence anchored in `~/Documents/Projects/inference-sim/.nous/best-of-field/` (
   - Or: drop the marker entirely once principles get a real schema home — by then the lossy mapping is gone and the marker is meaningless.
 - **Severity:** Low for v0.1 (single adapter, single marker value), but the next adapter to take a similar lossy mapping will hit the same overload.
 
+### G-N-13. Nous campaigns have no holder/declared_by attribution
+
+- **Evidence (v0.1.5):** `campaign-X.yaml` and the runtime ledger don't carry holder fields. The adapter has to synthesize a `Party` for `holder.parties` and `provenance.declared_by`. Until 2026-05-29, both interpreter.ts and ledger.ts hardcoded `{id: 'sri', display_name: 'sri'}` — meaning *anyone running Integral against another user's campaigns saw their holders silently re-attributed to the current user*.
+- **v0.1 schema:** `holder.parties: list[Party]` + `provenance.declared_by: Party` are both required and well-formed; the adapter must produce something. Silently using the current user's identity (configured `me`) was the easy wrong answer.
+- **v0.1 fix (2026-05-29):** Replace the hardcoded constant with a synthetic `UNKNOWN_HUMAN = {id: 'unknown-human', display_name: '(unknown)'}`. Surfaces the gap in the chrome's PartyChip rather than masking it with a falsehood. The configured `me` (now read from `integral.config.json`) remains the identity for *operations the current user performs* (transitions, drafts), not for attribution of pre-existing campaigns.
+- **v0.2 candidates:**
+  - Add an optional `declared_by: { id, display_name }` field to `campaign-X.yaml`'s preamble; let users set it explicitly per campaign.
+  - Or: infer holder from git config of the campaign's `target_system.repo_path` (the repo's author).
+- **Severity:** Medium. Wrong attribution masquerades as correct attribution; silently presenting falsehood is worse than a visible "(unknown)".
+
 ### G-N-12. Principle extraction has no canonical `OperationKind`
 
 - **Evidence (Phase 4):** When a Nous campaign re-reads its `principles.json` and a new principle URI appears on an iteration's `knowledge_refs`, that's a meaningful state change — *the harness extracted a new principle from this iteration's evidence*. Phase 4's diff engine emits typed `Operation`s for declared intents, decomposed parents, and status changes — but **emits nothing for new knowledge refs** because no `OperationKind` fits.

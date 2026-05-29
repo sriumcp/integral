@@ -15,13 +15,13 @@ import {
   type Operation,
   type StateTransition,
 } from '@/schema'
-import { fixtureWorkspace, sri, nousPlanner } from '@/fixtures/workspace'
+import { seedWorkspace, sri, nousPlanner } from '@/test/seed-workspace'
 import { classifyOperation, classifySignificance, deriveEvents } from '../activity'
 
 const KINDS = IntentKindSchema.options
 
 function intentFor(kind: (typeof KINDS)[number]): Intent {
-  const found = fixtureWorkspace.intents.find((i) => i.kind === kind)
+  const found = seedWorkspace.intents.find((i) => i.kind === kind)
   if (!found) throw new Error(`fixture missing ${kind}`)
   return found
 }
@@ -35,11 +35,9 @@ const baseTransition = (cause: string): StateTransition => ({
 })
 
 describe('classifySignificance', () => {
-  it('returns critical for ci passing→failing on feature-pr', () => {
-    const pr = intentFor('feature-pr')
-    const t = baseTransition('ci-status-changed: passing → failing')
-    expect(classifySignificance(t, pr)).toBe('critical')
-  })
+  // The "ci passing→failing on feature-pr" critical-significance test
+  // was deleted with the feature-pr kind in v0.2.0. Returns when the
+  // full feature-dev adapter ships.
 
   it('returns notable for gate-resolved on any intent', () => {
     const nous = intentFor('nous-campaign')
@@ -66,9 +64,9 @@ describe('classifySignificance', () => {
   })
 
   it('returns routine for unrelated transitions', () => {
-    const section = intentFor('paper-section')
-    const t = baseTransition('section-status-changed: outlined → drafted')
-    expect(classifySignificance(t, section)).toBe('routine')
+    const attempt = intentFor('coral-attempt')
+    const t = baseTransition('worktree-checkout: attempt-042 → main')
+    expect(classifySignificance(t, attempt)).toBe('routine')
   })
 
   it.each(KINDS)('returns a valid significance level for kind %s (default routine)', (kind) => {
@@ -81,17 +79,17 @@ describe('classifySignificance', () => {
 
 describe('deriveEvents', () => {
   it('returns one ActivityEvent per StateTransition + per Operation', () => {
-    const events = deriveEvents(fixtureWorkspace)
-    const transitionCount = fixtureWorkspace.states.reduce(
+    const events = deriveEvents(seedWorkspace)
+    const transitionCount = seedWorkspace.states.reduce(
       (acc, s) => acc + s.history.length,
       0
     )
-    const operationCount = fixtureWorkspace.operations.length
+    const operationCount = seedWorkspace.operations.length
     expect(events.length).toBe(transitionCount + operationCount)
   })
 
   it('orders events most-recent first', () => {
-    const events = deriveEvents(fixtureWorkspace)
+    const events = deriveEvents(seedWorkspace)
     for (let i = 1; i < events.length; i++) {
       const prev = events[i - 1]!
       const curr = events[i]!
@@ -100,30 +98,29 @@ describe('deriveEvents', () => {
   })
 
   it('exposes intent + state on every event so renderers can narrow on extension.kind', () => {
-    const events = deriveEvents(fixtureWorkspace)
+    const events = deriveEvents(seedWorkspace)
     expect(events.length).toBeGreaterThan(0)
     for (const ev of events) {
       expect(ev.intent.id).toBe(ev.state.intent_id)
     }
   })
 
-  it('partitions buckets correctly for the fixture content', () => {
-    const events = deriveEvents(fixtureWorkspace)
-    const critical = events.filter((e) => e.significance === 'critical')
+  it('partitions buckets correctly for the seed content', () => {
+    const events = deriveEvents(seedWorkspace)
     const notable = events.filter((e) => e.significance === 'notable')
     const routine = events.filter((e) => e.significance === 'routine')
 
-    // Fixture has 1 critical (ci passing→failing), 2 notable (gate-resolved + new best),
-    // and the rest routine.
-    expect(critical.length).toBe(1)
+    // Seed has 2 notable (gate-resolved + new best) and the rest routine.
+    // No critical (the v0.1 ci-failing-on-feature-pr branch was removed
+    // along with the feature-pr kind in v0.2.0).
     expect(notable.length).toBeGreaterThanOrEqual(2)
     expect(routine.length).toBeGreaterThanOrEqual(1)
   })
 
   it('returns an empty array when no states have history', () => {
     const empty = {
-      intents: fixtureWorkspace.intents,
-      states: fixtureWorkspace.states.map((s) => ({ ...s, history: [] })),
+      intents: seedWorkspace.intents,
+      states: seedWorkspace.states.map((s) => ({ ...s, history: [] })),
       evidence_links: [],
       operations: [],
     }
@@ -131,7 +128,7 @@ describe('deriveEvents', () => {
   })
 
   it('preserves the transition party as event.by', () => {
-    const events = deriveEvents(fixtureWorkspace)
+    const events = deriveEvents(seedWorkspace)
     const planneEvent = events.find((e) => e.by.id === nousPlanner.id)
     expect(planneEvent).toBeDefined()
   })
@@ -140,17 +137,17 @@ describe('deriveEvents', () => {
     // Defensive — should not happen given the bijection refine, but the
     // function must not throw on a malformed workspace.
     const malformed = {
-      ...fixtureWorkspace,
-      states: fixtureWorkspace.states.slice(0, 2),
+      ...seedWorkspace,
+      states: seedWorkspace.states.slice(0, 2),
     }
     expect(() => deriveEvents(malformed)).not.toThrow()
   })
 
   it('emits operation events alongside transition events, source-tagged', () => {
-    const events = deriveEvents(fixtureWorkspace)
+    const events = deriveEvents(seedWorkspace)
     const opEvents = events.filter((e) => e.source === 'operation')
     const transEvents = events.filter((e) => e.source === 'transition')
-    expect(opEvents.length).toBe(fixtureWorkspace.operations.length)
+    expect(opEvents.length).toBe(seedWorkspace.operations.length)
     expect(transEvents.length).toBeGreaterThan(0)
     // Operation events carry the typed Operation record.
     for (const e of opEvents) {
@@ -180,7 +177,7 @@ describe('classifyOperation — schema-exhaustive', () => {
         ...common,
         kind,
         from_kind: 'nous-campaign',
-        to_kind: 'paper-campaign',
+        to_kind: 'coral-optimization',
       }
     if (kind === 'gate') return { ...common, kind, gate: 'design' }
     if (kind === 'propose-transition')

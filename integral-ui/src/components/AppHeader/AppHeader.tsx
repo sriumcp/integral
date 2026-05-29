@@ -9,6 +9,16 @@ export interface ScopePill {
   id: string
   /** Human-readable label rendered in the pill. */
   label: string
+  /** Whether the source is currently included in the workspace. When the
+   *  pill cluster lists ALL known sources (the v0.2.0 scope-control
+   *  pattern), this distinguishes enabled (filled style) from disabled
+   *  (muted/dashed style). When omitted, defaults to `true` (passive
+   *  read-only legacy rendering). */
+  enabled?: boolean
+  /** Click handler. When provided, the pill renders as a button that
+   *  toggles the source on click. When omitted, the pill renders as a
+   *  passive `<span>` (legacy read-only mode). */
+  onClick?: () => void
 }
 
 export interface FocusSegment {
@@ -50,10 +60,11 @@ export interface AppHeaderProps {
    *  the Landing surface. */
   onLogoClick?: () => void
   /** Click handler for the refresh button. When provided, the right
-   *  cluster renders a refresh affordance instead of the legacy
-   *  "reversibility · 24h" placeholder chip. The button shows
-   *  "↻ synced <relative-time> ago" and goes amber past the staleness
-   *  threshold (60min) to flag that the workspace data may be old. */
+   *  cluster renders "↻ synced <relative-time> ago" — goes amber past
+   *  the staleness threshold (60min) to flag that the workspace data
+   *  may be old. When absent, the right cluster simply omits the
+   *  refresh affordance (test/preview environments without a wired
+   *  reload). */
   onRefresh?: () => void
   /** Timestamp of the last successful workspace fetch. Drives the
    *  "synced X ago" hint and the amber-when-stale state. ISO 8601. */
@@ -117,18 +128,39 @@ export function AppHeader({
       <div className={styles.center} aria-label="workspace path">
         {scope.length > 0 && (
           <span className={styles.scopeRow} data-scope="true">
-            {scope.map((pill, i) => (
-              <span key={pill.id} className={styles.scopePillWrap}>
-                {i > 0 && (
-                  <span className={styles.scopeSep} aria-hidden="true">
-                    ·
-                  </span>
-                )}
-                <span className={styles.scopePill} data-source-id={pill.id}>
-                  {pill.label}
+            {scope.map((pill, i) => {
+              const enabled = pill.enabled ?? true
+              const interactive = Boolean(pill.onClick)
+              const dataAttrs = {
+                'data-source-id': pill.id,
+                'data-enabled': enabled ? 'true' : 'false',
+              }
+              return (
+                <span key={pill.id} className={styles.scopePillWrap}>
+                  {i > 0 && (
+                    <span className={styles.scopeSep} aria-hidden="true">
+                      ·
+                    </span>
+                  )}
+                  {interactive ? (
+                    <button
+                      type="button"
+                      className={styles.scopePill}
+                      onClick={pill.onClick}
+                      aria-pressed={enabled}
+                      aria-label={`${enabled ? 'disable' : 'enable'} source ${pill.label}`}
+                      {...dataAttrs}
+                    >
+                      {pill.label}
+                    </button>
+                  ) : (
+                    <span className={styles.scopePill} {...dataAttrs}>
+                      {pill.label}
+                    </span>
+                  )}
                 </span>
-              </span>
-            ))}
+              )
+            })}
           </span>
         )}
         {focus && focus.length > 0 && (
@@ -171,16 +203,12 @@ export function AppHeader({
         <Chip mono tone="mute" dot={'var(--sage)'}>
           schema v{SCHEMA_VERSION}
         </Chip>
-        {onRefresh ? (
+        {onRefresh && (
           <RefreshButton
             onClick={onRefresh}
             lastSyncedAt={lastSyncedAt}
             refreshing={refreshing}
           />
-        ) : (
-          <Chip mono tone="mute" title="v0.2 — audit log">
-            reversibility · 24h
-          </Chip>
         )}
         <PartyChip party={me} />
       </div>

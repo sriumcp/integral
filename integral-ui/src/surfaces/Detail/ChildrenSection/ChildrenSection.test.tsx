@@ -17,13 +17,13 @@ import {
   type IntentState,
   type Workspace,
 } from '@/schema'
-import { fixtureWorkspace, sri } from '@/fixtures/workspace'
+import { seedWorkspace, sri } from '@/test/seed-workspace'
 import { ChildrenSection } from './ChildrenSection'
 
 const KINDS = IntentKindSchema.options
 
 function intentFor(kind: (typeof KINDS)[number]): Intent {
-  const found = fixtureWorkspace.intents.find((i) => i.kind === kind)
+  const found = seedWorkspace.intents.find((i) => i.kind === kind)
   if (!found) throw new Error(`fixture missing intent for ${kind}`)
   return found
 }
@@ -34,7 +34,7 @@ describe('ChildrenSection', () => {
     const { container } = render(
       <ChildrenSection
         intent={intent}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="structure"
         onOpen={() => {}}
       />
@@ -48,7 +48,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={intent}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="detail"
         onOpen={() => {}}
       />
@@ -60,7 +60,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={nousCampaign}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="structure"
         onOpen={() => {}}
       />
@@ -74,7 +74,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={coral}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="structure"
         onOpen={() => {}}
       />
@@ -82,31 +82,12 @@ describe('ChildrenSection', () => {
     expect(screen.getByText(/attempt-042/i)).toBeInTheDocument()
   })
 
-  it('lists children of feature-campaign with PR rows', () => {
-    const feat = intentFor('feature-campaign')
-    render(
-      <ChildrenSection
-        intent={feat}
-        workspace={fixtureWorkspace}
-        zoom="structure"
-        onOpen={() => {}}
-      />
-    )
-    expect(screen.getByText(/intent-state projection cache/i)).toBeInTheDocument()
-  })
+  // The "feature-campaign with PR rows" test was removed in v0.2.0
+  // along with the feature-pr kind. Returns when the full feature-dev
+  // adapter ships and feature-campaigns get PR children again.
 
-  it('lists children of paper-campaign with section cards', () => {
-    const paper = intentFor('paper-campaign')
-    render(
-      <ChildrenSection
-        intent={paper}
-        workspace={fixtureWorkspace}
-        zoom="structure"
-        onOpen={() => {}}
-      />
-    )
-    expect(screen.getByText(/§4 · Results/)).toBeInTheDocument()
-  })
+  // The "paper-campaign children" test was removed with the paper kinds
+  // in v0.2.0; returns when the paper adapter ships.
 
   it('clicking a child fires onOpen with that intent', () => {
     const nousCampaign = intentFor('nous-campaign')
@@ -114,7 +95,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={nousCampaign}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="structure"
         onOpen={onOpen}
       />
@@ -129,7 +110,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={nousCampaign}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="overview"
         onOpen={() => {}}
       />
@@ -144,7 +125,7 @@ describe('ChildrenSection', () => {
     render(
       <ChildrenSection
         intent={iter}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="detail"
         onOpen={() => {}}
       />
@@ -154,42 +135,16 @@ describe('ChildrenSection', () => {
     ).toBeInTheDocument()
   })
 
-  it('detail zoom shows full diff_summary for feature-pr', () => {
-    const pr = intentFor('feature-pr')
-    render(
-      <ChildrenSection
-        intent={pr}
-        workspace={fixtureWorkspace}
-        zoom="detail"
-        onOpen={() => {}}
-      />
-    )
-    expect(
-      screen.getByText(/ProjectionCache class/)
-    ).toBeInTheDocument()
-  })
-
-  it('detail zoom shows full claim_text for paper-claim', () => {
-    const claim = intentFor('paper-claim')
-    render(
-      <ChildrenSection
-        intent={claim}
-        workspace={fixtureWorkspace}
-        zoom="detail"
-        onOpen={() => {}}
-      />
-    )
-    expect(
-      screen.getByText(/Conditioning the mutation operator/)
-    ).toBeInTheDocument()
-  })
+  // The "feature-pr diff_summary" and "paper-claim claim_text" detail-
+  // zoom tests were deleted along with their kinds in v0.2.0; return
+  // when the v0.3+ feature-dev / paper adapters ship.
 
   it('structure zoom on coral-attempt shows ScoreGauge slot', () => {
     const attempt = intentFor('coral-attempt')
     const { container } = render(
       <ChildrenSection
         intent={attempt}
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         zoom="structure"
         onOpen={() => {}}
       />
@@ -221,7 +176,7 @@ describe('ChildrenSection', () => {
     }): Intent {
       return {
         id: opts.id,
-        schema_version: '0.1.0',
+        schema_version: '0.2.0',
         kind: 'nous-iteration',
         declaration: {
           title: `iter-${opts.iterationNumber}`,
@@ -272,7 +227,7 @@ describe('ChildrenSection', () => {
     } {
       const campaign = {
         id: 'CAMP-X',
-        schema_version: '0.1.0',
+        schema_version: '0.2.0',
         kind: 'nous-campaign',
         declaration: {
           title: 'synth campaign',
@@ -299,7 +254,7 @@ describe('ChildrenSection', () => {
       } as unknown as Intent
       const state = {
         intent_id: 'CAMP-X',
-        schema_version: '0.1.0',
+        schema_version: '0.2.0',
         status,
         last_advanced_at: '2026-01-01T00:00:00Z',
         history: [],
@@ -309,7 +264,7 @@ describe('ChildrenSection', () => {
 
     function makeWs(intents: Intent[], states: IntentState[] = []): Workspace {
       return {
-        schema_version: '0.1.0',
+        schema_version: '0.2.0',
         intents,
         states,
         evidence_links: [],
@@ -495,7 +450,7 @@ describe('ChildrenSection', () => {
       const { container } = render(
         <ChildrenSection
           intent={coral}
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           zoom="detail"
           onOpen={() => {}}
         />

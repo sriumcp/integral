@@ -1,4 +1,4 @@
-import type { DialogTurn } from '@/fixtures/shaping'
+import type { DialogTurn } from '@/lib/draft-shape'
 import { PartyChip, SectionLabel } from '@/components/atoms'
 import styles from './ShapingDialog.module.css'
 

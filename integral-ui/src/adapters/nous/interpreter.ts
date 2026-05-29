@@ -46,13 +46,19 @@ const PROJECTOR_AGENT = {
   kind: 'agent' as const,
   display_name: 'nous-projector',
 }
-const DEFAULT_HUMAN_HOLDER = {
-  id: 'sri',
+// Synthetic placeholder used when the source campaign declaration has
+// no holder information (Nous's campaign-X.yaml doesn't carry holder
+// fields — see gaps.md G-N-13). Reading another user's campaigns must
+// not silently attribute holders to the current user; an explicit
+// "(unknown)" label surfaces the gap in the chrome rather than masking
+// it. v0.2 may add a `declared_by` mapping to the YAML schema.
+const UNKNOWN_HUMAN = {
+  id: 'unknown-human',
   kind: 'human' as const,
-  display_name: 'sri',
+  display_name: '(unknown)',
 }
 
-const SCHEMA_VERSION = '0.1.0' as const
+const SCHEMA_VERSION = '0.2.0' as const
 
 export interface BuildNousWorkspaceOpts {
   /** Prior workspace snapshot — when provided, the adapter computes a
@@ -79,9 +85,15 @@ export async function buildNousWorkspace(
 
   for (const runId of runIds) {
     const files = await source.fetchCampaignFiles(runId)
-    if (files.campaignYaml.trim().length === 0) {
-      // No campaign declaration on disk — skip this run for v0.1. v0.2
-      // may want to render a placeholder for runs with state but no yaml.
+    // #239: emit an Intent when EITHER campaign-X.yaml OR state.json
+    // is present. Skip only when both are absent (truly empty dir).
+    // The interpreter falls back to runId-derived title + placeholder
+    // research_question for state-only runs — happens for users who
+    // moved work_dirs to NOUS_CAMPAIGN_PARENT before the convention
+    // of co-locating campaign-X.yaml at the target repo existed.
+    const hasYaml = files.campaignYaml.trim().length > 0
+    const hasState = files.state != null
+    if (!hasYaml && !hasState) {
       continue
     }
     const result = interpretCampaign(runId, files, source.id)
@@ -221,7 +233,7 @@ export function interpretCampaign(
     },
     holder: {
       mode: 'jointly-held',
-      parties: [DEFAULT_HUMAN_HOLDER, PROJECTOR_AGENT],
+      parties: [UNKNOWN_HUMAN, PROJECTOR_AGENT],
     },
     lifetime: {
       kind: 'campaign',
@@ -251,7 +263,11 @@ export function interpretCampaign(
     },
   }
 
-  const status: Status = mapPhaseToStatus(parsedState?.phase)
+  // Prefer #236's `last_entered_phase` over legacy `phase` — see
+  // ParsedNousState docs and interpreter.test.ts back-compat group.
+  const status: Status = mapPhaseToStatus(
+    parsedState?.last_entered_phase ?? parsedState?.phase
+  )
 
   const state: IntentState = {
     id: stateId,

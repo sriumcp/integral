@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MapControls } from './MapControls'
 import { DEFAULT_VIEW, type MapView } from '@/lib/filter-query'
 
@@ -84,49 +84,9 @@ describe('MapControls', () => {
     ).toBeNull()
   })
 
-  it('renders the SourcesDropdown inline (no dedicated row) when sources are wired', () => {
-    // Pre-migration: a separate `SOURCES` row sat below the filter
-    // cluster. Post-migration: the picker is a dropdown chip on the
-    // filter row, matching the Group / Sort pattern. The
-    // `data-testid="source-picker"` hook moves with it so existing
-    // E2E + visual baselines compose against the same locator.
-    const { container } = render(
-      <MapControls
-        view={DEFAULT_VIEW}
-        counts={COUNTS}
-        availableTags={[]}
-        onAddFilter={NOOP}
-        onRemoveFilter={NOOP}
-        onChangeGroup={NOOP}
-        onChangeSort={NOOP}
-        knownSources={[
-          { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
-          { id: 'nous', label: 'nous', kind: 'adapter' },
-        ]}
-        enabledSources={new Set(['fixture'])}
-        onToggleSource={NOOP}
-      />
-    )
-    const picker = screen.getByTestId('source-picker')
-    expect(picker).toBeInTheDocument()
-    // Dropdown lives inside the filter cluster, not in a separate row.
-    expect(picker.closest('[data-testid="filter-cluster"]')).not.toBeNull()
-    // Trigger summary shows enabled-of-total.
-    expect(screen.getByTestId('sources-summary').textContent).toMatch(
-      /sources:\s*1\s*of\s*2/i
-    )
-    // After opening, the toggle buttons carry the data-source contract.
-    fireEvent.click(screen.getByTestId('sources-summary'))
-    expect(
-      container.querySelector('button[data-source="fixture"][data-enabled="true"]')
-    ).not.toBeNull()
-    expect(
-      container.querySelector('button[data-source="nous"]')
-    ).not.toBeNull()
-  })
-
-  it('omits the source picker entirely when sources are not wired', () => {
+  it('does NOT render any source picker (sources are managed in AppHeader as of v0.2.0)', () => {
     renderControls()
     expect(screen.queryByTestId('source-picker')).toBeNull()
+    expect(screen.queryByTestId('sources-summary')).toBeNull()
   })
 })

@@ -11,12 +11,17 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Intent, Workspace } from '@/schema'
-import { fixtureWorkspace, sri } from '@/fixtures/workspace'
+import { seedWorkspace, sri } from '@/test/seed-workspace'
 import type { SourceEntry } from './sources'
-import { intentAncestry, intentScope, mapScope } from './header-scope'
+import {
+  intentAncestry,
+  intentScope,
+  mapScope,
+  mapScopeInteractive,
+} from './header-scope'
 
 const REGISTRY: SourceEntry[] = [
-  { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
+  { id: 'demo', label: 'demo', kind: 'adapter' },
   { id: 'nous', label: 'nous', kind: 'adapter' },
   { id: 'github-integral', label: 'github-integral', kind: 'adapter' },
 ]
@@ -30,7 +35,7 @@ const REGISTRY: SourceEntry[] = [
 function makeIntent(id: string, source: string | undefined): Intent {
   return {
     id,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     kind: 'nous-campaign',
     declaration: { title: id, summary: '', success_criterion: '' },
     holder: { mode: 'human-held', parties: [sri] },
@@ -51,9 +56,9 @@ function makeIntent(id: string, source: string | undefined): Intent {
 
 describe('mapScope', () => {
   it('returns pills for every enabled source, in registry order', () => {
-    const enabled = new Set(['github-integral', 'fixture', 'nous'])
+    const enabled = new Set(['github-integral', 'demo', 'nous'])
     expect(mapScope(REGISTRY, enabled)).toEqual([
-      { id: 'fixture', label: 'demo fixture' },
+      { id: 'demo', label: 'demo' },
       { id: 'nous', label: 'nous' },
       { id: 'github-integral', label: 'github-integral' },
     ])
@@ -63,10 +68,10 @@ describe('mapScope', () => {
     // Toggling sources off/on shouldn't shuffle the display. The
     // implementation iterates the registry, not the Set, so this is
     // structurally guaranteed — this test pins the contract.
-    const a = mapScope(REGISTRY, new Set(['nous', 'fixture']))
-    const b = mapScope(REGISTRY, new Set(['fixture', 'nous']))
+    const a = mapScope(REGISTRY, new Set(['nous', 'demo']))
+    const b = mapScope(REGISTRY, new Set(['demo', 'nous']))
     expect(a).toEqual(b)
-    expect(a.map((p) => p.id)).toEqual(['fixture', 'nous'])
+    expect(a.map((p) => p.id)).toEqual(['demo', 'nous'])
   })
 
   it('returns an empty array when no sources are enabled', () => {
@@ -78,6 +83,45 @@ describe('mapScope', () => {
     expect(mapScope(REGISTRY, enabled)).toEqual([
       { id: 'nous', label: 'nous' },
     ])
+  })
+})
+
+describe('mapScopeInteractive', () => {
+  it('emits a pill for EVERY known source (not just enabled), in registry order', () => {
+    const enabled = new Set(['nous'])
+    const pills = mapScopeInteractive(REGISTRY, enabled, () => {})
+    expect(pills.map((p) => p.id)).toEqual(['demo', 'nous', 'github-integral'])
+  })
+
+  it('marks each pill enabled or disabled based on the set', () => {
+    const enabled = new Set(['nous', 'github-integral'])
+    const pills = mapScopeInteractive(REGISTRY, enabled, () => {})
+    expect(pills.find((p) => p.id === 'demo')?.enabled).toBe(false)
+    expect(pills.find((p) => p.id === 'nous')?.enabled).toBe(true)
+    expect(pills.find((p) => p.id === 'github-integral')?.enabled).toBe(true)
+  })
+
+  it('each onClick invokes the supplied toggle handler with the pill id', () => {
+    const calls: string[] = []
+    const onToggle = (id: string) => calls.push(id)
+    const pills = mapScopeInteractive(REGISTRY, new Set(['nous']), onToggle)
+    pills[0]!.onClick!()
+    pills[2]!.onClick!()
+    expect(calls).toEqual(['demo', 'github-integral'])
+  })
+
+  it('returns an empty array when the registry is empty', () => {
+    expect(mapScopeInteractive([], new Set(), () => {})).toEqual([])
+  })
+
+  it('preserves registry order even when no sources are enabled', () => {
+    // The "all toggled off" state is legitimate — pills stay in their
+    // canonical positions so layout doesn't shift as the user toggles.
+    const pills = mapScopeInteractive(REGISTRY, new Set(), () => {})
+    expect(pills.map((p) => p.id)).toEqual(['demo', 'nous', 'github-integral'])
+    for (const p of pills) {
+      expect(p.enabled).toBe(false)
+    }
   })
 })
 
@@ -107,10 +151,10 @@ describe('intentScope', () => {
   })
 
   it('uses the registry label, not the id, when both are present', () => {
-    // Confirms "demo fixture" (label) is shown, not "fixture" (id).
-    const intent = makeIntent('c', 'fixture')
+    // Confirms "demo" (label) is shown, not "fixture" (id).
+    const intent = makeIntent('c', 'demo')
     expect(intentScope(intent, REGISTRY)).toEqual([
-      { id: 'fixture', label: 'demo fixture' },
+      { id: 'demo', label: 'demo' },
     ])
   })
 })
@@ -119,33 +163,33 @@ describe('intentAncestry', () => {
   // Reuses the fixture so the tree shape is known: nous-campaign
   // (`01HXYZ-NOUS-CAMPAIGN-001`) decomposes into one iteration
   // (`01HXYZ-NOUS-ITER-002`).
-  const campaign = fixtureWorkspace.intents.find(
+  const campaign = seedWorkspace.intents.find(
     (i) => i.id === '01HXYZ-NOUS-CAMPAIGN-001'
   )!
-  const iteration = fixtureWorkspace.intents.find(
+  const iteration = seedWorkspace.intents.find(
     (i) => i.id === '01HXYZ-NOUS-ITER-002'
   )!
 
   it('returns a single-element chain for a root intent', () => {
-    const chain = intentAncestry(campaign, fixtureWorkspace as Workspace)
+    const chain = intentAncestry(campaign, seedWorkspace as Workspace)
     expect(chain).toHaveLength(1)
     expect(chain[0]?.id).toBe(campaign.id)
   })
 
   it('walks one level up for a child intent (root → leaf order)', () => {
-    const chain = intentAncestry(iteration, fixtureWorkspace as Workspace)
+    const chain = intentAncestry(iteration, seedWorkspace as Workspace)
     expect(chain.map((i) => i.id)).toEqual([campaign.id, iteration.id])
   })
 
   it('returns the leaf as the last element', () => {
-    const chain = intentAncestry(iteration, fixtureWorkspace as Workspace)
+    const chain = intentAncestry(iteration, seedWorkspace as Workspace)
     expect(chain[chain.length - 1]?.id).toBe(iteration.id)
   })
 
   it('does not modify the workspace it walks', () => {
-    const before = fixtureWorkspace.intents.length
-    intentAncestry(iteration, fixtureWorkspace as Workspace)
-    expect(fixtureWorkspace.intents.length).toBe(before)
+    const before = seedWorkspace.intents.length
+    intentAncestry(iteration, seedWorkspace as Workspace)
+    expect(seedWorkspace.intents.length).toBe(before)
   })
 
   it('handles a synthetic DAG by picking the first-listed parent', () => {
@@ -161,7 +205,7 @@ describe('intentAncestry', () => {
       decomposition: { children: ['child'] },
     } as unknown as Intent
     const ws = {
-      ...fixtureWorkspace,
+      ...seedWorkspace,
       intents: [parentA, parentB, child],
     } as unknown as Workspace
     const chain = intentAncestry(child, ws)

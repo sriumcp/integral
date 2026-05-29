@@ -10,7 +10,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { IntentKindSchema, type Intent, type IntentState } from '@/schema'
-import { fixtureWorkspace, sri } from '@/fixtures/workspace'
+import { seedWorkspace, sri } from '@/test/seed-workspace'
 import { DetailHeader } from './DetailHeader'
 
 const KINDS = IntentKindSchema.options
@@ -19,8 +19,8 @@ function pairFor(kind: (typeof KINDS)[number]): {
   intent: Intent
   state: IntentState
 } {
-  const intent = fixtureWorkspace.intents.find((i) => i.kind === kind)
-  const state = fixtureWorkspace.states.find((s) => s.intent_id === intent?.id)
+  const intent = seedWorkspace.intents.find((i) => i.kind === kind)
+  const state = seedWorkspace.states.find((s) => s.intent_id === intent?.id)
   if (!intent || !state) throw new Error(`fixture missing pair for ${kind}`)
   return { intent, state }
 }
@@ -57,7 +57,7 @@ describe('DetailHeader', () => {
   })
 
   it('exposes data-kind on the header root for surface CSS hooks', () => {
-    const { intent, state } = pairFor('paper-section')
+    const { intent, state } = pairFor('coral-attempt')
     const { container } = render(
       <DetailHeader
         intent={intent}
@@ -68,7 +68,7 @@ describe('DetailHeader', () => {
       />
     )
     const root = container.firstElementChild as HTMLElement
-    expect(root.getAttribute('data-kind')).toBe('paper-section')
+    expect(root.getAttribute('data-kind')).toBe('coral-attempt')
   })
 
   it('renders the holder mode and lifetime kind', () => {

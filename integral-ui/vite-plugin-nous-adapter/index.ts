@@ -11,7 +11,10 @@ import { nousCampaignPlugin } from '../src/lib/projection-plugins/nous-campaign'
 import { nousIterationPlugin } from '../src/lib/projection-plugins/nous-iteration'
 import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
-import { FilesystemNousSource } from './filesystem-source'
+import {
+  FilesystemNousSource,
+  resolveCampaignParent,
+} from './filesystem-source'
 import { FilesystemCoralSource } from './coral-filesystem-source'
 import { GhCliIssuesSource } from './gh-cli-source'
 import {
@@ -20,8 +23,10 @@ import {
   writePersistedProjection,
 } from './projection-cache'
 import {
+  loadMeConfig,
   loadSourcesConfig,
   type ConfiguredSource,
+  type MeConfig,
 } from './sources-config'
 import { handleWriteback, readJsonBody } from './writeback-handler'
 import { handleShape, type ShapeRequest } from './shape-handler'
@@ -38,18 +43,27 @@ import { handlePreflight } from './preflight-handler'
  *
  * Endpoints:
  *   GET /api/sources                               — list configured sources
+ *   GET /api/me                                    — current user identity
  *   GET /api/workspace?source=<id>                 — adapter output for one source
  *   GET /api/projection?intent_id=X&zoom=Y         — LLM projection (cached on disk)
  *   GET /api/projection?intent_id=X&zoom=Y&refresh=true
  *                                                   — bypass cache, regenerate
  */
 export function nousAdapterPlugin(): Plugin {
-  // Configured sources are loaded asynchronously when the dev server
-  // starts. Until they're loaded, all middleware awaits this promise.
+  // Configured sources + me identity are loaded asynchronously when the
+  // dev server starts. Until they're loaded, all middleware awaits these
+  // promises. They share the same config file (integral.config.json) but
+  // are loaded independently so an invalid `me` doesn't break sources
+  // and vice versa.
   let sourcesPromise: Promise<ConfiguredSource[]> | null = null
+  let mePromise: Promise<MeConfig> | null = null
   const ensureSourcesLoaded = (cwd: string): Promise<ConfiguredSource[]> => {
     if (!sourcesPromise) sourcesPromise = loadSourcesConfig(cwd)
     return sourcesPromise
+  }
+  const ensureMeLoaded = (cwd: string): Promise<MeConfig> => {
+    if (!mePromise) mePromise = loadMeConfig(cwd)
+    return mePromise
   }
 
   // Server-side workspace cache, keyed by source id. The projection
@@ -111,6 +125,19 @@ export function nousAdapterPlugin(): Plugin {
             })),
           })
         )
+      })
+
+      server.middlewares.use('/api/me', async (req, res) => {
+        if (req.method && req.method !== 'GET') {
+          res.statusCode = 405
+          res.end()
+          return
+        }
+        const me = await ensureMeLoaded(cwd)
+        res.statusCode = 200
+        res.setHeader('content-type', 'application/json')
+        res.setHeader('cache-control', 'no-store')
+        res.end(JSON.stringify({ id: me.id, display_name: me.display_name }))
       })
 
       server.middlewares.use('/api/workspace', async (req, res) => {
@@ -442,7 +469,15 @@ async function buildWorkspaceForSource(
 ): Promise<Workspace> {
   switch (configured.kind) {
     case 'nous':
-      return buildNousWorkspace(new FilesystemNousSource(configured.path))
+      // Read NOUS_CAMPAIGN_PARENT per-request so a user `export` between
+      // page loads is picked up without restarting the dev server.
+      // Throws if env var is set but empty/whitespace — surfaces typos
+      // loudly rather than silently fall back to legacy-only.
+      return buildNousWorkspace(
+        new FilesystemNousSource(configured.path, {
+          campaignParent: resolveCampaignParent(),
+        })
+      )
     case 'coral':
       return buildCoralWorkspace(new FilesystemCoralSource(configured.path))
     case 'github-issues':

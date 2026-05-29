@@ -16,7 +16,6 @@ import {
   sortGroups,
   sortIntents,
 } from '@/lib/intent-grouping'
-import type { SourceEntry } from '@/lib/sources'
 import { TreeCard } from './TreeCard/TreeCard'
 import { MapControls } from './MapControls/MapControls'
 import type { FilterCategory } from './FilterBar/FilterBar'
@@ -27,10 +26,6 @@ export interface MapSurfaceProps {
   me: Party
   /** Drill-down handler — clicking a TreeCard navigates to the Detail surface. */
   onOpenIntent?: (intent: Intent) => void
-  /** Known sources (registry from `src/lib/sources.ts`). */
-  knownSources?: ReadonlyArray<SourceEntry>
-  enabledSources?: ReadonlySet<string>
-  onToggleSource?: (sourceId: string) => void
   /** Click handler for "+ new nous campaign". */
   onNewNousDraft?: () => void
   /** Current MapView (filter + group + sort). When omitted, defaults
@@ -45,13 +40,11 @@ type RootKind =
   | 'nous-campaign'
   | 'coral-optimization'
   | 'feature-campaign'
-  | 'paper-campaign'
 
 const ROOT_KINDS: ReadonlySet<RootKind> = new Set([
   'nous-campaign',
   'coral-optimization',
   'feature-campaign',
-  'paper-campaign',
 ])
 
 /**
@@ -70,9 +63,6 @@ export function MapSurface({
   workspace,
   me,
   onOpenIntent,
-  knownSources,
-  enabledSources,
-  onToggleSource,
   onNewNousDraft,
   view = DEFAULT_VIEW,
   onChangeView,
@@ -265,15 +255,14 @@ export function MapSurface({
         onRemoveFilter={removeFilter}
         onChangeGroup={changeGroup}
         onChangeSort={changeSort}
-        {...(knownSources && { knownSources })}
-        {...(enabledSources && { enabledSources })}
-        {...(onToggleSource && { onToggleSource })}
         {...(onNewNousDraft && { onNewNousDraft })}
       />
 
       <SectionLabel hint={sectionHint}>forest</SectionLabel>
 
-      {filtered.length === 0 ? (
+      {workspace.intents.length === 0 ? (
+        <NoSourcesState />
+      ) : filtered.length === 0 ? (
         <EmptyState onClearAll={clearAllFilters} />
       ) : view.group === 'none' ? (
         <FlatForest
@@ -385,6 +374,26 @@ function EmptyState({ onClearAll }: EmptyStateProps) {
       >
         clear filter →
       </button>
+    </div>
+  )
+}
+
+/**
+ * Distinct from `EmptyState` — surfaces when the workspace has no
+ * intents at all because the user has toggled every source off (or no
+ * sources are configured yet). The directive points at the AppHeader's
+ * scope pills, the canonical place to bring data back into scope.
+ */
+function NoSourcesState() {
+  return (
+    <div
+      className={styles.empty}
+      role="status"
+      data-testid="no-sources-scoped"
+    >
+      <p className={styles.emptyMessage}>
+        no sources scoped — toggle one in the header above ↑
+      </p>
     </div>
   )
 }

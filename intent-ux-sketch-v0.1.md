@@ -1,15 +1,18 @@
 # Integral Intent UX Sketch
 
-**Version: 0.1.0 (matches `intent-schema-v0.1.md`)**
+**Version: 0.1.0 (originally; surfaces survive unchanged into v0.2.0).**
 **Status: pre-prototype design exploration. Breaking changes to surfaces and interactions expected.**
-**Date: 2026-05-22**
+**Date: 2026-05-22 (v0.1) · 2026-05-29 (v0.2.0 schema notes)**
 
 ## What this document is
 
-A sketch of the visual UX for navigating the intent space, designed against the four-kind v0.1 schema (Nous campaign, Coral optimization, feature dev, paper writing). The goal is to give a human a clean, calm view of intent state *while agents are concurrently advancing it* — and to make that concurrent activity transparent without making it overwhelming.
+A sketch of the visual UX for navigating the intent space. Originally designed against v0.1's four kind families (Nous campaign, Coral optimization, feature dev, paper writing). v0.2.0 narrowed the schema to three live families (Nous, Coral, feature-development); paper- and PR-shaped illustrations below describe surfaces that will return when their adapters ship. Surface decisions (zoom semantics, activity strip, awaiting-me predicate, navigation) are version-stable.
+
+The goal is to give a human a clean, calm view of intent state *while agents are concurrently advancing it* — and to make that concurrent activity transparent without making it overwhelming.
 
 Companion documents:
-- `intent-schema-v0.1.md` — the underlying object model.
+- `intent-schema-v0.2.md` — current schema source of truth.
+- `intent-schema-v0.1.md` — historical reference, includes the paper-* and feature-pr extensions this sketch illustrates.
 - `intents-and-harnesses.md` (v2) — the catalog and abstractions this UX is meant to surface.
 
 ## Design commitments
@@ -24,7 +27,7 @@ Companion documents:
 
 5. **Joint-held writes require typed proposals.** Agents do not silently advance jointly-held intents. They submit proposals; humans (or other joint holders) accept, refine, or reject. Hierarchically-held child intents *can* be advanced freely by their delegated holder — that's what makes hierarchy worth having.
 
-6. **Reversibility within a window.** All state changes are reversible for some configurable window (default 24h). Critical for trust during the prototype phase.
+6. **Reversibility within a window.** v0.1 design commitment: all state changes are reversible for some configurable window (default 24h). v0.2.0 dropped the placeholder reversibility chip from the AppHeader; the underlying audit-log + undo design is deferred until there are real mutations to undo.
 
 7. **Significance dial, set per-user, per-tree.** Routine / notable / critical. Defaults to *notable* for active trees, *critical* for backgrounded trees.
 

@@ -1,22 +1,21 @@
 /**
  * ShapingSurface — behavioral tests.
  *
- * Discipline: assert what the user sees + the data-* contract. Tests
- * exercise both fixture drafts (Nous fully-resolved, Coral partial) so
- * the resolved-vs-pending split is verified end-to-end.
+ * Discipline: assert what the user sees + the data-* contract. v0.2.0
+ * dropped the multi-draft fixture; tests cover the surviving Nous draft
+ * (fully-resolved, commit-enabled) plus the LLM-driven shaping path.
  */
 
-import { fireEvent, render, screen, waitFor, act } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fixtureWorkspace, DRAFT_NOUS_ID, DRAFT_CORAL_ID } from '@/fixtures/workspace'
-import { shapingFor } from '@/fixtures/shaping'
+import { seedWorkspace, DRAFT_NOUS_ID } from '@/test/seed-workspace'
+import { seedShapingFor } from '@/test/seed-shaping'
 import type { SourceEntry } from '@/lib/sources'
 import type { PreflightCheck } from '@/lib/nous-preflight'
 import { ShapingSurface } from './ShapingSurface'
 
 const REGISTRY: ReadonlyArray<SourceEntry> = [
-  { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
   { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
 ]
 
@@ -49,7 +48,7 @@ afterEach(() => {
 })
 
 function intentById(id: string) {
-  const found = fixtureWorkspace.intents.find((i) => i.id === id)
+  const found = seedWorkspace.intents.find((i) => i.id === id)
   if (!found) throw new Error(`fixture missing ${id}`)
   return found
 }
@@ -73,7 +72,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
@@ -83,20 +82,20 @@ describe('ShapingSurface', () => {
     expect(screen.getByText('evaluator-aware mutation study')).toBeInTheDocument()
   })
 
-  it('renders dialog turns from the fixture', () => {
+  it('renders dialog turns from the seed', () => {
     const intent = intentById(DRAFT_NOUS_ID)
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
     )
-    // Dialog body text — the agent's "confirms nous-campaign" turn appears
-    // only in the dialog (no overlap with the right-pane draft).
-    expect(screen.getByText(/confirms nous-campaign/)).toBeInTheDocument()
-    expect(screen.getByText(/v3 methodology, plus the principles ledger/)).toBeInTheDocument()
+    // The seed shaping data has 3 turns; assert the planner's question
+    // and the user's clarification are both rendered.
+    expect(screen.getByText(/is the goal to/)).toBeInTheDocument()
+    expect(screen.getByText(/evaluator-conditioning helps/)).toBeInTheDocument()
   })
 
   it('all fields resolved → commit-to-active button is enabled', () => {
@@ -104,7 +103,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
@@ -115,22 +114,10 @@ describe('ShapingSurface', () => {
     expect(screen.queryByText(/⚠ pending/)).not.toBeInTheDocument()
   })
 
-  it('partial resolution → commit-to-active disabled and pending chips render', () => {
-    const intent = intentById(DRAFT_CORAL_ID)
-    render(
-      <ShapingSurface
-        intent={intent}
-        shape={shapingFor(intent.id)!}
-        onCommit={() => {}}
-        onBack={() => {}}
-      />
-    )
-    const commit = screen.getByRole('button', { name: /commit to active/i })
-    expect(commit).toBeDisabled()
-    // Coral draft has summary, success_criterion, and scoring_function_ref pending.
-    const pendingChips = screen.getAllByText(/⚠ pending/)
-    expect(pendingChips.length).toBeGreaterThanOrEqual(3)
-  })
+  // The "partial resolution → pending chips" test was deleted with the
+  // Coral draft fixture in v0.2.0. Coverage for the pending-chip path
+  // returns when LLM-driven shaping tests exercise it via dynamic
+  // resolved-fields derivation.
 
   it('clicking commit fires onCommit when enabled', () => {
     const intent = intentById(DRAFT_NOUS_ID)
@@ -138,7 +125,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={onCommit}
         onBack={() => {}}
       />
@@ -147,27 +134,16 @@ describe('ShapingSurface', () => {
     expect(onCommit).toHaveBeenCalledWith(intent.id)
   })
 
-  it('clicking commit does not fire onCommit when disabled', () => {
-    const intent = intentById(DRAFT_CORAL_ID)
-    const onCommit = vi.fn()
-    render(
-      <ShapingSurface
-        intent={intent}
-        shape={shapingFor(intent.id)!}
-        onCommit={onCommit}
-        onBack={() => {}}
-      />
-    )
-    fireEvent.click(screen.getByRole('button', { name: /commit to active/i }))
-    expect(onCommit).not.toHaveBeenCalled()
-  })
+  // The "clicking commit when disabled" test was deleted with the Coral
+  // draft fixture in v0.2.0. The disabled-commit gate is now exercised
+  // by the preflight commit-gate suite (LLM-driven path).
 
   it('renders all 4 restructure buttons inert with v0.2 tooltip', () => {
     const intent = intentById(DRAFT_NOUS_ID)
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
@@ -185,7 +161,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={onCommit}
         onBack={() => {}}
       />
@@ -201,7 +177,7 @@ describe('ShapingSurface', () => {
     const { container } = render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
@@ -216,7 +192,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={onBack}
       />
@@ -232,7 +208,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         registry={REGISTRY}
         onCommit={() => {}}
         onWriteback={async () => ({ ok: true })}
@@ -249,7 +225,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={() => {}}
         onBack={() => {}}
       />
@@ -261,22 +237,10 @@ describe('ShapingSurface', () => {
     ).not.toBeDisabled()
   })
 
-  it('does NOT render WritebackForm for drafts without a writeback_template (Coral backwards compat)', () => {
-    const intent = intentById(DRAFT_CORAL_ID)
-    render(
-      <ShapingSurface
-        intent={intent}
-        shape={shapingFor(intent.id)!}
-        registry={REGISTRY}
-        onCommit={() => {}}
-        onWriteback={async () => ({ ok: true })}
-        onBack={() => {}}
-      />
-    )
-    // Coral fixture has no writeback_template — form is hidden even though
-    // registry is provided.
-    expect(screen.queryByLabelText(/target source/i)).not.toBeInTheDocument()
-  })
+  // The "no writeback_template" test was deleted with the Coral draft
+  // fixture in v0.2.0. The Nous draft is the only fixture that exercises
+  // the writeback path; non-writeback drafts will return when v0.3+
+  // adapters reintroduce kinds without writeback support.
 
   it('clicking commit fires onWriteback then onCommit (same-button: writeback + in-memory flip)', async () => {
     const user = userEvent.setup()
@@ -286,7 +250,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         registry={REGISTRY}
         onCommit={onCommit}
         onWriteback={onWriteback}
@@ -320,7 +284,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         registry={REGISTRY}
         onCommit={onCommit}
         onWriteback={onWriteback}
@@ -342,7 +306,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         onCommit={onCommit}
         onBack={() => {}}
       />
@@ -361,7 +325,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         registry={REGISTRY}
         onCommit={() => {}}
         onWriteback={onWriteback}
@@ -403,7 +367,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -426,7 +390,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -461,7 +425,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -492,7 +456,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -520,7 +484,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -553,7 +517,7 @@ describe('ShapingSurface', () => {
       render(
         <ShapingSurface
           intent={intent}
-          shape={shapingFor(intent.id)!}
+          shape={seedShapingFor(intent.id)!}
           registry={REGISTRY}
           onCommit={() => {}}
           onWriteback={async () => ({ ok: true })}
@@ -611,7 +575,7 @@ describe('ShapingSurface', () => {
         const { unmount } = render(
           <ShapingSurface
             intent={intent}
-            shape={shapingFor(intent.id)!}
+            shape={seedShapingFor(intent.id)!}
             registry={REGISTRY}
             onCommit={() => {}}
             onWriteback={async () => ({ ok: true })}
@@ -634,25 +598,10 @@ describe('ShapingSurface', () => {
       }
     })
 
-    it('does not call /api/nous/preflight when no writeback active (Coral path)', async () => {
-      mockFetchPreflight()
-      const intent = intentById(DRAFT_CORAL_ID)
-      render(
-        <ShapingSurface
-          intent={intent}
-          shape={shapingFor(intent.id)!}
-          registry={REGISTRY}
-          onCommit={() => {}}
-          onWriteback={async () => ({ ok: true })}
-          onBack={() => {}}
-        />
-      )
-      // Sleep long enough for the debounce to fire if it were going to.
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 500))
-      })
-      expect(globalThis.fetch).not.toHaveBeenCalled()
-    })
+    // The "no preflight when writeback inactive (Coral path)" test was
+    // deleted with the Coral draft fixture in v0.2.0. The inert
+    // preflight path returns when a non-writeback adapter ships in
+    // v0.3+.
   })
 
   it('shows the error message when writeback fails (e.g., 409 overwrite)', async () => {
@@ -665,7 +614,7 @@ describe('ShapingSurface', () => {
     render(
       <ShapingSurface
         intent={intent}
-        shape={shapingFor(intent.id)!}
+        shape={seedShapingFor(intent.id)!}
         registry={REGISTRY}
         onCommit={() => {}}
         onWriteback={onWriteback}

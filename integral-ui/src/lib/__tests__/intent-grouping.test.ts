@@ -6,12 +6,12 @@ import {
   sortGroups,
   sortIntents,
 } from '../intent-grouping'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 
 const ALWAYS_FALSE = () => false
 
-const intents: ReadonlyArray<Intent> = fixtureWorkspace.intents
-const states: ReadonlyArray<IntentState> = fixtureWorkspace.states
+const intents: ReadonlyArray<Intent> = seedWorkspace.intents
+const states: ReadonlyArray<IntentState> = seedWorkspace.states
 
 describe('groupIntents', () => {
   it('group=none → single bucket with all intents', () => {

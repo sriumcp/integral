@@ -56,7 +56,7 @@ describe('KindBadge', () => {
   })
 
   it('omits the label element when label is not provided', () => {
-    const { container } = render(<KindBadge kind="paper-claim" />)
+    const { container } = render(<KindBadge kind="coral-attempt" />)
     // Wrapper has only the glyph child when no label.
     const wrapper = container.firstElementChild as HTMLElement
     expect(wrapper.children).toHaveLength(1)
@@ -66,7 +66,7 @@ describe('KindBadge', () => {
     // Empty string is intentionally a real (zero-width) label — this pins
     // the contract that `label === ''` differs from `label` being absent,
     // matching the same discipline IdPill applies to `short`.
-    const { container } = render(<KindBadge kind="paper-claim" label="" />)
+    const { container } = render(<KindBadge kind="coral-attempt" label="" />)
     const wrapper = container.firstElementChild as HTMLElement
     expect(wrapper.children).toHaveLength(2)
   })
@@ -78,7 +78,7 @@ describe('KindBadge', () => {
   })
 
   it('drives glyph size via the --kind-badge-size CSS variable', () => {
-    const { container } = render(<KindBadge kind="feature-pr" size={26} />)
+    const { container } = render(<KindBadge kind="coral-attempt" size={26} />)
     const wrapper = container.firstElementChild as HTMLElement
     expect(wrapper.style.getPropertyValue('--kind-badge-size')).toBe('26px')
   })

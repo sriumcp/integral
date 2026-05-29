@@ -11,7 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { Intent, Workspace } from '@/schema'
-import { sri } from '@/fixtures/workspace'
+import { sri } from '@/test/seed-workspace'
 import {
   nousHMainTimeline,
   nousHypothesisGrid,
@@ -21,7 +21,7 @@ import {
 function makeCampaign(childIds: string[]): Intent {
   return {
     id: 'CAMP',
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     kind: 'nous-campaign',
     declaration: { title: 'campaign', summary: '', success_criterion: '' },
     holder: { mode: 'human-held', parties: [sri] },
@@ -59,7 +59,7 @@ function makeIteration(opts: {
     : []
   return {
     id: opts.id,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     kind: 'nous-iteration',
     declaration: {
       title: `iter-${opts.iterationNumber}`,
@@ -101,7 +101,7 @@ function makeIteration(opts: {
 
 function makeWorkspace(intents: Intent[]): Workspace {
   return {
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     intents,
     states: [],
     evidence_links: [],

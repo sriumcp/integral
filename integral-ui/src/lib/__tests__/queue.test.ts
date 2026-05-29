@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Intent, IntentState, Party } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 import { isAwaitingMe } from '../queue'
 
 const me: Party = { id: 'sri', kind: 'human', display_name: 'sri' }
@@ -18,13 +18,13 @@ const someoneElse: Party = {
 }
 
 function intentByKind(kind: Intent['kind']): Intent {
-  const found = fixtureWorkspace.intents.find((i) => i.kind === kind)
+  const found = seedWorkspace.intents.find((i) => i.kind === kind)
   if (!found) throw new Error(`no fixture intent of kind ${kind}`)
   return found
 }
 
 function stateFor(intentId: string): IntentState {
-  const found = fixtureWorkspace.states.find((s) => s.intent_id === intentId)
+  const found = seedWorkspace.states.find((s) => s.intent_id === intentId)
   if (!found) throw new Error(`no fixture state for intent ${intentId}`)
   return found
 }
@@ -43,20 +43,9 @@ describe('isAwaitingMe — Nous campaign gated awaiting me', () => {
   })
 })
 
-describe('isAwaitingMe — feature-pr branch', () => {
-  it('returns true when I authored a feature-PR with failing CI', () => {
-    const intent = intentByKind('feature-pr')
-    const state = stateFor(intent.id)
-    // Fixture's feature-pr is authored by `sri` and has ci_status=failing.
-    expect(isAwaitingMe(intent, state, me)).toBe(true)
-  })
-
-  it('returns false when someone else authored the failing PR', () => {
-    const intent = intentByKind('feature-pr')
-    const state = stateFor(intent.id)
-    expect(isAwaitingMe(intent, state, someoneElse)).toBe(false)
-  })
-})
+// The feature-pr branch (CI-failing on a PR I authored) was removed
+// along with the feature-pr kind in v0.2.0. Tests return when the full
+// feature-dev adapter ships.
 
 describe('isAwaitingMe — non-awaiting cases', () => {
   it('returns false for an active iteration with no gate', () => {
@@ -65,8 +54,8 @@ describe('isAwaitingMe — non-awaiting cases', () => {
     expect(isAwaitingMe(intent, state, me)).toBe(false)
   })
 
-  it('returns false for a paper section', () => {
-    const intent = intentByKind('paper-section')
+  it('returns false for an active feature-campaign', () => {
+    const intent = intentByKind('feature-campaign')
     const state = stateFor(intent.id)
     expect(isAwaitingMe(intent, state, me)).toBe(false)
   })

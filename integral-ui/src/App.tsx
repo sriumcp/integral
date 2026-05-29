@@ -3,14 +3,15 @@ import {
   WorkspaceSchema,
   type Intent,
   type IntentState,
+  type Party,
   type Workspace,
 } from '@/schema'
-import { shapingFor, blankNousDraftShape } from '@/fixtures/shaping'
+import { fetchMe, meAsParty } from '@/lib/me'
+import { blankNousDraftShape } from '@/lib/draft-shape'
 import { AppHeader, type FocusSegment, type ScopePill } from '@/components'
 import {
   intentAncestry,
-  intentScope,
-  mapScope as buildMapScope,
+  mapScopeInteractive,
 } from '@/lib/header-scope'
 import { MapSurface } from '@/surfaces/Map'
 import { DetailSurface } from '@/surfaces/Detail'
@@ -20,7 +21,6 @@ import { WorkspaceActivityStrip } from '@/surfaces/Activity'
 import { HoveredIntentProvider } from '@/lib/hovered-intent'
 import {
   fetchSourceRegistry,
-  FIXTURE_SOURCE,
   loadEnabledSources,
   parseSourcesFromUrl,
   serializeSourcesToUrl,
@@ -34,7 +34,6 @@ import {
 } from '@/lib/filter-query'
 import styles from './App.module.css'
 
-const ME = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
 const LANDING_SEEN_KEY = 'integral.landing-seen'
 const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
 
@@ -51,13 +50,20 @@ const STRIP_COLLAPSED_KEY = 'integral.strip-collapsed'
  */
 function App() {
   // Source registry is dynamic — fetched from /api/sources on mount —
-  // so multiple Nous workspaces (or other adapter kinds in v0.2) can be
-  // configured via integral.config.json without a code change. Until
-  // the registry resolves, we render with [FIXTURE_SOURCE] only so the
-  // fixture is always available even if the API is offline.
-  const [registry, setRegistry] = useState<ReadonlyArray<SourceEntry>>([
-    FIXTURE_SOURCE,
-  ])
+  // so multiple workspaces of any adapter kind can be configured via
+  // integral.config.json without a code change. Until the registry
+  // resolves, we render with an empty list and gate surface render on
+  // both workspace + identity resolution below.
+  const [registry, setRegistry] = useState<ReadonlyArray<SourceEntry>>([])
+
+  // Current-user identity is fetched from /api/me on mount. We render
+  // `null` until it resolves (gating the surface render on the loading
+  // state below) — never with a placeholder, because the awaiting-me
+  // sort and isAwaitingMe predicate read `me.id`, and any identity
+  // mismatch between first paint and the resolved value would flicker
+  // the Map's sort order. The initial-load gate wraps both workspace
+  // and identity resolution.
+  const [me, setMe] = useState<Party | null>(null)
 
   // Enabled-source set derives from URL + registry. We re-parse whenever
   // the registry resolves so unknown ids in the URL are dropped against
@@ -65,18 +71,21 @@ function App() {
   const [enabledSources, setEnabledSources] = useState<Set<string>>(() =>
     parseSourcesFromUrl(
       typeof window !== 'undefined' ? window.location.search : '',
-      [FIXTURE_SOURCE]
+      []
     )
   )
 
-  // Fetch dynamic registry once; merge with the static fixture.
+  // Fetch dynamic registry + me identity once. The two fetches are
+  // independent (different endpoints, no shared state) so they run in
+  // parallel; `cancelled` guards both setState calls in case the
+  // component unmounts before either resolves.
   useEffect(() => {
     let cancelled = false
     void fetchSourceRegistry().then((next) => {
       if (cancelled) return
       setRegistry(next)
       // Re-parse URL against the resolved registry — initial parse used
-      // [FIXTURE_SOURCE] only, so adapter ids in the URL would have been
+      // an empty registry, so any adapter ids in the URL would have been
       // dropped. This re-includes them.
       setEnabledSources(
         parseSourcesFromUrl(
@@ -84,6 +93,10 @@ function App() {
           next
         )
       )
+    })
+    void fetchMe().then((identity) => {
+      if (cancelled) return
+      setMe(meAsParty(identity))
     })
     return () => {
       cancelled = true
@@ -176,7 +189,7 @@ function App() {
     [registry]
   )
 
-  if (loadState.kind === 'loading') {
+  if (loadState.kind === 'loading' || me === null) {
     return (
       <main
         style={{
@@ -210,6 +223,7 @@ function App() {
         onRefresh={onRefresh}
         refreshing={refreshing}
         registry={registry}
+        me={me}
       />
     </HoveredIntentProvider>
   )
@@ -252,6 +266,11 @@ interface RouterProps {
   onRefresh: () => void
   refreshing: boolean
   registry: ReadonlyArray<SourceEntry>
+  /** Current-user identity, lifted to a Party (kind: 'human' baked in)
+   *  by the parent App via `meAsParty(...)`. Used as the `by` field on
+   *  lifecycle transitions, the holder on freshly-shaped drafts, and the
+   *  AppHeader's right-cluster PartyChip. */
+  me: Party
 }
 
 function Router({
@@ -263,6 +282,7 @@ function Router({
   onRefresh,
   refreshing,
   registry,
+  me,
 }: RouterProps) {
   const [workspace, setWorkspace] = useState<Workspace>(initialWorkspace)
   const [view, setView] = useState<View>(initialView)
@@ -332,13 +352,16 @@ function Router({
     [workspace]
   )
 
-  // Scope pills for the AppHeader center cluster on Map: the enabled
-  // source set in registry order. Memoized on (registry, enabledSources)
-  // so toggling a source re-renders the header. The pure derivation
-  // lives in `lib/header-scope` and is unit-tested there.
-  const mapScopePills = useMemo<ScopePill[]>(
-    () => buildMapScope(registry, enabledSources),
-    [registry, enabledSources]
+  // Scope pills for the AppHeader center cluster — the canonical v0.2.0
+  // scope-control affordance. ALL known sources render as interactive
+  // pills (enabled = filled style, disabled = muted/dashed); click
+  // toggles. Same cluster is used on every surface (Map / Detail /
+  // Shaping), so scope decisions live in chrome — not in per-surface
+  // controls. The pure derivation lives in `lib/header-scope` and is
+  // unit-tested there.
+  const scopePills = useMemo<ScopePill[]>(
+    () => mapScopeInteractive(registry, enabledSources, onToggleSource),
+    [registry, enabledSources, onToggleSource]
   )
 
   // Build the focus chain (ancestry root → leaf) for a focused intent.
@@ -392,7 +415,7 @@ function Router({
     setWorkspace((prev) => {
       const states: IntentState[] = prev.states.map((s) =>
         s.intent_id === intentId
-          ? { ...s, status: 'active' as const, last_advanced_at: new Date().toISOString(), last_advanced_by: ME }
+          ? { ...s, status: 'active' as const, last_advanced_at: new Date().toISOString(), last_advanced_by: me }
           : s
       )
       return { ...prev, states }
@@ -409,18 +432,18 @@ function Router({
     const now = new Date().toISOString()
     const blank: Intent = {
       id: draftId,
-      schema_version: '0.1.0',
+      schema_version: '0.2.0',
       kind: 'nous-campaign',
       declaration: {
         title: 'untitled campaign',
         summary: '',
         success_criterion: '',
       },
-      holder: { mode: 'jointly-held', parties: [ME] },
+      holder: { mode: 'jointly-held', parties: [me] },
       lifetime: { kind: 'campaign', started_at: now },
       decomposition: { children: [] },
       provenance: {
-        declared_by: ME,
+        declared_by: me,
         declared_at: now,
         motivated_by: [],
         source: 'fixture',
@@ -438,10 +461,10 @@ function Router({
     const blankState: IntentState = {
       id: `${draftId}-STATE`,
       intent_id: draftId,
-      schema_version: '0.1.0',
+      schema_version: '0.2.0',
       status: 'draft',
       last_advanced_at: now,
-      last_advanced_by: ME,
+      last_advanced_by: me,
       history: [],
       external_anchors: [],
     }
@@ -451,7 +474,7 @@ function Router({
       states: [...prev.states, blankState],
     }))
     setView({ kind: 'shaping', intent: blank })
-  }, [])
+  }, [me])
 
   /** A4.6: LLM-driven shaping handler. POSTs to /api/shape with the
    *  current draft + conversation history + user message. The Vite
@@ -554,16 +577,15 @@ function Router({
   )
 
   if (view.kind === 'landing') {
-    return <LandingSurface workspace={workspace} me={ME} onEnter={onEnter} />
+    return <LandingSurface workspace={workspace} me={me} onEnter={onEnter} />
   }
 
   if (view.kind === 'shaping') {
-    // A4.6: drafts created via "+ new nous campaign" have no fixture
-    // entry — fall back to a blank shape that triggers the LLM-driven
-    // ShapingChat instead of the scripted dialog.
+    // v0.2.0: every draft is LLM-driven (via "+ new nous campaign").
+    // The scripted-dialog fixture path was removed when the fixture
+    // was deleted. Only nous-campaign drafts are supported in v0.2.0.
     const shape =
-      shapingFor(view.intent.id) ??
-      (view.intent.kind === 'nous-campaign' ? blankNousDraftShape() : undefined)
+      view.intent.kind === 'nous-campaign' ? blankNousDraftShape() : undefined
     if (!shape) {
       // Defensive — non-nous-campaign drafts without shaping data
       // shouldn't exist in v0.1.
@@ -571,9 +593,9 @@ function Router({
         <>
           <AppHeader
             surface={view.kind}
-            scope={intentScope(view.intent, registry)}
+            scope={scopePills}
             focus={buildFocusChain(view.intent)}
-            me={ME}
+            me={me}
             onLogoClick={onLogoClick}
           />
           <main style={{ padding: 40, fontFamily: 'var(--mono)' }}>
@@ -586,9 +608,9 @@ function Router({
       <>
         <AppHeader
           surface={view.kind}
-          scope={intentScope(view.intent, registry)}
+          scope={scopePills}
           focus={buildFocusChain(view.intent)}
-          me={ME}
+          me={me}
           onLogoClick={onLogoClick}
           onRefresh={onRefresh}
           lastSyncedAt={syncedAt}
@@ -607,8 +629,7 @@ function Router({
     )
   }
 
-  const headerScope: ScopePill[] =
-    view.kind === 'map' ? mapScopePills : intentScope(view.intent, registry)
+  const headerScope: ScopePill[] = scopePills
   const headerFocus: FocusSegment[] | undefined =
     view.kind === 'map' ? undefined : buildFocusChain(view.intent)
 
@@ -618,7 +639,7 @@ function Router({
         surface={view.kind}
         scope={headerScope}
         focus={headerFocus}
-        me={ME}
+        me={me}
         onLogoClick={onLogoClick}
       />
       <div className={styles.body}>
@@ -626,11 +647,8 @@ function Router({
           {view.kind === 'map' ? (
             <MapSurface
               workspace={workspace}
-              me={ME}
+              me={me}
               onOpenIntent={openIntent}
-              knownSources={registry}
-              enabledSources={enabledSources}
-              onToggleSource={onToggleSource}
               onNewNousDraft={onNewNousDraft}
               view={mapView}
               onChangeView={onChangeMapView}
@@ -639,7 +657,7 @@ function Router({
             <DetailSurface
               workspace={workspace}
               intent={view.intent}
-              me={ME}
+              me={me}
               onOpenIntent={openIntent}
               onBack={goMap}
               onRefresh={onRefresh}

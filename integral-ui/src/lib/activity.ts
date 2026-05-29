@@ -37,15 +37,18 @@ export interface ActivityEvent {
 /**
  * Classify a single state transition against its target intent.
  *
- * v0.1 heuristic (per goals.md). Operates on `cause` strings + the
- * target intent's extension.kind, since the v0.1 schema doesn't model a
- * typed event taxonomy:
+ * Heuristic operates on `cause` strings + the target intent's
+ * extension.kind, since the schema doesn't model a typed event
+ * taxonomy:
  *
- *  - feature-pr CI passing→failing → critical
  *  - gate-resolved on any intent → notable
  *  - coral attempt-scored with "new best" annotation → notable
  *  - proposed-next-iteration on nous-campaign → notable
  *  - everything else → routine
+ *
+ * v0.1 had a "feature-pr CI passing→failing → critical" branch; v0.2.0
+ * dropped it along with the feature-pr kind. Critical-significance
+ * coverage returns when the v0.3+ feature-dev adapter ships.
  */
 export function classifySignificance(
   transition: StateTransition,
@@ -53,14 +56,6 @@ export function classifySignificance(
 ): Significance {
   const ext = intent.extension
   const cause = transition.cause
-
-  // CI flip on feature-pr is critical — the human typically needs to act.
-  if (
-    ext.kind === 'feature-pr' &&
-    /ci.*(passing\s*[→>-]+\s*failing|failing)/i.test(cause)
-  ) {
-    return 'critical'
-  }
 
   // Gate resolution moves a campaign forward — always worth surfacing.
   if (cause.includes('gate-resolved')) return 'notable'

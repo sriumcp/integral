@@ -19,11 +19,11 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { Intent } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 import { KnowledgeRefsSection } from './KnowledgeRefsSection'
 
 function intentFor(kind: string): Intent {
-  const found = fixtureWorkspace.intents.find((i) => i.kind === kind)
+  const found = seedWorkspace.intents.find((i) => i.kind === kind)
   if (!found) throw new Error(`fixture missing ${kind}`)
   return found
 }

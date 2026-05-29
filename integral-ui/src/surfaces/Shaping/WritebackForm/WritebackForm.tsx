@@ -3,7 +3,7 @@ import type {
   NousWritebackConfig,
 } from '@/adapters/nous/writeback'
 import { NousWritebackConfigSchema } from '@/adapters/nous/writeback'
-import type { WritebackTemplate } from '@/fixtures/shaping'
+import type { WritebackTemplate } from '@/lib/draft-shape'
 import type { SourceEntry } from '@/lib/sources'
 import type { PreflightCheck } from '@/lib/nous-preflight'
 import { SectionLabel } from '@/components/atoms'

@@ -2,7 +2,9 @@
 
 The semantic model is the set of *meanings* humans and agents attach to the typed objects (`Intent` / `IntentState` / `KnowledgeRef` / `EvidenceLink` / `Operation`) that the schema and adapters produce. It bridges **syntax** (what objects exist) and **understanding** (what they're for, what they say, what to do with them).
 
-This document is normative for v0.1 in the same sense as `intent-schema-v0.1.md` and `intent-ux-sketch-v0.1.md`: it states what we commit to, what's deferred, and the open questions that may move v0.2.
+This document is normative for the substrate in the same sense as `intent-schema-v0.2.md` and `intent-ux-sketch-v0.1.md`: it states what we commit to, what's deferred, and the open questions that may move future bumps.
+
+> **v0.2.0 status note.** The semantic-model commitments and couplings here all carry forward unchanged; v0.2.0's narrowing of the kind enum doesn't affect what `Intent` / `IntentState` / `EvidenceLink` *mean* — only which kinds are currently producible. Per-kind decomposition patterns for the removed kinds (`feature-pr`, `paper-section`, `paper-claim`) are placeholders for when their adapters ship.
 
 **Why this document exists.** The four plumbing layers (source / types / chrome / calculus) are necessary but not sufficient. A user staring at `iter-2 · policy-class-comparison` with `h_main: refuted` knows the *shape* but not the *meaning*: was that a setback or a win? What did we learn? What's next? Without semantics, the chrome is well-typed wallpaper. v0.1 builds the wallpaper carefully on purpose; v0.2 adds the prose. This file captures what "the prose" needs to be.
 
@@ -90,9 +92,8 @@ The schema's `decomposition.children` is a flat list — it doesn't say *which p
 | `nous-iteration`    | sequence             | Children ordered by iteration number                     |
 | `coral-attempt`     | parallel competition | DAG via `parent_attempts`; tree spine via `decomposition.children` |
 | `feature-campaign`  | tree                 | Recursive; sub-issues can themselves be tracking issues  |
-| `feature-pr`        | independent          | (v0.1 fixture only; B2 doesn't emit feature-pr Intents)  |
-| `paper-section`     | independent          | (v0.1 fixture only; Paper adapter is v0.2)               |
-| `paper-claim`       | independent          | (v0.1 fixture only; Paper adapter is v0.2)               |
+
+`feature-pr`, `paper-section`, and `paper-claim` were specified in v0.1 but had no working adapter; v0.2.0 removed them along with the runtime fixture. They return when their adapters ship, with their decomposition patterns to be re-validated then.
 
 ### S-4. Evidence narratives
 

@@ -130,6 +130,65 @@ export async function loadSourcesConfig(cwd: string): Promise<ConfiguredSource[]
   return result
 }
 
+// ─── Me identity ───────────────────────────────────────────────────────────
+
+/** Narrow shape carried over the wire by `/api/me`. The browser lifts it
+ *  to a full `Party` at the boundary by baking in `kind: 'human'` (v0.1
+ *  has no agent-as-self use case — see App.tsx). */
+export interface MeConfig {
+  id: string
+  display_name: string
+}
+
+/**
+ * Resolve the current user's identity. Reads `integral.config.json`'s
+ * optional `me: { id, display_name }` field; falls back to the OS
+ * username from `os.userInfo()` when the field is absent, malformed, or
+ * the file is missing/unreadable.
+ *
+ * The fallback path is deliberate — a fresh checkout on any machine
+ * should "just work" without forcing the user to write a config file
+ * just to get their handle into the right-cluster me chip.
+ */
+export async function loadMeConfig(cwd: string): Promise<MeConfig> {
+  const configPath = path.join(cwd, CONFIG_FILENAME)
+  let raw: string
+  try {
+    raw = await fs.readFile(configPath, 'utf-8')
+  } catch {
+    return osFallback()
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return osFallback()
+  }
+
+  if (!parsed || typeof parsed !== 'object') return osFallback()
+  const me = (parsed as { me?: unknown }).me
+  if (!me || typeof me !== 'object') return osFallback()
+  const obj = me as Record<string, unknown>
+  if (typeof obj.id !== 'string' || obj.id.length === 0) return osFallback()
+  if (typeof obj.display_name !== 'string' || obj.display_name.length === 0) {
+    return osFallback()
+  }
+  return { id: obj.id, display_name: obj.display_name }
+}
+
+function osFallback(): MeConfig {
+  try {
+    const username = os.userInfo().username
+    if (typeof username === 'string' && username.length > 0) {
+      return { id: username, display_name: username }
+    }
+  } catch {
+    /* fall through */
+  }
+  return { id: 'user', display_name: 'user' }
+}
+
 function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>

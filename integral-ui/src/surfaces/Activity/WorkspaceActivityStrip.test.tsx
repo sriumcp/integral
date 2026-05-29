@@ -8,7 +8,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 import { HoveredIntentProvider, useHoveredIntent } from '@/lib/hovered-intent'
 import { WorkspaceActivityStrip } from './WorkspaceActivityStrip'
 
@@ -16,7 +16,7 @@ function renderStrip(opts: { onOpenIntent?: (i: { id: string }) => void } = {}) 
   return render(
     <HoveredIntentProvider>
       <WorkspaceActivityStrip
-        workspace={fixtureWorkspace}
+        workspace={seedWorkspace}
         onOpenIntent={opts.onOpenIntent ?? (() => {})}
       />
     </HoveredIntentProvider>
@@ -24,20 +24,21 @@ function renderStrip(opts: { onOpenIntent?: (i: { id: string }) => void } = {}) 
 }
 
 describe('WorkspaceActivityStrip', () => {
-  it('renders the three buckets in critical → notable → routine order', () => {
+  it('renders bucket sections in critical → notable → routine order when any are present', () => {
     const { container } = renderStrip()
     const buckets = container.querySelectorAll('[data-bucket]')
     const labels = Array.from(buckets).map((b) => b.getAttribute('data-bucket'))
-    // Critical first if non-empty, then notable, then routine.
-    expect(labels.slice(0, 3)).toEqual(['critical', 'notable', 'routine'])
+    // Notable first (the seed has no critical events after v0.2.0
+    // dropped feature-pr — the only kind that produced critical events
+    // in v0.1's heuristic), then routine.
+    expect(labels[0]).toBe('notable')
   })
 
-  it('renders the critical fixture event (ci passing→failing on feature-pr)', () => {
-    renderStrip()
-    expect(screen.getByText(/ci-status-changed/)).toBeInTheDocument()
-  })
+  // The "critical event (ci passing→failing on feature-pr)" test was
+  // removed with the feature-pr kind in v0.2.0; returns when the full
+  // feature-dev adapter ships.
 
-  it('renders notable fixture events (gate-resolved, new-best score)', () => {
+  it('renders notable seed events (gate-resolved, new-best score)', () => {
     renderStrip()
     expect(screen.getByText(/gate-resolved/)).toBeInTheDocument()
     expect(screen.getByText(/new best/)).toBeInTheDocument()
@@ -49,25 +50,26 @@ describe('WorkspaceActivityStrip', () => {
     // Toggle exposes the count.
     expect(toggle.textContent).toMatch(/\d+/)
     // Routine event content should not be visible while collapsed.
-    expect(screen.queryByText(/section-status-changed/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/iteration-started/)).not.toBeInTheDocument()
   })
 
   it('expanding the routine bucket reveals its rows', () => {
     renderStrip()
     fireEvent.click(screen.getByRole('button', { name: /routine/i }))
-    expect(screen.getByText(/section-status-changed/)).toBeInTheDocument()
+    expect(screen.getByText(/iteration-started/)).toBeInTheDocument()
   })
 
   it('clicking an event row fires onOpenIntent with the target intent', () => {
     const onOpenIntent = vi.fn()
     renderStrip({ onOpenIntent })
-    // The critical PR event row has `data-event` and is clickable.
+    // Pick a notable event row that exists in the seed (gate-resolved
+    // on the Nous campaign).
     const eventRow = screen
-      .getByText(/ci-status-changed/)
+      .getByText(/gate-resolved/)
       .closest('[data-event]') as HTMLElement
     fireEvent.click(eventRow)
     expect(onOpenIntent).toHaveBeenCalled()
-    expect(onOpenIntent.mock.calls[0]?.[0]?.kind).toBe('feature-pr')
+    expect(onOpenIntent.mock.calls[0]?.[0]?.kind).toBe('nous-campaign')
   })
 
   it('default filter is notable+; toggling to routine+ reveals routine rows inline', () => {
@@ -77,7 +79,7 @@ describe('WorkspaceActivityStrip', () => {
     // expanded automatically.
     const filterToggle = screen.getByRole('button', { name: /significance/i })
     fireEvent.click(filterToggle)
-    expect(screen.getByText(/section-status-changed/)).toBeInTheDocument()
+    expect(screen.getByText(/iteration-started/)).toBeInTheDocument()
   })
 
   it('hovering an event row writes the target intent id into the hover context', () => {
@@ -90,17 +92,17 @@ describe('WorkspaceActivityStrip', () => {
     render(
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           onOpenIntent={() => {}}
         />
         <Probe />
       </HoveredIntentProvider>
     )
     const row = screen
-      .getByText(/ci-status-changed/)
+      .getByText(/gate-resolved/)
       .closest('[data-event]') as HTMLElement
     fireEvent.mouseEnter(row)
-    expect(captured.hovered).toBe('01HXYZ-FEATURE-PR-007')
+    expect(captured.hovered).toBe('01HXYZ-NOUS-CAMPAIGN-001')
     fireEvent.mouseLeave(row)
     expect(captured.hovered).toBeNull()
   })
@@ -112,7 +114,9 @@ describe('WorkspaceActivityStrip', () => {
     const sigs = new Set(
       Array.from(rows).map((r) => r.getAttribute('data-significance'))
     )
-    expect(sigs.has('critical')).toBe(true)
+    // The seed has notable + routine events. Critical-event coverage
+    // returns when the v0.3+ feature-dev adapter ships and PRs with
+    // failing CI populate the seed again.
     expect(sigs.has('notable')).toBe(true)
   })
 
@@ -121,8 +125,8 @@ describe('WorkspaceActivityStrip', () => {
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
           workspace={{
-            intents: fixtureWorkspace.intents,
-            states: fixtureWorkspace.states.map((s) => ({ ...s, history: [] })),
+            intents: seedWorkspace.intents,
+            states: seedWorkspace.states.map((s) => ({ ...s, history: [] })),
             evidence_links: [],
             operations: [],
           }}
@@ -148,7 +152,7 @@ describe('WorkspaceActivityStrip — scope filter (focusedIntentId)', () => {
     return render(
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           onOpenIntent={() => {}}
           focusedIntentId={focusedIntentId}
         />
@@ -213,7 +217,7 @@ describe('WorkspaceActivityStrip — collapse rail', () => {
     const { container } = render(
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           onOpenIntent={() => {}}
           collapsed={true}
           onToggleCollapsed={() => {}}
@@ -235,7 +239,7 @@ describe('WorkspaceActivityStrip — collapse rail', () => {
     render(
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           onOpenIntent={() => {}}
           collapsed={true}
           onToggleCollapsed={onToggle}
@@ -250,7 +254,7 @@ describe('WorkspaceActivityStrip — collapse rail', () => {
     render(
       <HoveredIntentProvider>
         <WorkspaceActivityStrip
-          workspace={fixtureWorkspace}
+          workspace={seedWorkspace}
           onOpenIntent={() => {}}
           collapsed={false}
           onToggleCollapsed={() => {}}

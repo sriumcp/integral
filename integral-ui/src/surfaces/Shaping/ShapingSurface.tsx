@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { Intent } from '@/schema'
-import type { DraftShape } from '@/fixtures/shaping'
+import type { DraftShape } from '@/lib/draft-shape'
 import {
   applyShapePatch,
   type DraftState,

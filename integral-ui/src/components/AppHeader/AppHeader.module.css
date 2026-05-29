@@ -90,9 +90,47 @@
 }
 
 .scopePill {
-  padding: 3px 5px;
+  padding: 3px 7px;
   color: var(--mute);
   white-space: nowrap;
+  font: inherit;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+/* Interactive pills (button) — gain hover affordance + clickable cursor.
+   The non-interactive `<span>` form (legacy read-only) inherits the
+   base style above and ignores these. */
+button.scopePill {
+  cursor: pointer;
+}
+
+button.scopePill:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+/* Enabled state — filled style, full ink. */
+.scopePill[data-enabled='true'] {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+/* Disabled state — muted text + dashed border, no fill. Conveys
+   "known but excluded from scope" without using amber (which is
+   reserved for "needs attention"). */
+.scopePill[data-enabled='false'] {
+  color: var(--mute);
+  background: transparent;
+  border-color: var(--line);
+  border-style: dashed;
+}
+
+button.scopePill[data-enabled='false']:hover {
+  background: var(--paper);
+  color: var(--mute);
+  border-color: var(--mute-2);
 }
 
 .scopeSep {

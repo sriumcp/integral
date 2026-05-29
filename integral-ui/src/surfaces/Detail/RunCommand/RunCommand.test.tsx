@@ -14,7 +14,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Intent, IntentState, Status } from '@/schema'
 import type { SourceEntry } from '@/lib/sources'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 import { RunCommand } from './RunCommand'
 
 const PARTY = { id: 'sri', kind: 'human' as const, display_name: 'sri' }
@@ -29,7 +29,7 @@ const ADAPTER_SOURCE: SourceEntry = {
 function nousIntent(id: string = 'nous:nous:run-foo'): Intent {
   return {
     id,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     kind: 'nous-campaign',
     declaration: {
       title: 'demo',
@@ -61,7 +61,7 @@ function stateWith(intentId: string, status: Status): IntentState {
   return {
     id: `${intentId}-STATE`,
     intent_id: intentId,
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     status,
     last_advanced_at: '2026-05-24T01:00:00Z',
     last_advanced_by: PARTY,
@@ -106,10 +106,10 @@ describe('RunCommand — visibility', () => {
     // Pull a non-Nous intent from the falsification fixture rather than
     // hand-constructing one (paper-campaign requires draft + citation
     // anchors that aren't load-bearing for this test).
-    const nonNous = fixtureWorkspace.intents.find(
+    const nonNous = seedWorkspace.intents.find(
       (i) => i.kind !== 'nous-campaign'
     )!
-    const nonNousState = fixtureWorkspace.states.find(
+    const nonNousState = seedWorkspace.states.find(
       (s) => s.intent_id === nonNous.id
     )!
     const { container } = render(

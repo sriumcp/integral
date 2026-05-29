@@ -2,115 +2,68 @@
 
 ## Project phase
 
-Integral is at **v0.1.5 in progress — Nous visual vocabulary done; Paper-authoring chrome next**. v0.1 shipped (Chrome stack + typed `Operation` log + multi-source data plane + Adapter #1 Nous Phases 1+2+3+4 + A4 writeback + A4.6 LLM-driven shaping + A5 run-command surfacing + B1 Coral read-only + B2 GitHub-issues read-only + C1 filter/group/sort).
+Integral is at **v0.2.0 in progress** — the substrate just shed its demo skin (no fixture, configurable identity, no reversibility placeholder) and the schema bumped to 0.2.0 alongside the cut. v0.1 shipped the Chrome stack + typed `Operation` log + multi-source data plane + three real adapters (Nous full round-trip; Coral and GitHub-issues read-only) + filter/group/sort.
 
-**v0.1.5 scope decision (2026-05-27):** v0.1.5 + v0.2 focus exclusively on the **Nous + Paper-authoring axis**. All Coral and GitHub-issues / feature-development work is deferred to **v0.3+**. The existing read-only Coral + GitHub adapters stay shipped; we just don't extend them in v0.1.5 / v0.2. This concentrates substrate energy on the research-paper authoring loop (cross-tree story: paper-claim → nous-iteration via `EvidenceLink`).
+**v0.2.0 schema bump (2026-05-29):** the schema now supports five `IntentKind`s (`nous-campaign`, `nous-iteration`, `coral-optimization`, `coral-attempt`, `feature-campaign`) — down from nine. The four kinds dropped (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) had no adapter and survived only via the bundled fixture; both went away together. Coverage for paper-* returns when the paper adapter ships; coverage for `feature-pr` returns when full feature-dev (PR/CI/review reading) ships. See `intent-schema-v0.2.md` § "What v0.2.0 removed."
 
-**v0.1.5 Nous progress (as of 2026-05-28):** chrome polish shipped (header → scope pills + focus chain replacing breadcrumbs; ancestry breadcrumb on Detail; sources dropdown collapsing the dedicated SOURCES row; Landing two-line tagline; teal `--brand-ink` token; smooth ∫ glyph). Visual vocabulary atoms shipped: `PrinciplesTempo` + `HypothesisGrid` + `HMainTimeline`. **Gap G-N-9 promoted from v0.2 → v0.1.5 done** — adapter populates `h_ablation` / `h_control_negative` / `h_robustness` from runtime ledger, HypothesisGrid lights up on real `inference-sim` campaigns. **Pre-flight validation shipped (item #2 of Nous outcome subsection)** — `runPreflight` engine (`src/lib/nous-preflight.ts`) + `POST /api/nous/preflight` server handler + debounced `usePreflight` hook + inline `data-preflight-status="ok|warn|fail"` indicator pills next to repo_path / run_id / target source / environment-row CLI check + commit button gates on `failedChecks === 0`. Falsifies the v0.1.5 stop condition (E2E confirms `/nonexistent` repo_path → fail → commit disabled). Remaining v0.1.5 Nous work: real-time YAML preview, Socratic prompts, templates from past campaigns, aftermath integration. Paper-authoring chrome is the next phase after Nous outcome cleanup.
+**v0.2 + v0.3 scope decision (2026-05-27):** v0.2 focuses exclusively on the **Nous + Paper-authoring axis**. All Coral and GitHub-issues / feature-development work is deferred to **v0.3+**. The existing read-only Coral + GitHub adapters stay shipped; they don't get extended. This concentrates substrate energy on the research-paper authoring loop (cross-tree story: paper-claim → nous-iteration via `EvidenceLink` once paper adapter lands).
 
-**v0.1 expansion (revised 2026-05-23, A5 scope re-revised 2026-05-24)** ran two parallel tracks: Track A closed the Nous round-trip (writeback + projections + run-command surfacing) ✓ done; Track B falsified the schema across two more kinds (Coral, GitHub-issue feature-campaign). Paper adapter, full feature-dev integration, and the execution orchestrator slid forward as documented above.
-
-Four canonical design documents are authoritative for everything below. Read them before writing or proposing changes.
-
-## Current state (as of last session)
-
-- **Schema layer**: `integral-ui/src/schema/zod.ts` — 9 IntentKinds, discriminated `TypeExtension` union, `KnowledgeRef` discriminated by scope, `WorkspaceSchema` enforces 1:1 Intent↔IntentState bijection.
-- **Atom layer**: `integral-ui/src/components/atoms/` — 14 atoms (StatusDot, Chip, FilterChip, IdPill, KindBadge, PartyChip, Tag, SectionLabel, Sparkline, HypothesisBars, ScoreGauge, ZoomToggle, PrinciplesTempo, HypothesisGrid, HMainTimeline). Each owns a CSS Module + behavioral tests. Genre = Karpathy aesthetic (warm paper, cool ink, single-amber signal, IBM Plex stack). The v0.1.5 atoms (PrinciplesTempo / HypothesisGrid / HMainTimeline) hand-tune static SVG against the same color tokens — no chart library; per `roadmap.md` "visual vocabulary" subsection.
-- **App chrome**: `integral-ui/src/components/AppHeader/` — sticky-top `AppHeader` + smooth `IntegralGlyph` SVG brand mark (G1-continuous joins; teal `--brand-ink` token reserved for the brand mark only). Schema-version chip reads `SCHEMA_VERSION` literal. Center cluster carries `ScopePill[]` (sources in view) + optional `FocusSegment[]` (ancestry chain root → leaf with clickable ancestors) replacing the v0.1 breadcrumbs (`workspace › map`). Right cluster shows `↻ synced <time> ago` when `onRefresh` is wired (replaces the legacy placeholder `reversibility · 24h` chip). Focus leaf ellipsis-truncates below 768px. `data-surface={view kind}` on root. `surface: HeaderSurface = 'map' | 'detail' | 'shaping'` literal type tightens the API. Hidden on Landing.
-- **Landing surface**: `integral-ui/src/surfaces/Landing/` — instrument-style first paint. Big `IntegralGlyph` (140px) + "Integral" wordmark + tagline ("intent management for humans + agents") + status peek (`N active · M awaiting you · last activity Xm ago`, derived from validated workspace) + auto-focused `enter →` button. Once-per-session via `sessionStorage['integral.landing-seen']`; subsequent navigation back from Map skips Landing.
-- **Map surface**: `integral-ui/src/surfaces/Map/` — `MapSurface` + `TreeCard` molecule + `isAwaitingMe` predicate. Renders the four root campaigns; click-to-detail navigates to the Detail surface.
-- **Detail surface**: `integral-ui/src/surfaces/Detail/` — `DetailSurface` composes `DetailHeader` (uniform across kinds), `ChildrenSection` (per-kind specialized body, zoom-aware via `intent.extension.kind` narrowing), `EvidenceEdges` (outgoing/incoming over `workspace.evidence_links`, with cross-tree click-to-navigate), and `KnowledgeRefsSection` (refs grouped by scope; inherited refs surface their `inherited_from`). Single-column layout — per-intent activity is rendered by the unified `WorkspaceActivityStrip` via its `focusedIntentId` + scope-filter mechanism (the previous `IntentActivityStrip` is removed). The zoom toggle drives body content per the resolved decision.
-- **Workspace Activity Strip (unified)**: `integral-ui/src/surfaces/Activity/WorkspaceActivityStrip.tsx` — right-side strip on Map and Detail at ≥1280px. Three buckets (critical/notable/routine); routine collapsed by default. Significance filter `notable+` / `routine+`. **Scope filter** `this intent` / `all` is auto-active when `focusedIntentId` is set (Detail surface) and resets on intent change. **Hide/show** via header toggle `›` collapses the panel to a 36 px-wide vertical rail with the non-routine count + expand chevron `‹`; collapsed state persists per-session via `sessionStorage['integral.strip-collapsed']`. Hovering a row writes the target intent ID into `useHoveredIntent()` (context-based, no global store) so Map's `TreeCard` preview-pulses via `data-pulse` attribute. Event derivation lives in `src/lib/activity.ts`; combines transitions + operations with schema-exhaustive significance heuristics over both `IntentKindSchema.options` and `OperationKindSchema.options`.
-- **Shaping surface**: `integral-ui/src/surfaces/Shaping/` — two-pane shaping mode for `Status: 'draft'` intents. `ShapingDialog` (left) renders scripted clarification turns; `IntentDraftPane` (right) renders the live typed draft with `⚠ pending` chips on unresolved fields per a hand-authored resolved-set in `src/fixtures/shaping.ts`. Restructure buttons (`decompose`/`fork`/`merge`/`reframe`) render inert with `title="v0.2"` and click logs to console. `commit-to-active` is gated on `requiredFields.every(f => resolvedFields.has(f))`; click transitions the draft state from `draft` → `active` in the in-memory workspace (fixture file is never rewritten). Map TreeCard click routes drafts here, non-drafts to Detail. Two draft fixtures: a fully-resolved Nous campaign (commit enabled) and a partial Coral optimization (commit disabled, pending chips visible).
-- **Visual regression**: `integral-ui/e2e/visual/` — Playwright screenshot baselines locking the v0.1 chrome. 15 PNGs covering Landing, Map (default + awaiting), Detail per-kind × 9 + nous-iteration at detail zoom, Activity Strip, Shaping. 1440×900 @ 2× DPR, `maxDiffPixelRatio: 0.01`, animations disabled, font-load gated. `npm run test:e2e:visual` diffs; `npm run test:e2e:visual:update` regenerates. Two Playwright projects (`chromium` for behavioral, `visual` for diffs) keep visual runs out of the default test cycle.
-- **Operation log (v0.1 expansion, Path 2)**: Schema includes a typed `Operation` discriminated union over 16 op kinds (9 lifecycle + 7 shaping). `Workspace.operations: Operation[]` is the parallel collection alongside `evidence_links`. `src/lib/activity.ts` derives a unified event stream from both `state.history` transitions and `workspace.operations` with a schema-exhaustive `classifyOperation` heuristic. Both activity strips render op events with a `data-source="operation"` hook + a small kind chip; `IntentActivityStrip` filters ops by `target_intent_id` to scope to the focused intent. `roadmap.md` tracks remaining Path 2 items (4 adapters, filter/group/sort, refresh affordances).
-- **Adapter #1 (Nous, Phases 1+2+3+4)**: `integral-ui/src/adapters/nous/` (browser-safe types + pure interpreter + `ledger.ts` + `principles.ts`) + `integral-ui/vite-plugin-nous-adapter/` (Node-only `FilesystemNousSource` + Vite middleware). The adapter follows a transport/interpreter split: `NousSource` is the abstract transport (currently `FilesystemNousSource`; v0.2 may add `S3NousSource`/`HTTPNousSource` without changing the interpreter). The pure `buildNousWorkspace` reads `campaign-X.yaml` declarations + `.nous/<run>/state.json` runtime state + `.nous/<run>/ledger.json` iteration log + `.nous/<run>/principles.json` principles ledger; produces typed `nous-campaign` Intents wired to `nous-iteration` child intents (one per non-baseline ledger entry) via `decomposition.children` + `extension.current_iteration`. The synthetic iter-0 baseline is filtered. Each principle in principles.json becomes a `KnowledgeRef` with `role='principles'` attached at both campaign scope (full set on the parent) and iteration scope (only on the iteration whose `extraction_iteration` matches). URI scheme `nous-principle://<runId>/<id>` is stable across refreshes; `version='v0.1-lossy'` marks the dropped structure. **Phase 4** adds `buildNousWorkspace(source, { prior, at })` — when a prior workspace is provided, the adapter calls the generic `diffWorkspaces` engine in `src/lib/workspace-diff.ts` and emits typed `Operation`s for the delta: `declare` for newly-appearing intents, `decompose` for parents whose children grew, and specialized status ops (`satisfy` / `gate` / `revoke` / `advance`). Op ids are deterministic (`op:<kind>:<target>:<at>`) so refresh is idempotent. The diff engine is schema-exhaustive over `OperationKindSchema.options` via a `KIND_DISPOSITIONS` map; a v0.2 op-kind addition fails the unit test until acknowledged. Lossy mappings recorded in `gaps.md`: `h_main_result` (`PARTIALLY_CONFIRMED → inconclusive` per G-N-1), `principles_extracted` (`{id, action}` → `Reference.observation` per G-N-2/G-N-10), `family` → tags (G-N-3), full principle structure (G-N-2), and principle-extraction events emit no op because no `OperationKind` fits (G-N-12). **G-N-9 was a v0.1 lossy mapping (`ablation_results` / `control_result` / `robustness_result` dropped) but is RESOLVED in v0.1.5** — adapter now synthesizes templated `Hypothesis` records to populate `h_ablation` / `h_control_negative` / `h_robustness`, lighting up HypothesisGrid on real campaigns. `provenance.source = 'nous'` on every emitted intent. Exposed via `/api/workspace?source=nous` + `/api/sources` listing endpoint. Smoke-tested against `~/Documents/Projects/inference-sim/` — 20 campaigns + 47 iteration intents + 157 campaign-scope + 157 iteration-scope principle KnowledgeRefs; with a synthesized prior, **59 Operations** emit across 3 op kinds (declare 20 + decompose 20 + satisfy 19), all validate against `WorkspaceSchema`.
-- **Multi-source data plane**: `integral-ui/src/lib/sources.ts` exposes a static `FIXTURE_SOURCE` plus a dynamic adapter registry fetched from `/api/sources` at app mount via `fetchSourceRegistry()`. Sources are configured via `integral-ui/integral.config.json` (gitignored, user-local) — the example file `integral.config.example.json` shows the schema. Without a config file, the Vite plugin falls back to a single `'nous'` source pointing at `~/Documents/Projects/inference-sim` (preserving the URL contract `?sources=fixture,nous` and existing visual baselines). Multiple Nous workspaces are supported by adding entries to `sources` array, each with its own `id`/`label`/`path`. Schema's `Provenance.source: string?` is the v0.1.0 additive amendment that records which source each Intent came from. App.tsx parses the `?sources=a,b` URL contract against the resolved registry (default = all registered merged); each source is fetched + decorated with its source ID + merged via `mergeWorkspaces` + validated against `WorkspaceSchema` before any rendering. The Map's `topRow` carries a source-picker chip cluster that toggles enabled sources and updates URL via `history.replaceState`. TreeCards + `DetailHeader` render a small `via <source>` chip in their meta row (reads from `intent.provenance.source`). Unknown source ids in the URL are silently dropped during URL parse against the resolved registry.
-- **Workspace refresh affordances (A3)**: AppHeader's right cluster shows `↻ synced <relative-time> ago` (replaces the placeholder reversibility chip when `onRefresh` is provided); goes amber past 60min via `data-stale="true"`. Click triggers `App.tsx`'s `reload()` with `isRefresh=true`, which flips a `refreshing` flag (button disables + label flips to `refreshing…`) while the fetch is in flight. DetailHeader gets a small ↻ next to the IdPill that wires to the same workspace-level refresh (no per-intent re-read endpoint in v0.1; the Nous adapter reads all campaigns in one filesystem walk). ProjectionSection footer's `generated <time> ago` timestamp gets `data-stale="true"` past 60min and renders amber via CSS — same threshold + amber convention as the workspace refresh.
-- **Shaping → Nous writeback (A4)**: `src/adapters/nous/writeback.ts` + `vite-plugin-nous-adapter/writeback-handler.ts` + `src/surfaces/Shaping/WritebackForm/`. The Shaping surface, when given a `registry` and `onWriteback` (App.tsx threads them in), renders a `WritebackForm` below the typed-draft pane for any draft whose `DraftShape` declares a `writeback_template`. The form collects target source + max_iterations + target_system.{name, description, repo_path} + optional run_id; pre-fills from the template; emits a validated config or `null` to the surface so the commit button gates on it. Commit is **same-button**: `onWriteback` POSTs to `/api/nous/writeback` (server-side handler validates the intent + config via `IntentSchema` + `NousWritebackConfigSchema`, resolves sourceId → path via `integral.config.json`, refuses overwrite with 409, writes `campaign-<run_id>.yaml` via the `serializeNousCampaign` pure function), then on success `onCommit` flips the in-memory state and the App triggers a workspace refresh so the new campaign appears as a real Intent. Coral drafts (no `writeback_template`) and registry-less callers stay on the in-memory-only path — backwards compat.
-- **LLM-driven shaping (A4.6)**: the substrate now lets users **shape new Nous campaigns from scratch via natural language**. `MapSurface.topRow` gains a `+ new nous campaign` button (`onNewNousDraft`); clicking creates a blank draft Intent (status: 'draft', empty fields) + navigates to Shaping. For drafts with `dialog.length === 0` AND an `onShapeMessage` handler, ShapingSurface swaps `ShapingDialog` for the new `ShapingChat` (interactive chat: text input + threaded turns + auto-scroll + loading indicator + concerns panel). On every user message, `App.tsx` POSTs to `/api/shape` with the current draft + history; the server-side `shape-handler.ts` runs the LLM (same factory as projections — OpenAI/Anthropic) with a Nous-specific system prompt that knows the schema. The LLM responds with `{reply, patch, status, concerns, kind_suggestion}`; the browser applies the patch via `applyShapePatch` (pure, browser-safe, schema-clean — only declaration/extension/tags/writeback fields are LLM-patchable, never holder/lifetime/provenance/schema_version). The right pane (`IntentDraftPane` + `WritebackForm`) auto-fills as the conversation progresses; the form's internal state syncs from props for not-yet-edited fields so user typing isn't clobbered. Commit gates on dynamically-resolved fields (non-empty values) AND writeback validity. The LLM's `ready-to-commit` signal renders as a green "✓ shaper says this is ready to commit" hint above the button. `kind-mismatch` surfaces an amber notice ("Shaper suggests this is a coral-optimization, not a nous-campaign"). End-to-end smoke verified: click + new → directive message → LLM fills 4 declaration/extension fields + writeback target_system in one turn → click commit → YAML on disk. Existing fixture drafts (Nous + Coral) keep their scripted `ShapingDialog` — backwards compat. Tests: 21 unit on `applyShapePatch` (schema-clean discipline + immutability); 9 behavioral on `ShapingChat`; 26 behavioral on ShapingSurface (existing 26 still green). **The v0.1 substrate now closes the full round-trip: declare (LLM-driven shape, fixture-free) → handover (writeback YAML) → execute (`nous run` by user) → interpret (read adapter + projections).** A5 (run-command surfacing on the Detail surface) shipped subsequent to A4.6 — see the dedicated bullet below.
-- **Projection engine (A2)**: `integral-ui/src/lib/projection.ts` — kind-pluggable, indexed by `(intent.kind, zoom)`. `generateProjection({intent, state, workspace, zoom, plugins, llm})` is pure (no env, no network). v0.1 ships 4 LLM-driven cells: nous-campaign + nous-iteration × {structure, detail}. Other kinds + overview zoom fall back to raw-field rendering. Char budgets enforced post-hoc (≤800 structure; detail unbounded). `src/lib/projection-plugins/{nous-campaign,nous-iteration}.ts` carry the prompt templates. `src/surfaces/Detail/ProjectionSection/` fetches `/api/projection?intent_id=X&zoom=Y` and renders prose; `data-projection-source={llm|fallback}` attribute distinguishes the two. **Persistence**: generated projections are cached on disk under `~/.cache/integral/projections/<sha256>.json` (overridable via `INTEGRAL_CACHE_DIR`). Cache key is `(intent_id, zoom, state.last_advanced_at)` — state advance auto-invalidates. Survives dev-server restarts. The Detail surface footer shows "generated <relative-time> ago · ↻ regenerate"; clicking regenerate hits `/api/projection?…&refresh=true` to bypass the cache and force a fresh LLM call. Server-side LLM client lives in `vite-plugin-nous-adapter/` (outside `src/` — browser bundle never sees it). `tryCreateLLMClient` factory prefers OpenAI-compatible (`OPENAI_API_KEY` + optional `OPENAI_BASE_URL`) over Anthropic (`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` + optional `ANTHROPIC_BASE_URL`); model override via `INTEGRAL_PROJECTION_MODEL`. No env key → projections fall back to raw fields without errors. Smoke against real `inference-sim/` campaigns: first call 2.2s (LLM), cached 0.028s (76× faster), survives restart, regenerate writes fresh. **Tests never call real LLMs** — see `## Test discipline` in this file.
-- **Run-command surfacing (A5)**: `src/lib/run-command.ts` (pure dispatcher) + `src/lib/run-command-plugins/nous-campaign.ts` (Nous-specific resolver) + `src/surfaces/Detail/RunCommand/` (chrome panel). For any `nous-campaign` whose state is `active` or `gated` and whose `provenance.source` resolves to a path-bearing adapter source, the Detail surface (between `ProjectionSection` and `ChildrenSection`) renders a panel showing `cd <source.path>` + `nous run --auto-approve campaign-<runId>.yaml` + a `[⧉ copy]` button that places a single-line, shell-quoted version on the clipboard. The user runs the command from their terminal; refresh picks up iterations as Nous writes them. The dispatcher returns null (panel hidden) for any other intent kind, status mismatch, or unrecognized intent id (fixture-style ids like `01HXYZ-NOUS-CAMPAIGN-001` deliberately don't trigger; only adapter-emitted `nous:<slug>:<runId>` ids do). `SourceEntry` gains an optional `path` field; `fetchSourceRegistry` retains `path` from `/api/sources`. Zero bytes written by Integral into Nous's directory tree — no PID files, no log files, no process tracking. In-chrome process invocation deferred to v0.2 with the orchestrator. End-to-end smoke against `inference-sim/`: 24 real `nous-campaign` intents, dispatcher resolves an active campaign to `cd '/Users/sri/Documents/Projects/inference-sim' && nous run --auto-approve campaign-<runId>.yaml`, yaml exists on disk, paste-and-run succeeds.
-- **Cache-stability bugfix (mtime fallback)**: pre-existing bug surfaced during A5 smoke. For Nous campaigns with no `.nous/<run>/state.json` (freshly-shaped, never-run), `interpretCampaign`'s `last_advanced_at` was synthesized via `synthTimestamp() = new Date().toISOString()`, producing a fresh timestamp on every adapter read. The projection cache key (`intent_id, zoom, state.last_advanced_at`) therefore changed on every Detail navigation, regenerating the LLM projection unnecessarily. Fix: thread the campaign-X.yaml file's mtime through `CampaignFiles.campaignYamlMtime` (added to the type, populated by `FilesystemNousSource.fetchCampaignFiles` via `fs.stat`); use it as the fallback before `synthTimestamp()`. Stable across reads as long as the YAML doesn't change. State.json's timestamp still wins when present, so running campaigns invalidate cache as iterations land — the desired behavior.
-- **Adapter #2 (Coral, Phases 1+2; shipped 2026-05-24)**: `integral-ui/src/adapters/coral/` (browser-safe types + pure interpreter + `notes.ts`) + `integral-ui/vite-plugin-nous-adapter/coral-filesystem-source.ts` (Node-only `FilesystemCoralSource`). Same transport/interpreter discipline as Nous: `CoralSource` is the abstract transport; `buildCoralWorkspace(source)` is the pure interpreter. The adapter source path is the Coral project root (containing `task.yaml` + `seed/` + `grader/` + `results/`); the transport scans `<root>/results/<task>/<timestamp>/` for runs. **One Coral run = one `coral-optimization` Intent.** Each `attempts/<commit-sha>.json` becomes a `coral-attempt` child Intent. **DAG-shaped decomposition** via `parent_hash`: the campaign's `decomposition.children` lists root attempts only (those whose parent_hash doesn't resolve to another attempt JSON); each attempt's `decomposition.children` lists its DAG descendants; each attempt's `extension.parent_attempts` carries the typed parent edge. The schema's `parent_attempts: list[IntentId]` was already plural, so the DAG fits without a schema bump. Attempt status mapping: `'improved' → satisfied`, default → `'active'` (G-C-6 records the unknown-enum gap). `notes/**.md` surface as campaign-scope `KnowledgeRef`s with role `'principles'`, `version='v0.1-lossy'`, and URI scheme `coral-note://<source>/<task>/<timestamp>/<rel>` — same lossy treatment as Nous principles (G-C-10 mirrors G-N-2). The grader's `direction: maximize|minimize` lands as a tag (`direction:maximize`) since the schema doesn't carry it on the extension (G-C-2). Spec-gaming attempts (e.g., the pi-mc fixture's 90-char title hitting the 1e12 cap) round-trip through `WorkspaceSchema` with title-clamping. Configurable via `integral.config.json` with `kind: 'coral'`. Vite plugin's `/api/workspace?source=<id>` and `/api/projection` dispatch via a `buildWorkspaceForSource(configured)` helper that switches on `configured.kind`. Writeback intentionally rejects coral sources (`source.kind !== 'nous'` → 400) — Coral writeback is v0.2 with the orchestrator. Smoke-tested against `~/Documents/learning/coral/pi-mc/` — 1 campaign + 2 attempts + 2 notes-as-KnowledgeRefs, validates against `WorkspaceSchema`, merges cleanly with Nous sources.
-- **Adapter #3 (GitHub-issues, Phases 1+2; shipped 2026-05-25)**: `integral-ui/src/adapters/feature/` (browser-safe types + `tree.ts` pure tree reconstruction + pure interpreter) + `integral-ui/vite-plugin-nous-adapter/gh-cli-source.ts` (Node-only `GhCliIssuesSource`). Same transport/interpreter discipline as Nous + Coral: `GitHubIssuesSource` is the abstract transport (returns `ParsedIssue[]` + per-tracking-issue children); `buildFeatureWorkspace(source)` is the pure interpreter. **First networked transport**: subprocess invocation via Node's argv-based `execFile` API (no shell interpretation, no injection surface); pre-validates `<owner>/<name>` against strict regex once at source construction. Wraps `gh issue list --repo <coord> --state all --limit 1000 --json …` (single paginated call) + `gh api repos/.../issues/{n}/sub_issues` per tracking issue (concurrency-capped at 4). Subprocess timeout 60s; surfaces typed errors for `ENOENT` / `SIGTERM` / stderr propagation. **One issue = one `feature-campaign` Intent.** Tracking issues (`subIssuesSummary.total > 0`) get `lifetime.kind: 'campaign'` with their formal sub-issues wired through `decomposition.children`; leaf issues get `'discrete'`. Sub-issues do NOT also appear at top level (Map's "rootness" is implicit: an Intent is a root iff no other Intent's `decomposition.children` includes its id). State mapping: `OPEN → active`, `CLOSED+COMPLETED → satisfied`, `CLOSED+NOT_PLANNED → abandoned`, `CLOSED+DUPLICATE → abandoned`, `CLOSED+null → satisfied` (legacy default; G-F-5). Holder: assignees → human Parties (`mode: 'human-held'`); unassigned issues get a synthetic `(unassigned)` system Party (`mode: 'jointly-held'`; G-F-6). Bot detection: `author.is_bot === true` → `kind: 'agent'`. Cross-repo sub-issues silently dropped (G-F-9). Schema: `'github-repo'` added to `ExternalAnchorKindSchema` as a v0.1.0 additive amendment (per the meta-rule that enum-value additions on string-shaped fields stay at the current minor); documented in `intent-schema-v0.1.md`. Vite plugin's `sources-config.ts` accepts `kind: 'github-issues'`; for that kind `path` is treated as `<owner>/<name>` repo coordinate (NOT filesystem-expanded). `/api/workspace?source=<id>` dispatches via `buildWorkspaceForSource(configured)` switching on `configured.kind`. Writeback intentionally rejects non-Nous sources (per-adapter writeback is v0.2 with the orchestrator). Falsification fixture: `github.com/sriumcp/integral` (this repo). Smoke: 5 issues (1 tracking + 3 sub-issues + 1 leaf) round-trip cleanly; merged 3-adapter workspace (5 feature + 71 nous + 3 coral = 79 intents) validates against `WorkspaceSchema`.
-- **C1 — Filter / group / sort on Map (shipped 2026-05-25)**: `src/lib/filter-query.ts` (pure parse/serialize/apply with round-trip property test) + `src/lib/intent-grouping.ts` (groupIntents + sortIntents + sortGroups). `src/components/atoms/FilterChip/` (mono `key:value` token + × remove). `src/surfaces/Map/{FilterBar,GroupSortControls,MapControls}/` (filter cluster + dropdowns + topRow composer). Native `<details>`/`<summary>` for all disclosures — no custom dropdown widget. URL state: `?awaiting=me&kind=...&status=...&holder=...&tag=...&group=...&sort=...`. Default sort is compound `awaiting-recency` (awaiting-me items always rise; otherwise newest first). Group/sort controls auto-hide at zero filters + default group/sort. Empty-state UI: `0 intents match … · clear filter →`. **True rootness on Map**: an Intent surfaces as a top-level card iff `!any other intent's decomposition.children includes my id` — fixes the B2 follow-up where sub-issues incorrectly appeared at the top level. Typographic group separators (uppercase mono label · count chip · horizontal rule). 50 new Vitest tests + 7 new E2E + 3 new visual baselines. URL contract preserved across reload + shareable.
-- **Tests**: 876 Vitest tests + 24 Playwright behavioral E2E + 18 Playwright visual baselines; all passing; TS strict clean; build clean. (Visual baselines stale after v0.1.5 chrome shifts + Phase 1/2 atoms + G-N-9 promotion; pending Phase 3 baseline regen.)
-- **Live dev**: `npm run dev` from `integral-ui/` → `http://localhost:5173/`.
-
-## Next milestone: v0.1 expansion (Path 2, revised)
-
-The chrome polish from `goals.md` is done. The next phase runs **two parallel tracks**:
-
-- **Track A (depth) — close the Nous round-trip.** Phase 4 operations from observed transitions, projection generator (kind-pluggable, S-1 from `semantics-v0.1.md`), refresh affordances, Shaping → real `campaign-X.yaml` writeback, run-command surfacing on Detail (A5; user executes from terminal — in-chrome execution and orchestrator deferred to v0.2). After Track A: the substrate is no longer descriptive only.
-- **Track B (breadth) — falsify the schema across two more kinds.** Coral (`.coral/attempts/*.json`) + GitHub-issues-as-`feature-campaign`. Each ships its minimum-viable read-only adapter.
-- **Track C (cross-cutting) — make the Map queryable.** Filter / group / sort on Map; visual baseline regen as chrome shifts.
-
-Paper adapter and full feature-dev integration (git+PR+CI) are now **v0.2**, alongside the schema bump from `gaps.md` and semantic-model promotion (S-2/S-4/S-5/C-4).
-
-**Authoritative tracker: `roadmap.md`.** Read it before starting any new work. It lists per-item acceptance criteria, the v0.1 stop conditions, and the v0.2 plan.
-
-The v0.1 chrome stack (Landing + Header + Map + Detail + Activity + Shaping) is stable enough to consume real adapter output without surface drift; visual baselines in `e2e/visual/` lock the chrome so adapter-induced data changes don't silently change the look.
-
-**Companion files:**
-- `roadmap.md` — two-track Path 2 scope + per-item acceptance + stop conditions for v0.1 expansion + v0.2 + v0.3 outline.
-- `semantics-v0.1.md` — semantic model commitments (S-1..S-9 components, C-1..C-8 couplings, two-audiences contract).
-- `gaps.md` — schema-fit issues uncovered while sizing adapters; v0.2 candidates only, do not silently fix in v0.1.
-- `goals.md` — chrome polish spec (done); kept for reference.
+Current state of shipped components is derivable from `git log` and the code; **don't duplicate it here**. The live tracker is `roadmap.md`.
 
 ## Canonical references
 
 These files are the source of truth. This CLAUDE.md does not summarize them; it points at them and captures only what is not in them.
 
-- `intents-and-harnesses.md` (v2) — the catalog of LLM-harness categories and the intent-aware abstractions Integral provides (intent as first-class object; collaboration mode; knowledge corpus; work state).
-- `intent-schema-v0.1.md` — the typed object model: `Intent`, `IntentState`, `KnowledgeRef`, `EvidenceLink`, four `IntentKind`s and their extensions, shaping operations, non-goals.
-- `intent-ux-sketch-v0.1.md` — the four UX surfaces (Map / Detail / Activity / Shaping), figure-rendering rules, filter/group/tag scope, design questions left open.
-- `semantics-v0.1.md` — the semantic model: how typed objects acquire meaning across the five layers (source / types / chrome / calculus / semantic). Catalogs S-1..S-9 components (projection, status grammar, decomposition stories, evidence narratives, knowledge growth, operation semantics, awaiting predicates, significance heuristics, time semantics) and C-1..C-8 couplings between layers. Names what v0.1 commits to vs. what is v0.2 work.
+- `intents-and-harnesses.md` (v2) — the catalog of LLM-harness categories and the intent-aware abstractions Integral provides.
+- `intent-schema-v0.2.md` — **current schema source of truth.** The typed object model: `Intent`, `IntentState`, `KnowledgeRef`, `EvidenceLink`, five `IntentKind`s and their extensions, shaping operations, non-goals.
+- `intent-schema-v0.1.md` — historical, superseded by v0.2.0. Kept on disk so adapters tagged `0.1.0` (none in this repo today, but external readers might reference it) can still find their grammar.
+- `intent-ux-sketch-v0.1.md` — the four UX surfaces (Map / Detail / Activity / Shaping), figure-rendering rules, filter/group/tag scope, design questions left open. Surface decisions are version-stable across v0.1 → v0.2; this file applies as-is.
+- `semantics-v0.1.md` — the semantic model: how typed objects acquire meaning across the five layers. Catalogs S-1..S-9 components and C-1..C-8 couplings. Names what v0.1 commits to vs. what is later work; conclusions are still load-bearing under v0.2.0.
+- `roadmap.md` — **authoritative live tracker.** Per-item acceptance criteria, stop conditions, v0.2 → v0.3 plan.
+- `gaps.md` — schema-fit issues uncovered while sizing adapters; v0.3+ candidates only, do not silently fix.
+- `goals.md` — chrome polish spec (done); kept for reference.
 
 Cross-references between these documents are normative. If a code change requires changing one, check whether the others need to follow.
 
 ## Core decisions (inherited by every session)
 
 - **Protocol-first, not platform.** Integral describes intents that other harnesses produce; it does not host execution. Adapters read existing-system state through `ExternalAnchor`s.
-- **Four intent kinds in v0.1.** `nous-campaign`, `coral-optimization`, `feature-campaign`, `paper-campaign` (plus their child kinds: iteration, attempt, pr, section, claim). Adding a fifth kind is a v0.2 change.
+- **Five intent kinds in v0.2.0.** `nous-campaign`, `nous-iteration`, `coral-optimization`, `coral-attempt`, `feature-campaign`. The four kinds present in v0.1 (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) were removed when the fixture was deleted; they return when their adapters ship in a future bump.
 - **State is separated from intent.** Independent versioning of declaration vs. state is load-bearing for the audit log. Don't collapse them.
 - **External anchors, not mirrors.** When another system owns authoritative state (git, GitHub, filesystem, bibtex), point at it via `ExternalAnchor`. Don't try to be the source of truth.
-- **`EvidenceLink` is the unifying primitive.** It's why the four kinds aren't four parallel schemas. Live in a separate edge collection, not embedded in intents.
+- **`EvidenceLink` is the unifying primitive.** It's why the kinds aren't parallel schemas. Lives in a separate edge collection, not embedded in intents.
 - **Default zoom is `structure`.** Map is for orientation; detail is for inspection; structure is the daily-use level. The projection layer must do this best.
 - **Figures are conditional on data threshold.** See `intent-ux-sketch-v0.1.md` § Figures: conditional, not mandatory. Empty/young intents stay clean.
-- **Tags are free-form, user-controlled.** System-generated tags are v0.2.
+- **Tags are free-form, user-controlled.** System-generated tags are deferred.
 - **Bi-actor by default.** Every operation accepts either a human or an agent. The schema does not privilege one.
 - **Shaping is a typed phase with mutable declaration.** While `Status == draft`, declaration fields are mutable; shaping operations (refine / decompose / fork / merge / reframe / probe / clarify / commit) are first-class. On `commit`, declaration freezes.
-- **Tests never call real LLMs (NON-NEGOTIABLE).** Every test layer — unit, integration, e2e, visual — mocks LLMs. Tests must not spend token budget. New code paths that introduce LLM calls land with a mock injection seam or they don't land. Real LLM clients live in `vite-plugin-nous-adapter/` (outside `src/`); the architectural barrier is load-bearing. See `## Test discipline` for the audit-grep checklist and the smoke-test escape hatch.
+- **Identity (the `me` Party) is configurable, not hardcoded.** `integral.config.json`'s optional `me: { id, display_name }` field, falling back to `os.userInfo().username` on the server. Never bake user identity into source files. See `src/lib/me.ts` for the boundary helper that lifts the narrow shape into a `Party` with `kind: 'human'`.
+- **Tests never call real LLMs (NON-NEGOTIABLE).** Every test layer mocks LLMs. Tests must not spend token budget. New code paths that introduce LLM calls land with a mock injection seam or they don't land. Real LLM clients live in `vite-plugin-nous-adapter/` (outside `src/`); the architectural barrier is load-bearing. See `## Test discipline` for the audit-grep checklist and the smoke-test escape hatch.
 
 ## Meta-rules for schema/UX evolution
 
-- **v0.1 is pre-stable.** Every breaking change bumps the minor by creating a new file: `intent-schema-v0.2.md` will live alongside `intent-schema-v0.1.md`. Old adapters keep referencing the version they were built against. We do not maintain backward compatibility before 1.0.
-- **Optional additive fields do not bump the version.** Adding `tags: list[string]?` was a v0.1.0 amendment, not a v0.2.0 break. Note such additions inline in the schema where they were made.
+- **The schema is pre-stable.** Every breaking change bumps the minor by creating a new file: v0.1.0 → v0.2.0 created `intent-schema-v0.2.md` alongside `intent-schema-v0.1.md`. Old adapters keep referencing the version they were built against. We do not maintain backward compatibility before 1.0.
+- **Optional additive fields do not bump the version.** Adding `tags: list[string]?` was a v0.1.0 amendment, not a break. Note such additions inline in the schema where they were made. Enum-value additions on string-shaped fields also stay at the current minor (e.g. `'github-repo'` was added to `ExternalAnchorKindSchema` as a v0.1.0 amendment and survives in v0.2.0).
+- **Removing kinds, fields, or enum values IS a bump.** v0.2.0 removed four kinds and a handful of enums (`CIStatusSchema`, `ReviewStatusSchema`, `PaperSectionStatusSchema`, `ClaimCitationStatusSchema`); each removal was a typed break that flowed through TS until every consumer was updated. The bump is non-negotiable for removals.
 - **The `schema_version` field is authoritative.** Adapters MUST reject objects whose version they don't understand. Don't make adapters tolerant of unknown versions.
-- **Non-goals lists are normative.** Items in the `## Non-goals` sections are deliberately deferred, not bugs. Do not silently implement them. If a non-goal needs to land, promote it to v0.2 explicitly with a version bump.
+- **Non-goals lists are normative.** Items in the `## Non-goals` sections are deliberately deferred, not bugs. Do not silently implement them. If a non-goal needs to land, promote it explicitly with a version bump.
 - **Open design questions are not closed by code.** If you start implementing against an open question, surface that you're making a choice and update the question's status in the relevant doc.
 
 ## Implementation order
 
-**Authoritative source: `roadmap.md`.** That file owns the order, the acceptance criteria per item, and the v0.1 → v0.2 → v0.3 promotion plan. This section captures only the *framing* — read `roadmap.md` for the live state.
+**Authoritative source: `roadmap.md`.** It owns the order, per-item acceptance criteria, and the v0.2 → v0.3 promotion plan. Don't re-derive it here.
 
-v0.1 expansion runs **two parallel tracks** (revised 2026-05-23):
-
-- **Track A (depth)** — close the round-trip on Nous: Phase 4 operations from observed transitions, projection generator (kind-pluggable), refresh affordances, Shaping → `campaign-X.yaml` writeback, run-command surfacing on Detail (A5; user executes from terminal — in-chrome execution deferred to v0.2 orchestrator).
-- **Track B (breadth)** — falsify the schema against two more kinds: Coral (`.coral/attempts/*.json`) and GitHub-issues-as-feature-campaign. Each ships its minimum-viable read-only adapter.
-- **Track C (cross-cutting)** — filter/group/sort on Map; visual baseline regen as chrome shifts.
-
-The v0.2 plan is now explicit (see `roadmap.md § v0.2`): schema bump from `gaps.md` candidates, writeback hardening across adapters, the Paper adapter (cross-tree provenance test), full feature-dev (git+PR+CI), semantic-model promotion (S-2/S-4/S-5/C-4 from `semantics-v0.1.md`), and cautious calculus semantics.
-
-**Why two tracks instead of four-adapters-in-sequence.** The original plan optimized for schema falsification at the cost of the round-trip the substrate exists to enable (declare → execute → interpret → act). The revised plan keeps the falsification signal (Coral + GH issues) and adds the round-trip on Nous so v0.1 ships a tool that closes the loop, not just a library that displays types. Paper + full feature-dev move to v0.2.
+v0.2 narrows to the Nous + Paper-authoring axis. v0.3+ resumes Coral extension + full feature-dev (the latter brings `feature-pr` back).
 
 ## Adapter conventions
 
-- **File-shaped first.** Initial adapters read filesystem state, not APIs. This lets us ship in days against real workflows and find out what the schema actually needs before committing to network plumbing.
-- **`read-at-zoom-level` is the one v0.1-normative operation.** Given an `IntentId` and a `ZoomLevel`, return the corresponding `Projection`. This is the load-bearing operation for the navigation surface and the single most important thing to validate early.
-- **Other operations are adapter-defined in v0.1.** `declare` / `refine` / `delegate` / `advance` / `gate` / `propose-transition` / `accept-proposal` / `satisfy` / `revoke` / shaping operations are typed concepts but their wire-level shape is deferred to v0.2.
+- **Transport / interpreter split.** Each adapter has an abstract transport (`NousSource` / `CoralSource` / `GitHubIssuesSource`) and a pure interpreter (`buildXWorkspace(source)`). Filesystem and network transports live in `vite-plugin-nous-adapter/`; interpreters are browser-safe in `src/adapters/<kind>/`. Adding a new transport (S3, HTTP) must not require changing the interpreter.
+- **File-shaped first.** Initial adapters read filesystem state, not APIs. Networked transports (e.g. `GhCliIssuesSource`) come second once the schema is stable. This lets us ship in days against real workflows.
+- **`read-at-zoom-level` is the one normative operation.** Given an `IntentId` and a `ZoomLevel`, return the corresponding `Projection`. This is the load-bearing operation for the navigation surface.
+- **Other operations are adapter-defined.** `declare` / `refine` / `delegate` / `advance` / `gate` / `propose-transition` / `accept-proposal` / `satisfy` / `revoke` / shaping operations are typed concepts but their wire-level shape is deferred.
 - **Projection budgets are constraints, not suggestions.** Overview ≤ 280 chars; structure ≤ 800; detail unbounded. If a generator can't fit, the intent probably needs re-decomposing — the budget is a diagnostic.
+- **Lossy mappings recorded in `gaps.md`.** Any field the adapter drops or coerces is logged as a `G-<adapter>-<n>` entry. Promotion to a schema fix happens at a future bump, not silently.
+- **Provenance.** `provenance.source = '<adapter id>'` on every emitted intent. Adapter-synthesized human holders use `{id: 'unknown-human', display_name: '(unknown)'}` (see `gaps.md` § G-N-13) — never the configured `me`, which would silently misattribute someone else's campaigns.
 
 ## Operating conventions
 
@@ -120,72 +73,78 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
   - `npm run dev` — Vite dev server
   - `npm run build` — production build (typecheck + bundle)
   - `npm run test:run` — Vitest single run (use this for CI / hooks)
-  - `npm run test:e2e` — Playwright E2E (auto-starts dev server)
+  - `npm run test:e2e` — Playwright behavioral E2E (auto-starts dev server)
   - `npm run typecheck` — strict TS check, no emit
-  - **None of these commands consume LLM tokens.** Vitest, Playwright behavioral, and visual regression all run with mocked LLMs. Tests that consume real models are smoke tests — manual, separate, and never wired into the canonical scripts. See `## Test discipline § LLM isolation`.
+  - **None of these commands consume LLM tokens.** All test layers run with mocked LLMs.
 - **Schema layer**: `integral-ui/src/schema/zod.ts` is the source of truth. zod schemas first; TS types inferred via `z.infer`. Adding a new schema field is a single edit there; types and validators stay in sync.
-- **Schema_version literal**: every `Intent` / `IntentState` MUST carry `schema_version: '0.1.0'`. The constant lives at `integral-ui/src/schema/zod.ts:SCHEMA_VERSION`. Adapters MUST reject objects with mismatched versions (enforced by `IntentSchema`).
-- **Fixture discipline**: `integral-ui/src/fixtures/workspace.ts` is the falsification fixture — must validate against `WorkspaceSchema` for every `IntentKind` v0.1 supports. Adding a kind in v0.2 means adding an example here; the test in `src/schema/__tests__/validation.test.ts` will fail until the schema accepts it.
+- **Schema_version literal**: every `Intent` / `IntentState` MUST carry `schema_version: '0.2.0'`. The constant lives at `integral-ui/src/schema/zod.ts:SCHEMA_VERSION`. Adapters MUST reject objects with mismatched versions (enforced by `IntentSchema`).
+- **Test seed data**: `integral-ui/src/test/seed-workspace.ts` and `seed-shaping.ts` provide deterministic typed test data for unit + behavioral tests. **Test scaffolding only — never loaded at runtime.** Lives under `src/test/` (not `src/fixtures/`) because production reads adapter output, not bundled fixtures. The pre-v0.2.0 fixture path is gone; if you need to add a kind back to seed data, also add it to the schema (which means a version bump).
 - **Path alias**: `@/*` → `integral-ui/src/*`. Use it for cross-module imports.
-- **Adapters location** (when they land): `integral-ui/src/adapters/{nous,paper,coral,feature}/` — each produces typed `Intent` + `IntentState` + `EvidenceLink` arrays from external state.
-- **The projection generator runs in-process for v0.1.** Whether it splits into a separate service is a v0.2 question. `read-at-zoom-level` is a function, not a network call, in v0.1.
-- **The UI is web** for v0.1. Terminal / other surfaces are out of scope until the web surfaces stabilize.
+- **Adapters location**: `integral-ui/src/adapters/{nous,coral,feature}/` (browser-safe interpreters) + `integral-ui/vite-plugin-nous-adapter/` (Node-only transports + middleware + handlers).
+- **`vite-plugin-nous-adapter/` is the architectural barrier.** Despite the historical name, it houses *all* server-side concerns — every adapter's transport, every `/api/*` handler, the LLM clients, `node:fs` and `node:child_process` calls. Real I/O and LLM clients NEVER live in `src/` — not even type-only imports that pull module side-effects.
+- **The projection generator runs in-process.** Whether it splits into a separate service is a future question. `read-at-zoom-level` is a function, not a network call.
+- **The UI is web** for now. Terminal / other surfaces are out of scope until the web surfaces stabilize.
 
 ## Test discipline
 
-- **Schema layer (now)**: zod runtime validators + Vitest. Tests live in `integral-ui/src/schema/__tests__/`. Cover acceptance of valid fixtures, rejection of malformed shapes, kind/extension consistency, schema_version literal enforcement.
-- **Component layer (when surfaces land)**: React Testing Library — assert user-visible behavior, never implementation details. Behavioral tests for: zoom toggle changes content, proposal accept fires the right callback, activity event scrolls to target, shaping commit gates correctly.
-- **E2E (Playwright)**: installed; smoke test at `integral-ui/e2e/scaffold.spec.ts` proves the schema-validation + atom-rendering pipeline works in a real browser. Add one critical-flow test per surface as they land.
-- **Visual regression**: Playwright screenshot diffs against the `ccdesign/` baseline so the cognitive-instrument aesthetic doesn't silently drift to Linear/Jira shape during refactors. Land with the first surface.
-- **LLM isolation (NON-NEGOTIABLE)**: tests **never** call real LLMs — at any level. Unit (Vitest), integration (Vitest with multi-module fixtures), e2e (Playwright behavioral), visual (Playwright screenshots) — all four layers mock LLMs. **Tests must never spend token budget.** This is an operating principle, not a guideline.
+- **Schema layer**: zod runtime validators + Vitest. Tests live in `integral-ui/src/schema/__tests__/`. Cover acceptance of valid seed data, rejection of malformed shapes, kind/extension consistency, schema_version literal enforcement.
+- **Component layer**: React Testing Library — assert user-visible behavior, never implementation details. Behavioral tests for: zoom toggle changes content, proposal accept fires the right callback, activity event scrolls to target, shaping commit gates correctly.
+- **E2E (Playwright)**: behavioral E2E in `e2e/`; one critical-flow test per surface that doesn't depend on specific adapter data shape (the substrate runs against real adapter sources, which are non-deterministic). Falsification-style stop-condition tests (preflight, etc.) self-stage their inputs (tmpdirs, real-filesystem probes).
+- **Visual regression**: removed in v0.2.0 along with the fixture (every visual baseline depended on `?sources=fixture` for deterministic data). Coverage returns when a deterministic data-seeding mechanism ships, OR when the paper / feature-pr adapters reintroduce kinds we want pixel-locked chrome for.
+- **LLM isolation (NON-NEGOTIABLE)**: tests **never** call real LLMs — at any level. Unit, integration, e2e — all three layers mock LLMs. **Tests must never spend token budget.** This is an operating principle, not a guideline.
   - The projection engine accepts an injected `LLMClient`; tests inject a mock that returns canned strings.
-  - The shape handler (`vite-plugin-nous-adapter/shape-handler.ts`) is exercised by tests via the same injected-client seam — never by hitting `/api/shape` against a live server.
-  - The real Anthropic / OpenAI clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they're **architecturally unreachable** from the Vitest runner by construction. **Treat this barrier as load-bearing — never `import` a real client into `src/`** (not even for type-only imports that pull the module side-effects).
-  - Any test that wants to verify LLM behavior against a real model is a **smoke test** — manual, runs outside `npm test*`, documented as such (e.g. file in a `smoke/` dir or a `.smoke.ts` suffix; not picked up by the canonical glob).
+  - The shape handler is exercised by tests via the same injected-client seam — never by hitting `/api/shape` against a live server.
+  - The real Anthropic / OpenAI clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they're **architecturally unreachable** from the Vitest runner by construction. **Treat this barrier as load-bearing — never `import` a real client into `src/`.**
+  - Any test that wants to verify LLM behavior against a real model is a **smoke test** — manual, runs outside `npm test*`, never picked up by the canonical glob.
   - **New code paths that introduce LLM calls MUST land alongside a mock injection seam.** If you can't make the seam, the design is wrong — refactor before merging.
-  - **Audit grep** before claiming verification: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `tryCreateLLMClient`, `api.openai.com`, `api.anthropic.com`, `@anthropic-ai`, `from 'openai'` — all should return zero hits in `*.test.*` and `*.spec.*` files.
+  - **Audit grep** before claiming verification:
+    ```
+    grep -rln "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|ANTHROPIC_AUTH_TOKEN\|tryCreateLLMClient\|api.openai.com\|api.anthropic.com\|@anthropic-ai\|from 'openai'" \
+      --include="*.test.ts" --include="*.test.tsx" --include="*.spec.ts" --include="*.spec.tsx"
+    ```
+    Must return zero hits.
 - **Skills to invoke**:
-  - `superpowers:test-driven-development` — when implementing logic with correctness criteria (schema validators, projection budget enforcers, adapter readers).
-  - `superpowers:verification-before-completion` — before claiming any milestone done; run `npm run test:run` + `npm run typecheck` + `npm run build` and report exit codes, not assertions.
-  - `frontend-design:frontend-design` — when iterating on visuals for a new surface; not for scaffolding or schema work.
+  - `superpowers:test-driven-development` — when implementing logic with correctness criteria.
+  - `superpowers:verification-before-completion` — before claiming any milestone done; report exit codes, not assertions.
+  - `frontend-design:frontend-design` — when iterating on visuals for a new surface.
   - `senior-frontend:senior-frontend` — at PR-review time for UI code.
 
 ## Patterns for new endpoints, hooks, and UI extensions
 
-These are the load-bearing patterns the codebase has converged on. New contributions should follow them; deviations should be motivated by the limitation, not by drift.
+Load-bearing patterns the codebase has converged on. Deviations should be motivated by the limitation, not by drift. Read the cited reference files when implementing.
 
 ### A new `/api/...` endpoint that does I/O
 
-Mirror the writeback / preflight / shape pattern. Three layers:
+Mirror the writeback / preflight / shape / me pattern. Three layers:
 
-1. **Pure logic in `src/lib/<feature>.ts`** — accepts a typed `Input` + an injected `Deps` interface for I/O. Returns a typed result. Never throws on dep failure; turn failures into typed result fields. **This is the testable layer.** Heavy unit-testing (with `vi.fn()` mocks of `Deps`) lives next to the file as `<feature>.test.ts`. Example: `src/lib/nous-preflight.ts`.
-2. **Server-side handler in `vite-plugin-nous-adapter/<feature>-handler.ts`** — Zod-validates the wire request, resolves the source via `ConfiguredSource[]`, constructs real `Deps` from `node:fs` / `node:child_process`, calls the pure layer. Optional `deps?: Deps` parameter makes the handler unit-testable. Example: `vite-plugin-nous-adapter/preflight-handler.ts`.
-3. **Middleware wiring in `vite-plugin-nous-adapter/index.ts`** — adds a `server.middlewares.use('/api/...')` block that reads JSON via `readJsonBody`, calls the handler with the resolved sources list, returns the result with appropriate status codes (400 / 404 / 409 / 500).
+1. **Pure logic in `src/lib/<feature>.ts`** — accepts a typed `Input` + an injected `Deps` interface for I/O. Returns a typed result. Never throws on dep failure; turn failures into typed result fields. Heavy unit-testing (with `vi.fn()` mocks of `Deps`) lives next to the file. Reference: `src/lib/nous-preflight.ts`.
+2. **Server-side handler in `vite-plugin-nous-adapter/<feature>-handler.ts`** — Zod-validates the wire request, resolves the source via `ConfiguredSource[]`, constructs real `Deps` from `node:fs` / `node:child_process`, calls the pure layer. Optional `deps?: Deps` parameter makes the handler unit-testable. Reference: `vite-plugin-nous-adapter/preflight-handler.ts`.
+3. **Middleware wiring in `vite-plugin-nous-adapter/index.ts`** — `server.middlewares.use('/api/...')` reads JSON via `readJsonBody`, calls the handler, returns 400 / 404 / 409 / 500 as appropriate.
 
-The `vite-plugin-nous-adapter/` directory is the **architectural barrier**: real I/O + LLM clients live here, never in `src/`. The vitest config picks up `vite-plugin-nous-adapter/**/*.test.ts` so handler tests can sit next to handlers. **Don't write a handler test that imports the real I/O — pass the deps via the optional parameter.** See `preflight-handler.test.ts` for the canonical shape.
+The vitest config picks up `vite-plugin-nous-adapter/**/*.test.ts` so handler tests sit next to handlers. Don't write a handler test that imports the real I/O — pass deps via the optional parameter. Reference: `preflight-handler.test.ts`.
 
 ### A new browser hook that calls an endpoint
 
-Mirror `usePreflight`. Conventions:
+Mirror `usePreflight.ts`. Conventions:
 
-- **Debounce input changes with `setTimeout`**, default 400ms — not `useEffect` retrigger storms. Pair with a sequence-number ref (not `AbortController` — the project pattern is to ignore stale responses by sequence id). Guard the seq on **every** `setState` inside the timer callback, not just on response paths — including the `loading` flip — so a debounce-cancel doesn't flicker the spinner. See `usePreflight.ts` for the canonical shape and `usePreflight.test.ts` "drops a slow earlier response" for the falsification.
-- **Return a discriminated union over phase**, not a `{loading, checks, error}` triple. `PreflightHookResult = { phase: 'idle' } | { phase: 'loading'; previous } | { phase: 'ok'; checks } | { phase: 'error'; error; previous }` is the canonical shape: it admits exactly the 4 valid states (vs. 8 in a 3-flag triple) and forces consumers to check `phase === 'ok'` before trusting any data — fail-closed by construction. Carry `previous: <data> | null` through `loading` and `error` so the UI can show the last-known indicators while a re-fetch settles, but **never** consult `previous` for gating decisions; that's `phase === 'ok'`'s job.
-- **Short-circuit on empty input** so the hook stays inert when there's nothing to fetch (e.g., `usePreflight` skips when `sourceId === ''`).
-- **Validate the response shape on the wire boundary.** `body.checks` could be undefined / null / non-array if the server changes; throw early in `.then` so the catch sets `phase: 'error'` rather than letting `body.checks` crash a downstream `.find()`.
-- **Mock `globalThis.fetch` in tests** with `vi.fn().mockResolvedValue({ ok, status, json })` — see `ProjectionSection.test.tsx` and `usePreflight.test.ts`. Use `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()` to drive the debounce — **never `waitFor`** with fake timers (it polls real time and deadlocks).
+- **Debounce input changes with `setTimeout`** (default 400ms), not `useEffect` retrigger storms. Pair with a sequence-number ref. Guard the seq on **every** `setState` inside the timer callback — including the `loading` flip — so a debounce-cancel doesn't flicker the spinner.
+- **Return a discriminated union over phase**, not a `{loading, checks, error}` triple. Canonical shape: `{ phase: 'idle' } | { phase: 'loading'; previous } | { phase: 'ok'; checks } | { phase: 'error'; error; previous }` — admits exactly the 4 valid states and forces consumers to check `phase === 'ok'` before trusting data (fail-closed by construction). Carry `previous` through `loading`/`error` for last-known indicators, but **never** consult it for gating decisions.
+- **Short-circuit on empty input** so the hook stays inert when there's nothing to fetch.
+- **Validate response shape on the wire boundary.** Throw early in `.then` so the catch sets `phase: 'error'`.
+- **Mock `globalThis.fetch` in tests** with `vi.fn().mockResolvedValue(...)`. Use `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()` to drive the debounce — **never `waitFor`** with fake timers (it polls real time and deadlocks).
 
-### Per-field UI indicators that compose with E2E + visual baselines
+### Per-field UI indicators
 
 Mirror the `PreflightIndicator` pattern in `WritebackForm.tsx`:
 
-- Render a `<span data-testid="<feature>-<key>" data-preflight-status="..." title="..." aria-label="...">` so behavioral tests assert the data-* contract, not class names or text.
-- Color via `data-status` selectors in the CSS module: `--sage` for ok, `--rose` for fail, `--mute` for warn. **Never use `--amber`** for errors — it's reserved for "current/active/awaiting your action" per the genre commitment.
-- Glyph as plain text (`✓` / `!` / `✗`) — not SVG — so it composes with the mono baseline + screen readers via aria-label.
-- The atom takes `checks: ReadonlyArray<Check> | null | undefined` and returns `null` when checks haven't settled or the named check isn't present. **Never render an unsettled state** — the UI should be invisible during initial fetch, not blocked.
+- Render `<span data-testid="<feature>-<key>" data-preflight-status="..." title="..." aria-label="...">` so behavioral tests assert the data-* contract, not class names or text.
+- Color via `data-status` selectors in CSS module: `--sage` for ok, `--rose` for fail, `--mute` for warn. **Never use `--amber`** for errors — it's reserved for "current/active/awaiting your action" per the genre commitment.
+- Glyph as plain text (`✓` / `!` / `✗`), not SVG.
+- The atom returns `null` when checks haven't settled or the named check isn't present. **Never render an unsettled state** — invisible during initial fetch, not blocked.
 
 ### Commit-button gates that depend on async signals
 
-**Fail-closed by default.** A gate that depends on an async signal must require positive `phase === 'ok'` evidence — never read "absence of failures" (e.g., `failedCount === 0` over a possibly-null array) as success. The latter is fail-OPEN: a transport error, an unsettled fetch, or a malformed response all look identical to "all clear," and the user commits state that was never validated. See `ShapingSurface.tsx` for the canonical shape:
+**Fail-closed by default.** A gate that depends on an async signal must require positive `phase === 'ok'` evidence — never read "absence of failures" as success. Canonical shape (`ShapingSurface.tsx`):
 
 ```ts
 const preflightActive = writebackActive
@@ -196,76 +155,64 @@ const preflightOk =
 const commitEnabled = allResolved && writebackReady && !submitting && !llmLoading && preflightOk
 ```
 
-- Each clause is a single boolean. The button's `aria-label` enumerates the *first* failing clause as a reason via a precedence-ordered helper (`disabledReason` in `ShapingSurface.tsx`); visible hint chips (`· N pending`) render only when the gate fails.
-- The `preflightActive` short-circuit lets backwards-compat callers (Coral drafts; registry-less callers) skip the check entirely. Only the active-writeback path is fail-closed.
-- Tests must verify all four phases gate correctly: `idle`, `loading`, `error`, `ok-with-failures`. See the `truth table` test in `ShapingSurface.test.tsx` for parametrized coverage.
+- Each clause is a single boolean. The button's `aria-label` enumerates the *first* failing clause via a precedence-ordered helper.
+- Tests must verify all four phases gate correctly: `idle`, `loading`, `error`, `ok-with-failures`.
+
+### Render gates on async-resolved props
+
+When a render needs an async-resolved value to be correct (not just for cosmetics), gate the render until the value resolves — never render with a placeholder. The Map's `awaiting-recency` sort reads `me.id`; rendering once with `me={id:'user'}` then re-rendering after `fetchMe()` resolves caused a draft to mis-sort to the top of the list. The fix: `App.tsx` uses `me: Party | null = null` and gates surface render on `me !== null` alongside the workspace-loading gate. Same fail-closed discipline as commit gates: positive evidence > absence of failure.
 
 ### Real-I/O deps in server handlers
 
-Server handlers (`vite-plugin-nous-adapter/*-handler.ts`) construct real I/O deps via the optional `deps?` injection seam. The deps factory must distinguish "expected absence" (ENOENT for paths; non-zero exit for `which`-style probes) from "unexpected failure" (EACCES, ELOOP, EROFS, timeout):
+The deps factory must distinguish "expected absence" (ENOENT for paths; non-zero exit for `which`-style probes) from "unexpected failure" (EACCES, ELOOP, EROFS, timeout):
 
 - **Expected absence resolves to `false`.** The pure check engine treats this as a `fail` or `warn` with a generic message.
-- **Unexpected failures THROW.** The pure engine's per-check `try/catch` then surfaces them with the *original error message* preserved — so the user sees `EACCES on /protected/dir`, not "doesn't exist." Bare `catch {}` blocks that swallow distinct errno classes are forbidden — they make EACCES, ELOOP, and timeout indistinguishable from "path missing," masking real bugs.
-- **Paths that demand a directory** (writeback targets, `nous run` repos) must check `stat.isDirectory()`, not `isFile() || isDirectory()`. A regular file at the path is NOT a valid target — `/etc/passwd` would otherwise pass pre-flight.
-- **Subprocess probes** (`execFile('which', ...)`) must distinguish ENOENT/non-zero-exit ("not found" → false) from timeout/SIGTERM (ambiguous → throw). See `defaultDeps.hasNousCli` + `isWhichNotFound` in `preflight-handler.ts`.
+- **Unexpected failures THROW.** The pure engine's per-check `try/catch` then surfaces them with the *original error message* preserved. Bare `catch {}` blocks that swallow distinct errno classes are forbidden.
+- **Paths that demand a directory** must check `stat.isDirectory()`, not `isFile() || isDirectory()`. A regular file at the path is NOT a valid target.
+- **Subprocess probes** must distinguish ENOENT/non-zero-exit ("not found" → false) from timeout/SIGTERM (ambiguous → throw).
 
-Test the dep contract with real temp directories under `os.tmpdir()`. See `preflight-handler.test.ts` "defaultDeps — real filesystem probes" for the canonical pattern.
+Test the dep contract with real temp directories under `os.tmpdir()`. Reference: `preflight-handler.test.ts` "defaultDeps — real filesystem probes".
 
 ### Tests for surfaces that mount async hooks
 
-If a surface mounts a hook that fires fetch on mount (or after a debounce), add a `beforeEach` that stubs `globalThis.fetch` with a no-op-success response. Tests that need a specific response override the stub locally with `mockFetchPreflight(checks)`. See the `ShapingSurface.test.tsx` `beforeEach`.
-
-### Visual baseline regeneration
-
-When a chrome shift changes pixel layout (a new row, a new indicator, a new chip):
-1. Run `npm run test:e2e:visual` first to confirm only the expected baselines drift.
-2. Run `npm run test:e2e:visual:update` to regenerate.
-3. Commit the regenerated PNGs **in the same commit** as the chrome shift — never separately. Future bisect needs the chrome ↔ baseline pair to be atomic.
+If a surface mounts a hook that fires fetch on mount (or after a debounce), add a `beforeEach` that stubs `globalThis.fetch` with a no-op-success response. Tests that need a specific response override the stub locally.
 
 ### Verification before claiming done
 
-Run all five canonical commands from `integral-ui/`:
+Run all four canonical commands from `integral-ui/`:
 
 ```
 npm run typecheck    # strict TS, must exit 0
 npm run test:run     # all vitest, must exit 0
 npm run test:e2e     # behavioral E2E, must exit 0
-npm run test:e2e:visual   # visual baselines, must exit 0
 npm run build        # production bundle, must exit 0
 ```
 
-Plus the LLM-discipline audit grep:
+Plus the LLM-discipline audit grep (see `## Test discipline`). Must return zero hits.
 
-```
-grep -rln "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|tryCreateLLMClient\|api.openai.com\|api.anthropic.com" \
-  --include="*.test.ts" --include="*.test.tsx" --include="*.spec.ts" --include="*.spec.tsx"
-```
+## Resolved surface decisions
 
-Must return zero hits. The barrier is load-bearing.
-
-## Resolved surface decisions (closed before Map view starts)
-
-These were the four open questions from the kinetic review of `ccdesign/`. They're closed now so atom + surface work doesn't have to re-litigate them inline.
+These were the four open questions from the kinetic review of `ccdesign/`. Closed so atom + surface work doesn't have to re-litigate them inline.
 
 1. **Zoom semantics — what changes between overview / structure / detail.**
-   - `overview` = card-shaped projection (~280 char budget) suitable for the Map view's tree cards. Per-kind structural badges (e.g., gate status, best score, claim count) are visible; children are *not* enumerated; figures render only when their data threshold is met.
-   - `structure` = the Detail surface's daily-use body. Children list with kind-specialized rendering (Nous: iteration rows + hypothesis bars; Coral: population scatter; Paper: section/claim cards; Feature: PR rows). Evidence edges + knowledge corpus visible. Cross-tree edges shown as outgoing/incoming columns. (~800 char prose budget for any generated summary text.)
-   - `detail` = full extension data + complete history + every evidence link rendered. No content budget. Reached on demand via the zoom toggle, not the default.
-   - Toggle behaviour: clicking the toggle changes the *body* — not just the toggle's highlighted segment. The mock's decorative toggle was a bug; the surface implementation must wire `zoom` through to `ChildrenSection` and gate per-kind richness on it.
+   - `overview` = card-shaped projection (~280 char budget) for Map tree cards. Per-kind structural badges visible; children NOT enumerated; figures render only when their data threshold is met.
+   - `structure` = the Detail surface's daily-use body. Children list with kind-specialized rendering. Evidence edges + knowledge corpus visible. Cross-tree edges shown as outgoing/incoming columns. (~800 char prose budget for any generated summary text.)
+   - `detail` = full extension data + complete history + every evidence link rendered. No content budget. Reached on demand.
+   - Toggle behaviour: clicking the toggle changes the *body*, not just the toggle's highlighted segment.
 
 2. **Activity strip — workspace + per-intent both visible, or collapse one.**
    - Both visible by default at ≥1280px viewport width.
-   - At < 1280px the *workspace* strip auto-collapses to a vertical icon rail (toggle to expand); the *per-intent* strip stays expanded inside the Detail surface body.
-   - Visual differentiation: workspace strip uses `var(--paper-2)` background with a subtle left border; per-intent strip uses `var(--paper)` and lives inside the main column's grid cell. This keeps them legible as two distinct surfaces even when both are visible.
+   - At < 1280px the *workspace* strip auto-collapses to a vertical icon rail; the *per-intent* strip stays expanded inside the Detail surface body.
+   - Visual differentiation: workspace strip uses `var(--paper-2)` background with subtle left border; per-intent strip uses `var(--paper)` and lives inside the main column's grid cell.
 
-3. **"Awaiting me" predicate — proposal-only or include CI-failing-on-my-PR.**
-   - Includes: (a) `Status: gated` AND `awaiting_party === me`; OR (b) any open proposal in the activity log assigned to me; OR (c) for `feature-pr` intents I authored, `ci_status === 'failing'` OR `review_status === 'changes-requested'`.
-   - Rationale: a PR with failing CI on a feature campaign I own is functionally a queue item — the human needs to act before the agent can advance. Excluding it would create a gap where critical signal lives but the awaiting-me filter doesn't surface it.
-   - Implementation: a typed `isAwaitingMe(intent, state, me)` predicate in `src/lib/queue.ts` (lands with the Map surface).
+3. **"Awaiting me" predicate.**
+   - v0.2.0 includes: (a) `Status: gated` AND `awaiting_party === me`; OR (b) any open proposal in the activity log assigned to me (placeholder — the proposal queue isn't yet in the schema).
+   - The v0.1 third branch (CI-failing on a `feature-pr` I authored) was removed when `feature-pr` was removed in v0.2.0. It returns when full feature-dev ships in v0.3+.
+   - Implementation: typed `isAwaitingMe(intent, state, me)` predicate in `src/lib/queue.ts`.
 
 4. **LeftRail tree-list click behavior.**
-   - Clicks on the active-trees rail items navigate to the corresponding Detail surface, same as clicking the tree's card in the Map view. The mock's empty `onClick` was a bug.
-   - Hover affordance: subtle `var(--paper)` background + `var(--line)` border, matching the rail's selected-item style.
+   - Clicks on active-trees rail items navigate to the Detail surface, same as clicking the tree's card in Map.
+   - Hover affordance: subtle `var(--paper)` background + `var(--line)` border.
 
 These decisions are normative for the surfaces. Changes require updating this section explicitly.
 
@@ -273,20 +220,23 @@ These decisions are normative for the surfaces. Changes require updating this se
 
 ## What NOT to do without explicit reconfirmation
 
-These are decisions that future sessions will be tempted to revisit. They are not closed because they're certain — they're closed because the rationale is recorded in the design docs and our conversation history, and re-litigating them silently wastes effort.
+These decisions are not closed because they're certain — they're closed because the rationale is recorded in the design docs and our conversation history, and re-litigating them silently wastes effort.
 
-- **Do not change v0.1 schema fields without proper version handling.** Optional additions stay at the current minor; everything else bumps to a new file.
-- **Do not add a fifth intent kind to v0.1.** Even if the new kind seems to fit. Promote to v0.2 first.
+- **Do not change schema fields without proper version handling.** Optional additions / enum-value additions on string-shaped fields stay at the current minor; everything else (including removals) bumps to a new file.
+- **Do not add new intent kinds without bumping the schema.** Even if the new kind seems to fit. Promote to a new schema file first.
 - **Do not expand the projection budgets** (≤280 / ≤800 / unbounded) without a measured reason from observed adapter output.
-- **Do not auto-generate tags, shaping templates, typed clarification taxonomies, or stale-draft GC** in v0.1. All deferred to v0.2.
-- **Do not conflate (1) Nous + (3) Coral as "the research workflow."** They are tightly coupled in domain but structurally distinct (principles vs. scored optimization). Treating them as one would overfit the schema and was rejected explicitly.
+- **Do not auto-generate tags, shaping templates, typed clarification taxonomies, or stale-draft GC** without explicit promotion.
+- **Do not conflate Nous + Coral as "the research workflow."** They are tightly coupled in domain but structurally distinct (principles vs. scored optimization). Treating them as one would overfit the schema and was rejected explicitly.
 - **Do not turn Integral into the source of truth for state another system owns.** Adapters read external anchors; they do not duplicate or replace them.
 - **Do not collapse `Intent` and `IntentState` into one object.** The separation is what makes audit logs clean; merging them is a foot-gun.
 - **Do not embed `EvidenceLink`s inside intent extensions.** They live in a separate edge collection so cross-cutting queries don't traverse intent objects.
-- **Do not let the four UX surfaces drift in chrome.** Per-kind specialization is allowed in the structural body content; the surrounding chrome (header, activity strip, navigation) stays uniform across kinds. This is what keeps the substrate identity intact.
-- **Do not propose `fork` / `merge` / `reframe` from agents in v0.1.** Agents probe; humans (or agents at human direction) restructure. Suggestions are v0.2.
-- **Do not let any test — unit, integration, e2e, or visual — touch a real LLM.** Tests must not spend token budget. The `vite-plugin-nous-adapter/` boundary is load-bearing: real Anthropic / OpenAI clients live there and must never be imported into `src/`. Tests inject `LLMClient` mocks. Smokes against real models are manual, run outside `npm test*`, and never share fixture or harness paths with the canonical suite. See `## Test discipline` for the audit-grep checklist.
+- **Do not let the UX surfaces drift in chrome.** Per-kind specialization is allowed in the structural body content; the surrounding chrome (header, activity strip, navigation) stays uniform across kinds.
+- **Do not propose `fork` / `merge` / `reframe` from agents in v0.2.** Agents probe; humans (or agents at human direction) restructure. Suggestions are deferred.
+- **Do not write Integral-owned state into adapter source directories.** No PID files, no log files, no process tracking inside Nous's / Coral's / a target repo's tree. The substrate observes; it does not annotate.
+- **Do not bundle a runtime fixture or "demo data" source.** v0.2.0 deliberately removed the fixture so the tool runs against real adapter output only. Test data lives in `src/test/seed-workspace.ts` — never reachable at runtime, never registered as a source.
+- **Do not silently attribute adapter-emitted intents to the configured `me`.** When an adapter's source data has no holder field, use `{id: 'unknown-human', display_name: '(unknown)'}`. Reading another user's campaigns must not look like ours. See `gaps.md` § G-N-13.
+- **Do not let any test — unit, integration, or e2e — touch a real LLM.** Tests must not spend token budget. The `vite-plugin-nous-adapter/` boundary is load-bearing: real Anthropic / OpenAI clients live there and must never be imported into `src/`. Smokes against real models are manual, run outside `npm test*`, and never share fixture or harness paths with the canonical suite.
 
 ## Conversation history note
 
-The v0.1 design was developed in conversation across these decision points (in order): catalog v1 → v2 with intent-axis re-cut → shape question (platform / protocol / vertical) settled on protocol → four-intent generalizability test → schema → UX sketch → visual navigation views → filter/tag/figure scope → shaping mode → this CLAUDE.md. If a future session needs the rationale for a specific decision, the design docs capture the *what* and *why*; the reasoning chain that led to *why this and not the alternatives* is in conversation history.
+The v0.1 design was developed in conversation across these decision points: catalog v1 → v2 with intent-axis re-cut → shape question (platform / protocol / vertical) settled on protocol → four-intent generalizability test → schema → UX sketch → visual navigation views → filter/tag/figure scope → shaping mode. v0.2.0 then narrowed the kind set to "what we ship today" and made the substrate stop pretending to be a demo (no fixture, no reversibility placeholder, configurable identity). If a future session needs the rationale for a specific decision, the design docs capture *what* and *why*; the reasoning chain that led to *why this and not the alternatives* is in conversation history.

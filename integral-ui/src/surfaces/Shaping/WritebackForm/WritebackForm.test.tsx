@@ -15,12 +15,12 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SourceEntry } from '@/lib/sources'
-import type { WritebackTemplate } from '@/fixtures/shaping'
+import type { WritebackTemplate } from '@/lib/draft-shape'
 import type { PreflightCheck } from '@/lib/nous-preflight'
 import { WritebackForm } from './WritebackForm'
 
 const REGISTRY: ReadonlyArray<SourceEntry> = [
-  { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
+  { id: 'demo', label: 'demo', kind: 'adapter' },
   { id: 'nous', label: 'nous campaigns', kind: 'adapter' },
   { id: 'wb-test', label: 'writeback test', kind: 'adapter' },
 ]
@@ -82,7 +82,7 @@ describe('WritebackForm', () => {
       />
     )
     const select = screen.getByLabelText(/target source/i) as HTMLSelectElement
-    expect(select.value).toBe('nous')
+    expect(select.value).toBe('demo')
   })
 
   it('reports a valid config via onChange when fields are filled', async () => {
@@ -107,7 +107,7 @@ describe('WritebackForm', () => {
       config: { max_iterations: number }
     } | null
     expect(last).not.toBeNull()
-    expect(last?.sourceId).toBe('nous')
+    expect(last?.sourceId).toBe('demo')
     expect(last?.config.max_iterations).toBe(5)
   })
 
@@ -283,13 +283,11 @@ describe('WritebackForm', () => {
     })
   })
 
-  it('renders nothing when the registry has no adapter sources', () => {
-    const fixtureOnly: ReadonlyArray<SourceEntry> = [
-      { id: 'fixture', label: 'demo fixture', kind: 'fixture' },
-    ]
+  it('renders nothing when the registry is empty', () => {
+    const empty: ReadonlyArray<SourceEntry> = []
     const { container } = render(
       <WritebackForm
-        registry={fixtureOnly}
+        registry={empty}
         template={TEMPLATE}
         onChange={() => {}}
       />

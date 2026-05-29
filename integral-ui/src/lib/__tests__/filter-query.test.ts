@@ -9,7 +9,7 @@ import {
   serializeFilterQuery,
   type MapView,
 } from '../filter-query'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 
 const ALWAYS_FALSE = () => false
 const ALWAYS_TRUE = () => true
@@ -157,8 +157,8 @@ describe('parse/serialize round-trip', () => {
 
 describe('applyFilters', () => {
   // Use the fixture workspace as a known, schema-valid input.
-  const intents: ReadonlyArray<Intent> = fixtureWorkspace.intents
-  const states: ReadonlyArray<IntentState> = fixtureWorkspace.states
+  const intents: ReadonlyArray<Intent> = seedWorkspace.intents
+  const states: ReadonlyArray<IntentState> = seedWorkspace.states
 
   it('empty filter → all intents pass', () => {
     const out = applyFilters({
@@ -258,7 +258,7 @@ describe('applyFilters', () => {
       states,
       filter: {
         ...DEFAULT_VIEW.filter,
-        kinds: new Set(['paper-claim']),
+        kinds: new Set(['coral-attempt']),
         statuses: new Set(['gated']),
       },
       isAwaitingMe: ALWAYS_FALSE,
@@ -266,7 +266,7 @@ describe('applyFilters', () => {
     // Either non-empty (if fixture has gated paper-claim) or empty;
     // this test asserts the AND combination is honored.
     for (const i of out) {
-      expect(i.kind).toBe('paper-claim')
+      expect(i.kind).toBe('coral-attempt')
       const st = states.find((s) => s.intent_id === i.id)!
       expect(st.status).toBe('gated')
     }

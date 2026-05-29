@@ -1,8 +1,10 @@
 # Integral Intent Schema
 
 **Version: 0.1.0**
-**Status: pre-stable, breaking changes expected. Promote to 0.2.0 on any breaking change.**
+**Status: superseded by v0.2.0 on 2026-05-29. Kept for historical reference + as the starting point for re-introducing paper-* and feature-pr kinds when their adapters ship.**
 **Date: 2026-05-22**
+
+> **Read this for the v0.1.0 grammar.** v0.2.0 narrowed `IntentKindSchema` to five kinds and removed `feature-pr`, `paper-campaign`, `paper-section`, `paper-claim` along with their extensions. Most of this document — core types, holder, lifetime, status, knowledge refs, evidence links, projections, operation log, workspace bundle, shaping operations — applies unchanged to v0.2.0. See `intent-schema-v0.2.md` for the diff and current authoritative kind enum.
 
 ## Versioning policy
 

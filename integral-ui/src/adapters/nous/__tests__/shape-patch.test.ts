@@ -30,7 +30,7 @@ const PROJECTOR = {
 function blankNousDraft(): Intent {
   return {
     id: 'draft-test-001',
-    schema_version: '0.1.0',
+    schema_version: '0.2.0',
     kind: 'nous-campaign',
     declaration: { title: '', summary: '', success_criterion: '' },
     holder: { mode: 'jointly-held', parties: [PROJECTOR] },
@@ -281,8 +281,8 @@ describe('applyShapePatch — forbidden fields', () => {
     const result = applyShapePatch(
       start,
       // @ts-expect-error
-      { intent: { schema_version: '0.2.0' } }
+      { intent: { schema_version: '9.9.9' } }
     )
-    expect(result.intent.schema_version).toBe('0.1.0')
+    expect(result.intent.schema_version).toBe('0.2.0')
   })
 })

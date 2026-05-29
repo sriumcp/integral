@@ -103,6 +103,77 @@ describe('interpretCampaign', () => {
     expect(result?.state.status).toBe('active')
   })
 
+  // ─── #236 phase → last_entered_phase rename (back-compat).
+  // Migrated state.json files (post nous #236) carry `last_entered_phase`
+  // and have NO `phase` field. Older state.jsons carry `phase`. The
+  // interpreter must read either, preferring `last_entered_phase`.
+  // Without this, every migrated campaign falls through to the default
+  // `'active'`, masking real `'satisfied'` / `'gated'` states silently.
+  it('reads last_entered_phase when phase is absent (post-#236 schema)', () => {
+    const migratedState = JSON.stringify({
+      last_entered_phase: 'DONE',
+      iteration: 2,
+      run_id: 'migrated-run',
+      timestamp: '2026-05-28T12:00:00Z',
+    })
+    const result = interpretCampaign(
+      'migrated-run',
+      { campaignYaml: MIN_CAMPAIGN_YAML, state: migratedState, ledger: null, principles: null },
+      'fs:/synthetic'
+    )
+    expect(result?.state.status).toBe('satisfied')
+  })
+
+  it('reads phase when last_entered_phase is absent (pre-#236 legacy)', () => {
+    // STATE_DONE uses `phase` only — already covered by an earlier test
+    // but exercised here in the back-compat group for clarity.
+    const legacyState = JSON.stringify({
+      phase: 'GATED',
+      iteration: 1,
+      run_id: 'legacy-run',
+      timestamp: '2026-05-01T12:00:00Z',
+    })
+    const result = interpretCampaign(
+      'legacy-run',
+      { campaignYaml: MIN_CAMPAIGN_YAML, state: legacyState, ledger: null, principles: null },
+      'fs:/synthetic'
+    )
+    expect(result?.state.status).toBe('gated')
+  })
+
+  it('prefers last_entered_phase over phase when both are present', () => {
+    // Mid-migration state.json may transiently carry both. The newer
+    // field wins — orchestrator's runtime back-compat populates `phase`
+    // for older readers but `last_entered_phase` is the source of truth.
+    const bothState = JSON.stringify({
+      last_entered_phase: 'DONE',
+      phase: 'EXECUTE_ANALYZE',
+      iteration: 3,
+      run_id: 'both-fields',
+      timestamp: '2026-05-28T12:00:00Z',
+    })
+    const result = interpretCampaign(
+      'both-fields',
+      { campaignYaml: MIN_CAMPAIGN_YAML, state: bothState, ledger: null, principles: null },
+      'fs:/synthetic'
+    )
+    expect(result?.state.status).toBe('satisfied')
+  })
+
+  it('falls through to active when neither phase field is present', () => {
+    const malformedState = JSON.stringify({
+      iteration: 1,
+      run_id: 'no-phase-fields',
+      timestamp: '2026-05-28T12:00:00Z',
+    })
+    const result = interpretCampaign(
+      'no-phase-fields',
+      { campaignYaml: MIN_CAMPAIGN_YAML, state: malformedState, ledger: null, principles: null },
+      'fs:/synthetic'
+    )
+    expect(result?.state.status).toBe('active')
+  })
+
   // ─── Cache-stability: last_advanced_at must be deterministic across reads
   // when state.json is absent. Otherwise the projection cache key changes
   // every request and the LLM regenerates per page load. The fix: thread
@@ -234,10 +305,37 @@ describe('buildNousWorkspace', () => {
     expect(workspace.states.length).toBe(3)
   })
 
-  it('skips runs with empty campaign YAML', async () => {
+  // #239 + migrated state.jsons: campaigns whose YAML lives in a
+  // different location (or was never created at the source root)
+  // still need to surface — they're real campaigns nous has run.
+  // Without this, a user who has set NOUS_CAMPAIGN_PARENT and migrated
+  // their pre-#239 work_dirs sees zero campaigns despite having dozens
+  // on disk. The interpreter renders a placeholder declaration
+  // (title = runId, empty research_question) for state-only runs.
+  it('emits a state-only Intent when state.json is present but campaign YAML is absent', async () => {
+    const source = staticSource({
+      'has-yaml': { campaignYaml: MIN_CAMPAIGN_YAML, state: STATE_DONE },
+      'state-only': { campaignYaml: '', state: STATE_ACTIVE },
+    })
+    const workspace = await buildNousWorkspace(source)
+    expect(workspace.intents.length).toBe(2)
+    const stateOnly = workspace.intents.find((i) => i.id.includes('state-only'))
+    expect(stateOnly).toBeDefined()
+    expect(stateOnly?.declaration.title).toBe('state-only')
+    if (stateOnly?.extension.kind === 'nous-campaign') {
+      // Placeholder research_question — no YAML to source one from.
+      expect(stateOnly.extension.research_question).toMatch(
+        /no research_question recorded/
+      )
+    }
+    // Schema must still validate.
+    expect(WorkspaceSchema.safeParse(workspace).success).toBe(true)
+  })
+
+  it('still skips runs that have neither campaign YAML nor state.json', async () => {
     const source = staticSource({
       'has-yaml': { campaignYaml: MIN_CAMPAIGN_YAML },
-      'orphan-state': { campaignYaml: '', state: STATE_ACTIVE }, // no campaign-X.yaml
+      ghost: { campaignYaml: '', state: null }, // truly empty
     })
     const workspace = await buildNousWorkspace(source)
     expect(workspace.intents.length).toBe(1)

@@ -1,52 +1,42 @@
 import type { Workspace } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
 
 /**
- * Source registry — knows about all data sources the v0.1 substrate can
- * load workspaces from.
- *
- * The fixture source is statically registered (`FIXTURE_SOURCE`) since
- * it's bundled with the app. Adapter sources are **discovered dynamically**
- * from `/api/sources` at startup so multiple Nous workspaces (or other
- * adapter kinds in v0.2) can be configured via `integral.config.json`.
+ * Source registry — knows about all data sources Integral can load
+ * workspaces from. Every source is an adapter discovered dynamically
+ * from `/api/sources` at app mount; the v0.1 `'fixture'` source kind
+ * was removed in v0.2.0 (see `intent-schema-v0.2.md` § "What v0.2.0
+ * removed").
  *
  * The URL contract `?sources=a,b` filters; missing param means "all
- * registered" (fixture + every configured adapter source).
+ * registered" (every configured adapter source).
  */
 
-export type SourceKind = 'fixture' | 'adapter'
+export type SourceKind = 'adapter'
 
 export interface SourceEntry {
   /** Stable id used in URLs and `intent.provenance.source`. */
   id: string
   /** Human-readable label shown in the picker chip. */
   label: string
-  /** `'fixture'` = bundled static data; `'adapter'` = fetched from
-   *  the Vite plugin's `/api/workspace?source=<id>` endpoint. */
+  /** Always `'adapter'` in v0.2.0 — fetched from the Vite plugin's
+   *  `/api/workspace?source=<id>` endpoint. */
   kind: SourceKind
   /** Filesystem path of the source on the dev machine. Present for
-   *  adapter sources resolved from `integral.config.json`; absent for
-   *  the fixture and absent in offline test environments. Consumed by
-   *  the A5 `RunCommand` panel to compose paste-ready `nous run`
-   *  commands; surfaces should treat as optional. */
+   *  adapter sources resolved from `integral.config.json`; absent in
+   *  offline test environments. Consumed by the A5 `RunCommand` panel
+   *  to compose paste-ready `nous run` commands. */
   path?: string
 }
 
-export const FIXTURE_SOURCE: SourceEntry = {
-  id: 'fixture',
-  label: 'demo fixture',
-  kind: 'fixture',
-}
-
 /**
- * Fetch the dynamic source registry from `/api/sources` and merge with
- * the static fixture source. Returns the fixture-only registry on fetch
- * failure so the app stays usable in test/preview environments.
+ * Fetch the dynamic source registry from `/api/sources`. Returns an
+ * empty registry on fetch failure so the app surfaces an actionable
+ * empty state rather than crashing in test/preview environments.
  */
 export async function fetchSourceRegistry(): Promise<ReadonlyArray<SourceEntry>> {
   try {
     const res = await fetch('/api/sources')
-    if (!res.ok) return [FIXTURE_SOURCE]
+    if (!res.ok) return []
     const body = (await res.json()) as {
       sources?: Array<{
         id: string
@@ -63,9 +53,9 @@ export async function fetchSourceRegistry(): Promise<ReadonlyArray<SourceEntry>>
         kind: 'adapter' as const,
         ...(typeof s.path === 'string' ? { path: s.path } : {}),
       }))
-    return [FIXTURE_SOURCE, ...adapters]
+    return adapters
   } catch {
-    return [FIXTURE_SOURCE]
+    return []
   }
 }
 
@@ -176,31 +166,23 @@ export function mergeWorkspaces(workspaces: ReadonlyArray<Workspace>): Workspace
 }
 
 /**
- * Load a single source's workspace. Bundled `'fixture'` is a static
- * import (no network); adapters fetch `/api/workspace?source=<id>`.
- *
- * The returned workspace is decorated with the source ID so callers
- * don't need to remember to attribute themselves.
+ * Load a single source's workspace via `/api/workspace?source=<id>`. The
+ * returned workspace is decorated with the source ID so callers don't
+ * need to remember to attribute themselves.
  */
 export async function loadSource(entry: SourceEntry): Promise<Workspace> {
-  if (entry.kind === 'fixture' && entry.id === 'fixture') {
-    return attributeSource(fixtureWorkspace, 'fixture')
+  const res = await fetch(`/api/workspace?source=${encodeURIComponent(entry.id)}`)
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(
+      `adapter "${entry.id}" returned ${res.status}: ${body.error ?? '(no detail)'}`
+    )
   }
-  if (entry.kind === 'adapter') {
-    const res = await fetch(`/api/workspace?source=${encodeURIComponent(entry.id)}`)
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(
-        `adapter "${entry.id}" returned ${res.status}: ${body.error ?? '(no detail)'}`
-      )
-    }
-    const body = await res.json()
-    if (!body || typeof body !== 'object' || !body.workspace) {
-      throw new Error(`adapter "${entry.id}" response missing 'workspace' field`)
-    }
-    return attributeSource(body.workspace as Workspace, entry.id)
+  const body = await res.json()
+  if (!body || typeof body !== 'object' || !body.workspace) {
+    throw new Error(`adapter "${entry.id}" response missing 'workspace' field`)
   }
-  throw new Error(`unsupported source kind: ${entry.kind}`)
+  return attributeSource(body.workspace as Workspace, entry.id)
 }
 
 /**

@@ -266,11 +266,6 @@ function OverviewSummary({
           {ext.standing_invariants.length === 1 ? '' : 's'}
         </p>
       )}
-      {ext.kind === 'paper-campaign' && (
-        <p className={styles.overviewHint}>
-          {ext.sections.length} section{ext.sections.length === 1 ? '' : 's'}
-        </p>
-      )}
     </div>
   )
 }
@@ -376,92 +371,6 @@ function ExtensionSummary({ intent }: { intent: Intent }) {
     )
   }
 
-  if (ext.kind === 'feature-pr') {
-    return (
-      <div className={styles.summaryRow}>
-        <div className={styles.summaryChips}>
-          <Chip
-            mono
-            tone={ext.ci_status === 'failing' ? 'rose' : ext.ci_status === 'passing' ? 'sage' : 'mute'}
-            dot
-          >
-            ci · {ext.ci_status}
-          </Chip>
-          <Chip
-            mono
-            tone={
-              ext.review_status === 'changes-requested'
-                ? 'amber'
-                : ext.review_status === 'approved' || ext.review_status === 'merged'
-                ? 'sage'
-                : 'mute'
-            }
-          >
-            review · {ext.review_status}
-          </Chip>
-        </div>
-        {ext.diff_summary && (
-          <p className={styles.diffSummary}>{ext.diff_summary}</p>
-        )}
-      </div>
-    )
-  }
-
-  if (ext.kind === 'paper-campaign') {
-    return (
-      <div className={styles.summaryRow}>
-        <div className={styles.summaryChips}>
-          {ext.venue && <Chip mono tone="mute">{ext.venue}</Chip>}
-          <Chip mono tone="mute">
-            {ext.sections.length} section{ext.sections.length === 1 ? '' : 's'}
-          </Chip>
-          {ext.submission_deadline && (
-            <Chip tone="amber" mono>
-              due {ext.submission_deadline.slice(0, 10)}
-            </Chip>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (ext.kind === 'paper-section') {
-    return (
-      <div className={styles.summaryRow}>
-        <div className={styles.summaryChips}>
-          <Chip mono tone="mute">§{ext.section_order}</Chip>
-          <Chip mono tone="mute">{ext.status}</Chip>
-          <Chip mono tone="mute">
-            {ext.claims.length} claim{ext.claims.length === 1 ? '' : 's'}
-          </Chip>
-        </div>
-      </div>
-    )
-  }
-
-  if (ext.kind === 'paper-claim') {
-    return (
-      <div className={styles.summaryRow}>
-        <p className={styles.claimText}>{ext.claim_text}</p>
-        <div className={styles.summaryChips}>
-          <Chip
-            mono
-            tone={
-              ext.citation_status === 'unsourced' ||
-              ext.citation_status === 'unsupported'
-                ? 'rose'
-                : ext.citation_status === 'citation-attached'
-                ? 'sage'
-                : 'mute'
-            }
-          >
-            {ext.citation_status}
-          </Chip>
-        </div>
-      </div>
-    )
-  }
-
   return null
 }
 
@@ -504,24 +413,6 @@ function ExtensionDetail({ intent }: { intent: Intent }) {
     )
   }
 
-  if (ext.kind === 'feature-pr') {
-    // diff_summary lives in ExtensionSummary (visible at structure too); detail
-    // zoom only adds the canonical PR anchor that's noisy at structure zoom.
-    return (
-      <div className={styles.detail}>
-        <SectionLabel>pr</SectionLabel>
-        <p className={styles.anchorLine}>{ext.github_pr_anchor.uri}</p>
-      </div>
-    )
-  }
-
-  // paper-claim: claim_text and citation_status are already shown by
-  // ExtensionSummary; the per-claim evidence chain lives in EvidenceEdges.
-  // Nothing extra to surface at detail zoom from this kind alone.
-  if (ext.kind === 'paper-claim') {
-    return null
-  }
-
   if (ext.kind === 'nous-campaign') {
     return (
       <div className={styles.detail}>
@@ -557,27 +448,6 @@ function ExtensionDetail({ intent }: { intent: Intent }) {
       <div className={styles.detail}>
         <SectionLabel>repo</SectionLabel>
         <p className={styles.anchorLine}>{ext.repo_anchor.uri}</p>
-      </div>
-    )
-  }
-
-  if (ext.kind === 'paper-campaign') {
-    return (
-      <div className={styles.detail}>
-        <SectionLabel>anchors</SectionLabel>
-        <ul className={styles.anchorList}>
-          <li>draft: {ext.draft_anchor.uri}</li>
-          <li>citations: {ext.citation_library_anchor.uri}</li>
-        </ul>
-      </div>
-    )
-  }
-
-  if (ext.kind === 'paper-section') {
-    return (
-      <div className={styles.detail}>
-        <SectionLabel>draft</SectionLabel>
-        <p className={styles.anchorLine}>{ext.draft_anchor.uri}</p>
       </div>
     )
   }
@@ -634,48 +504,6 @@ function ChildRowFigure({ ext }: { ext: TypeExtension }) {
     return (
       <span className={styles.childFigure}>
         <ScoreGauge score={ext.score} ariaLabel="attempt score" />
-      </span>
-    )
-  }
-  if (ext.kind === 'feature-pr') {
-    return (
-      <span className={styles.childFigure}>
-        <Chip
-          mono
-          tone={ext.ci_status === 'failing' ? 'rose' : ext.ci_status === 'passing' ? 'sage' : 'mute'}
-        >
-          ci · {ext.ci_status}
-        </Chip>
-        <Chip
-          mono
-          tone={
-            ext.review_status === 'changes-requested'
-              ? 'amber'
-              : ext.review_status === 'approved'
-              ? 'sage'
-              : 'mute'
-          }
-        >
-          {ext.review_status}
-        </Chip>
-      </span>
-    )
-  }
-  if (ext.kind === 'paper-section') {
-    return (
-      <span className={styles.childFigure}>
-        <Chip mono tone="mute">§{ext.section_order}</Chip>
-        <Chip mono tone="mute">{ext.status}</Chip>
-        <Chip mono tone="mute">
-          {ext.claims.length} claim{ext.claims.length === 1 ? '' : 's'}
-        </Chip>
-      </span>
-    )
-  }
-  if (ext.kind === 'paper-claim') {
-    return (
-      <span className={styles.childFigure}>
-        <Chip mono tone="mute">{ext.citation_status}</Chip>
       </span>
     )
   }

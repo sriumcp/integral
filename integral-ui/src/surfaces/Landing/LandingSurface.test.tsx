@@ -10,10 +10,10 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { WorkspaceSchema } from '@/schema'
-import { fixtureWorkspace, sri } from '@/fixtures/workspace'
+import { seedWorkspace, sri } from '@/test/seed-workspace'
 import { LandingSurface } from './LandingSurface'
 
-const validated = WorkspaceSchema.parse(fixtureWorkspace)
+const validated = WorkspaceSchema.parse(seedWorkspace)
 
 describe('LandingSurface', () => {
   it('renders glyph, wordmark, tagline and enter button', () => {
@@ -31,8 +31,9 @@ describe('LandingSurface', () => {
 
   it('peek shows the active root count derived from the validated workspace', () => {
     render(<LandingSurface workspace={validated} me={sri} onEnter={() => {}} />)
-    // Fixture has 4 root campaigns.
-    expect(screen.getByText(/4 active/)).toBeInTheDocument()
+    // Seed has 3 active root campaigns (nous + coral + feature).
+    // The Nous draft is a 4th root but it's `status: draft`, not active.
+    expect(screen.getByText(/3 active/)).toBeInTheDocument()
   })
 
   it('peek shows the awaiting-me count from the queue predicate', () => {

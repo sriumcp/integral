@@ -16,14 +16,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { Intent, IntentState, Party } from '@/schema'
-import { fixtureWorkspace } from '@/fixtures/workspace'
+import { seedWorkspace } from '@/test/seed-workspace'
 import { TreeCard } from './TreeCard'
 
 const me: Party = { id: 'sri', kind: 'human', display_name: 'sri' }
 
 function pair(kind: Intent['kind']): { intent: Intent; state: IntentState } {
-  const intent = fixtureWorkspace.intents.find((i) => i.kind === kind)!
-  const state = fixtureWorkspace.states.find((s) => s.intent_id === intent.id)!
+  const intent = seedWorkspace.intents.find((i) => i.kind === kind)!
+  const state = seedWorkspace.states.find((s) => s.intent_id === intent.id)!
   return { intent, state }
 }
 
@@ -36,10 +36,10 @@ describe('TreeCard', () => {
   })
 
   it('exposes data-kind on the card root', () => {
-    const { intent, state } = pair('paper-claim')
+    const { intent, state } = pair('coral-attempt')
     const { container } = render(<TreeCard intent={intent} state={state} me={me} />)
     const card = container.firstElementChild as HTMLElement
-    expect(card.getAttribute('data-kind')).toBe('paper-claim')
+    expect(card.getAttribute('data-kind')).toBe('coral-attempt')
   })
 
   it('marks data-awaiting when isAwaitingMe matches', () => {
@@ -80,11 +80,11 @@ describe('TreeCard', () => {
   })
 
   it('renders as a button with a descriptive aria-label', () => {
-    const { intent, state } = pair('feature-pr')
+    const { intent, state } = pair('feature-campaign')
     render(<TreeCard intent={intent} state={state} me={me} />)
     const card = screen.getByRole('button')
     const label = card.getAttribute('aria-label')!
-    expect(label).toMatch(/feature-pr/)
+    expect(label).toMatch(/feature-campaign/)
     expect(label).toContain(intent.declaration.title)
   })
 
@@ -112,8 +112,8 @@ describe('TreeCard', () => {
   })
 
   it('renders without crashing for every kind in the fixture', () => {
-    for (const intent of fixtureWorkspace.intents) {
-      const state = fixtureWorkspace.states.find(
+    for (const intent of seedWorkspace.intents) {
+      const state = seedWorkspace.states.find(
         (s) => s.intent_id === intent.id
       )!
       const { unmount } = render(<TreeCard intent={intent} state={state} me={me} />)

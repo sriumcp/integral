@@ -41,7 +41,7 @@ function makeNousCampaign(opts: { id: string }): {
   return {
     intent: {
       id,
-      schema_version: '0.1.0',
+      schema_version: '0.2.0',
       kind: 'nous-campaign',
       declaration: {
         title: 'Test campaign',
@@ -70,7 +70,7 @@ function makeNousCampaign(opts: { id: string }): {
     state: {
       id: `${id}-STATE`,
       intent_id: id,
-      schema_version: '0.1.0',
+      schema_version: '0.2.0',
       status: 'active',
       last_advanced_at: '2026-05-23T00:00:00Z',
       last_advanced_by: PROJECTOR,

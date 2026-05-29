@@ -1,9 +1,7 @@
 import type { GroupBy, MapView, SortBy } from '@/lib/filter-query'
 import { activeFilterCount } from '@/lib/filter-query'
-import type { SourceEntry } from '@/lib/sources'
 import { FilterBar, type FilterCategory } from '../FilterBar/FilterBar'
 import { GroupSortControls } from '../GroupSortControls/GroupSortControls'
-import { SourcesDropdown } from '../SourcesDropdown'
 import styles from './MapControls.module.css'
 
 /**
@@ -11,17 +9,15 @@ import styles from './MapControls.module.css'
  *
  * Composes (single row):
  *  - Counts cluster (active · awaiting · agents · drafts)
- *  - FilterBar (active chips + `+ filter` disclosure)
- *  - SourcesDropdown (always visible when sources are wired)
+ *  - FilterBar (active chips + `+ filter` disclosure) — narrows the
+ *    *display* of loaded intents
  *  - GroupSortControls (only visible when ≥1 filter active)
  *  - `+ new nous campaign` button (when handler provided)
  *
- * SourcesDropdown sits before GroupSort because data-plane decisions
- * (which sources to load) precede presentation-plane decisions
- * (how to filter / group / sort within them) in the user's mental
- * flow. The dedicated `SOURCES` row that earlier shipped here is
- * superseded — the AppHeader's scope pills are the read-only display
- * of source state, this dropdown is the control.
+ * Source control lives in the AppHeader's scope pills (v0.2.0
+ * onwards), not here. Filter is presentation-plane (narrows what's
+ * shown); source is data-plane (narrows what's loaded). Mixing them
+ * in the same cluster confused users — see the v0.1.5 design notes.
  */
 export interface MapControlsProps {
   view: MapView
@@ -38,11 +34,6 @@ export interface MapControlsProps {
   onRemoveFilter: (key: FilterCategory, value: string) => void
   onChangeGroup: (g: GroupBy) => void
   onChangeSort: (s: SortBy) => void
-  /** Sources picker. When all three are provided the SourcesDropdown
-   *  renders inline on the filter row. Omit any to hide entirely. */
-  knownSources?: ReadonlyArray<SourceEntry>
-  enabledSources?: ReadonlySet<string>
-  onToggleSource?: (sourceId: string) => void
   /** Optional + new nous campaign button. */
   onNewNousDraft?: () => void
 }
@@ -55,9 +46,6 @@ export function MapControls({
   onRemoveFilter,
   onChangeGroup,
   onChangeSort,
-  knownSources,
-  enabledSources,
-  onToggleSource,
   onNewNousDraft,
 }: MapControlsProps) {
   const filterCount = activeFilterCount(view.filter)
@@ -87,13 +75,6 @@ export function MapControls({
             onAdd={onAddFilter}
             onRemove={onRemoveFilter}
           />
-          {knownSources && enabledSources && onToggleSource && (
-            <SourcesDropdown
-              knownSources={knownSources}
-              enabledSources={enabledSources}
-              onToggleSource={onToggleSource}
-            />
-          )}
           <GroupSortControls
             group={view.group}
             sort={view.sort}

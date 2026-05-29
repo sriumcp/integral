@@ -4,6 +4,8 @@ Take the v0.1 prototype from "schema + Map + Detail land" to a complete, kinetic
 
 The /goal session is complete when every acceptance criterion below is met, every flagged decision was surfaced to the user with options (none silently picked), and the verification protocol exits clean.
 
+> **v0.2.0 status note.** This document captures the v0.1 chrome-polish spec; the work landed and most of it survives unchanged. Three v0.2.0 changes contradict specifics below: (1) the runtime fixture is gone — references to `src/fixtures/workspace.ts`, `fixtureWorkspace`, scripted shaping dialogs, and "render real fixture data" describe history; tests now use `src/test/seed-workspace.ts` and the running app pulls only from real adapter sources; (2) the placeholder `reversibility · 24h` chip and its v0.2 audit-log promise are gone (deleted; not "deferred"); (3) visual-regression baselines were removed alongside the fixture. The five work items themselves shipped.
+
 ---
 
 ## Universal discipline (applies to every item)
@@ -41,20 +43,18 @@ The always-on identity strip across the top of every surface (after Landing). Th
 - Renders sticky-top, full-width, above the surface body.
 - **Left cluster:** inverted-integral glyph (SVG, ~22px) + "Integral" wordmark (Plex Serif, weight 500) + `[v0.1]` Chip (mono, mute).
 - **Center cluster:** breadcrumbs derived from current view: `workspace › <view> [ › <intent-title>]`. Each segment is a button; clicking navigates to that level. The `workspace` crumb returns to Map. The `<view>` crumb is "map" when on Map, "detail" when on Detail. The `<intent-title>` segment appears only on Detail.
-- **Right cluster:** `● schema v0.1.0` Chip (sage dot, reads from the `SCHEMA_VERSION` literal — not hardcoded), `reversibility · 24h` Chip (mute, static placeholder for v0.1), `● sri` PartyChip.
+- **Right cluster:** `● schema v0.1.0` Chip (sage dot, reads from the `SCHEMA_VERSION` literal — not hardcoded), refresh affordance (`↻ synced <time> ago`) when `onRefresh` is wired, `● <me>` PartyChip.
 - Exposes `data-surface={current view kind}` on the root so visual tests and surface CSS can scope assertions.
 - Does NOT render on the Landing surface.
-- ≥6 behavioral tests covering: glyph + wordmark visible; `[v0.1]` chip renders; breadcrumb segments render per view (Map shows 2, Detail shows 3); breadcrumb click navigates to the right level; schema-version chip text is derived from `SCHEMA_VERSION` (test imports the literal and asserts it appears); `reversibility · 24h` chip exposes the v0.2 tooltip via its `title` attribute; me chip renders the current `Party` display name.
+- ≥6 behavioral tests covering: glyph + wordmark visible; `[v0.1]` chip renders; breadcrumb segments render per view (Map shows 2, Detail shows 3); breadcrumb click navigates to the right level; schema-version chip text is derived from `SCHEMA_VERSION` (test imports the literal and asserts it appears); me chip renders the current `Party` display name.
 
 **Decisions to surface to user (not silently choose):**
 
 - The exact shape of the inverted-integral SVG. Propose 2–3 candidate path strings (e.g., the literal ∫ glyph at 180° rotation; a hand-tuned curve closer to the ccdesign mock; a thinner-stroke variant). Render each in a small comparison sheet so the user can pick. Don't ship a placeholder.
 - Whether breadcrumbs hide entirely below 768px viewport, truncate ellipsis-style, or stay visible with smaller font.
-- Whether the `reversibility · 24h` chip is interactive in v0.1 (click → opens an audit-view stub) or display-only (recommended: display-only with `title="v0.2 — audit log"`).
 
 **Non-goals (defer to v0.2):**
 
-- Real audit-log behind the reversibility chip.
 - Workspace switcher (multi-workspace).
 - Notifications / unread count on the me chip.
 - Any popover / dropdown behavior.

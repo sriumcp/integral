@@ -11,7 +11,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { SCHEMA_VERSION } from '@/schema'
-import { sri, nousPlanner } from '@/fixtures/workspace'
+import { sri, nousPlanner } from '@/test/seed-workspace'
 import { AppHeader, type FocusSegment, type ScopePill } from './AppHeader'
 
 const NOUS_SCOPE: ScopePill[] = [{ id: 'nous', label: 'nous' }]
@@ -47,6 +47,63 @@ describe('AppHeader', () => {
     // No rendered scope row when scope is empty — the center cluster
     // collapses cleanly rather than carrying an empty container.
     expect(container.querySelector('[data-scope="true"]')).toBeNull()
+  })
+
+  // ─── Interactive scope pills (v0.2.0) ────────────────────────────────────
+  // The AppHeader is the canonical scope-control surface. Pills are
+  // rendered as buttons when `onClick` is provided; click toggles the
+  // source. The `data-enabled` attribute distinguishes enabled (filled
+  // style) from disabled (muted/dashed) states.
+
+  it('renders pills as buttons when onClick is provided (interactive mode)', () => {
+    const onClick = vi.fn()
+    const interactive: ScopePill[] = [
+      { id: 'nous', label: 'nous', enabled: true, onClick },
+      { id: 'coral', label: 'coral', enabled: false, onClick },
+    ]
+    render(<AppHeader surface="map" scope={interactive} me={sri} />)
+    expect(
+      screen.getByRole('button', { name: /disable source nous/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /enable source coral/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('exposes data-enabled on every pill (true for on, false for off)', () => {
+    const interactive: ScopePill[] = [
+      { id: 'nous', label: 'nous', enabled: true, onClick: () => {} },
+      { id: 'coral', label: 'coral', enabled: false, onClick: () => {} },
+    ]
+    const { container } = render(
+      <AppHeader surface="map" scope={interactive} me={sri} />,
+    )
+    expect(
+      container.querySelector('[data-source-id="nous"]')?.getAttribute('data-enabled'),
+    ).toBe('true')
+    expect(
+      container.querySelector('[data-source-id="coral"]')?.getAttribute('data-enabled'),
+    ).toBe('false')
+  })
+
+  it('clicking an interactive pill fires its onClick', () => {
+    const onClick = vi.fn()
+    const interactive: ScopePill[] = [
+      { id: 'nous', label: 'nous', enabled: true, onClick },
+    ]
+    render(<AppHeader surface="map" scope={interactive} me={sri} />)
+    fireEvent.click(screen.getByRole('button', { name: /disable source nous/i }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders pills as passive spans (legacy read-only) when onClick is omitted', () => {
+    const passive: ScopePill[] = [{ id: 'nous', label: 'nous' }]
+    render(<AppHeader surface="map" scope={passive} me={sri} />)
+    expect(
+      screen.queryByRole('button', { name: /disable source nous/i }),
+    ).toBeNull()
+    // The label still appears, just inside a non-interactive element.
+    expect(screen.getByText('nous')).toBeInTheDocument()
   })
 
   it('renders source + chevron + focus title on Detail', () => {
@@ -240,9 +297,10 @@ describe('AppHeader', () => {
     expect(button.disabled).toBe(true)
   })
 
-  it('falls back to legacy reversibility chip when onRefresh is absent', () => {
+  it('omits the refresh affordance when onRefresh is absent', () => {
     render(<AppHeader surface="map" scope={NOUS_SCOPE} me={sri} />)
-    expect(screen.getByText(/reversibility · 24h/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /refresh workspace/i })).toBeNull()
+    expect(screen.queryByText(/reversibility/)).toBeNull()
   })
 
   it('renders the current Party display name in the me chip', () => {

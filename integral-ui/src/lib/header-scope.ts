@@ -16,13 +16,13 @@ import type { ScopePill } from '@/components'
 import type { SourceEntry } from './sources'
 
 /**
- * Map scope — registry-ordered pills for every currently-enabled source.
+ * Read-only map scope — registry-ordered pills for currently-enabled
+ * sources only. Used for tests + legacy callers; the canonical v0.2.0
+ * pattern is `mapScopeInteractive` below, which surfaces ALL known
+ * sources with click-to-toggle.
  *
  * Order is registry order (not toggle order) so the display stays stable
- * across user toggles; switching a source off then on again keeps the
- * pill in its original position. Callers should treat the result as a
- * pure derivation of (registry, enabled) — a useMemo on those two
- * dependencies is the canonical wiring.
+ * across user toggles. Pure derivation of (registry, enabled).
  */
 export function mapScope(
   registry: ReadonlyArray<SourceEntry>,
@@ -31,6 +31,32 @@ export function mapScope(
   return registry
     .filter((entry) => enabled.has(entry.id))
     .map((entry) => ({ id: entry.id, label: entry.label }))
+}
+
+/**
+ * Interactive map scope — registry-ordered pills for EVERY known
+ * source, each carrying its current `enabled` state and an `onClick`
+ * that toggles it. This is the v0.2.0 scope-control affordance: the
+ * AppHeader is the single canonical place to manage which sources are
+ * in scope, replacing the per-surface SourcesDropdown that v0.1
+ * shipped on Map.
+ *
+ * The pills render the same way on every surface (Map / Detail /
+ * Shaping). Disabled sources stay visible in their registry position,
+ * just rendered with the `data-enabled="false"` muted style — toggling
+ * doesn't shift layout. The user always sees the truth at a glance.
+ */
+export function mapScopeInteractive(
+  registry: ReadonlyArray<SourceEntry>,
+  enabled: ReadonlySet<string>,
+  onToggle: (sourceId: string) => void,
+): ScopePill[] {
+  return registry.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    enabled: enabled.has(entry.id),
+    onClick: () => onToggle(entry.id),
+  }))
 }
 
 /**

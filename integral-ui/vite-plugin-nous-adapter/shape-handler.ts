@@ -89,8 +89,9 @@ A *good* research_question:
 Kinds to watch for (so you can flag mismatch):
   - **nous-campaign**: open research question, hypothesis-driven, principles emerge from iterations.
   - **coral-optimization**: scored search over a population (best-of-n / beam / etc.). If the user says "find the best…" or "optimize…" without a research question, suggest reframing as Coral.
-  - **paper-campaign**: write up findings (not run experiments). If the user says "draft a paper…", suggest reframing as Paper.
   - **feature-campaign**: ship code. If the user says "implement…" or "ship…", suggest reframing as Feature.
+
+If the user describes paper-writing or PR work, note it in concerns but do not suggest a kind — the substrate does not yet ship adapters for those (returning in a future schema bump).
 
 Each turn, return STRICT JSON ONLY (no markdown, no preamble):
 {
@@ -98,7 +99,7 @@ Each turn, return STRICT JSON ONLY (no markdown, no preamble):
   "patch": { ... fields to fill on the typed draft, or null if no fields to update this turn ... },
   "status": "shaping" | "ready-to-commit" | "kind-mismatch",
   "concerns": [ "short strings flagging issues with the current draft, e.g. 'research_question is too vague' " ],
-  "kind_suggestion": "coral-optimization" | "paper-campaign" | "feature-campaign" | null
+  "kind_suggestion": "coral-optimization" | "feature-campaign" | null
 }
 
 Patch field shape (only these fields are patchable; anything else is ignored):

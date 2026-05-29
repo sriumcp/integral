@@ -1,5 +1,5 @@
 import type { Intent } from '@/schema'
-import type { DraftShape } from '@/fixtures/shaping'
+import type { DraftShape } from '@/lib/draft-shape'
 import { Chip, KindBadge, SectionLabel, Tag } from '@/components/atoms'
 import styles from './IntentDraftPane.module.css'
 

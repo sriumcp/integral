@@ -56,13 +56,18 @@ const PROJECTOR_AGENT = {
   kind: 'agent' as const,
   display_name: 'nous-projector',
 }
-const DEFAULT_HUMAN_HOLDER = {
-  id: 'sri',
+// Synthetic placeholder used when the source ledger has no holder
+// information (Nous's campaign-X.yaml + ledger.json don't carry holder
+// fields — see gaps.md G-N-13). Reading another user's campaigns must
+// not silently attribute holders to the current user; an explicit
+// "(unknown)" label surfaces the gap in the chrome.
+const UNKNOWN_HUMAN = {
+  id: 'unknown-human',
   kind: 'human' as const,
-  display_name: 'sri',
+  display_name: '(unknown)',
 }
 
-const SCHEMA_VERSION = '0.1.0' as const
+const SCHEMA_VERSION = '0.2.0' as const
 
 // ─── parseLedger ───────────────────────────────────────────────────────────
 
@@ -276,7 +281,7 @@ export function interpretIteration({
     },
     holder: {
       mode: 'jointly-held',
-      parties: [DEFAULT_HUMAN_HOLDER, PROJECTOR_AGENT],
+      parties: [UNKNOWN_HUMAN, PROJECTOR_AGENT],
     },
     lifetime: {
       kind: 'discrete',

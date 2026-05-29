@@ -25,11 +25,11 @@ import {
   WorkspaceSchema,
   isIntentOfKind,
 } from '@/schema'
-import { fixtureWorkspace, sri, nousPlanner } from '@/fixtures/workspace'
+import { seedWorkspace, sri, nousPlanner } from '@/test/seed-workspace'
 
 describe('WorkspaceSchema — fixture validation', () => {
   it('accepts the v0.1 fixture covering all four intent kinds', () => {
-    const result = WorkspaceSchema.safeParse(fixtureWorkspace)
+    const result = WorkspaceSchema.safeParse(seedWorkspace)
     if (!result.success) {
       // surface the full error so CI output is actionable
       throw new Error(
@@ -44,14 +44,14 @@ describe('WorkspaceSchema — fixture validation', () => {
     // Derived from the schema enum — when v0.2 adds a kind without adding it
     // to the fixture, this test fails. The prior hardcoded list could pass
     // a stale fixture against an extended schema.
-    const kinds = new Set(fixtureWorkspace.intents.map((i) => i.kind))
+    const kinds = new Set(seedWorkspace.intents.map((i) => i.kind))
     expect(kinds).toEqual(new Set(IntentKindSchema.options))
   })
 
   it('has one IntentState per Intent (1:1 invariant)', () => {
-    const intentIds = new Set(fixtureWorkspace.intents.map((i) => i.id))
+    const intentIds = new Set(seedWorkspace.intents.map((i) => i.id))
     const stateIntentIds = new Set(
-      fixtureWorkspace.states.map((s) => s.intent_id)
+      seedWorkspace.states.map((s) => s.intent_id)
     )
     expect(stateIntentIds).toEqual(intentIds)
   })
@@ -60,7 +60,7 @@ describe('WorkspaceSchema — fixture validation', () => {
 describe('IntentSchema — kind/extension consistency', () => {
   it('rejects an Intent where kind ≠ extension.kind', () => {
     const broken = {
-      ...fixtureWorkspace.intents[0],
+      ...seedWorkspace.intents[0],
       kind: 'coral-optimization',
     }
     const result = IntentSchema.safeParse(broken)
@@ -69,23 +69,25 @@ describe('IntentSchema — kind/extension consistency', () => {
 
   it('rejects an Intent with the wrong schema_version', () => {
     const broken = {
-      ...fixtureWorkspace.intents[0],
-      schema_version: '0.2.0',
+      ...seedWorkspace.intents[0],
+      schema_version: '0.1.0',
     }
     const result = IntentSchema.safeParse(broken)
     expect(result.success).toBe(false)
   })
 
-  it('pins SCHEMA_VERSION to the v0.1 literal', () => {
-    // If this test ever needs updating, it's a v0.2 file — see
-    // intent-schema-v0.2.md, not this one.
-    expect(SCHEMA_VERSION).toBe('0.1.0')
+  it('pins SCHEMA_VERSION to the v0.2.0 literal', () => {
+    // The schema bumped to 0.2.0 when paper-* and feature-pr kinds
+    // were removed (see intent-schema-v0.2.md § "What v0.2.0 removed").
+    // Future bumps create another file; this assertion fails until you
+    // update both the schema and this pin.
+    expect(SCHEMA_VERSION).toBe('0.2.0')
   })
 
   it('IntentStateSchema rejects mismatched schema_version too', () => {
     const broken = {
-      ...fixtureWorkspace.states[0],
-      schema_version: '0.2.0',
+      ...seedWorkspace.states[0],
+      schema_version: '0.1.0',
     }
     const result = IntentStateSchema.safeParse(broken)
     expect(result.success).toBe(false)
@@ -100,7 +102,7 @@ describe('Per-extension validation — schema-exhaustive falsification', () => {
   it('rejects every IntentKind with an empty extension payload', () => {
     for (const kind of IntentKindSchema.options) {
       const result = IntentSchema.safeParse({
-        ...fixtureWorkspace.intents[0],
+        ...seedWorkspace.intents[0],
         kind,
         extension: { kind },
       })
@@ -148,7 +150,7 @@ describe('KnowledgeRef — discriminated by scope', () => {
 
 describe('EvidenceLinkSchema — cross-intent edges', () => {
   it('accepts the fixture evidence links (all IntentId-shaped to_intent)', () => {
-    for (const e of fixtureWorkspace.evidence_links) {
+    for (const e of seedWorkspace.evidence_links) {
       const result = EvidenceLinkSchema.safeParse(e)
       if (!result.success) {
         throw new Error(
@@ -189,7 +191,7 @@ describe('EvidenceLinkSchema — cross-intent edges', () => {
 describe('IntentStateSchema — projection budget enforcement', () => {
   function stateWithProjection(zoom: 'overview' | 'structure' | 'detail', body: string) {
     return {
-      ...fixtureWorkspace.states[0],
+      ...seedWorkspace.states[0],
       projections: {
         [zoom]: {
           zoom,
@@ -235,8 +237,8 @@ describe('IntentStateSchema — projection budget enforcement', () => {
 describe('WorkspaceSchema — 1:1 Intent↔IntentState bijection', () => {
   it('rejects a workspace with more states than intents', () => {
     const broken = {
-      ...fixtureWorkspace,
-      states: [...fixtureWorkspace.states, fixtureWorkspace.states[0]!],
+      ...seedWorkspace,
+      states: [...seedWorkspace.states, seedWorkspace.states[0]!],
     }
     const result = WorkspaceSchema.safeParse(broken)
     expect(result.success).toBe(false)
@@ -244,11 +246,11 @@ describe('WorkspaceSchema — 1:1 Intent↔IntentState bijection', () => {
 
   it('rejects a workspace with a state pointing at a nonexistent intent', () => {
     const broken = {
-      ...fixtureWorkspace,
+      ...seedWorkspace,
       states: [
-        ...fixtureWorkspace.states.slice(0, -1),
+        ...seedWorkspace.states.slice(0, -1),
         {
-          ...fixtureWorkspace.states[fixtureWorkspace.states.length - 1]!,
+          ...seedWorkspace.states[seedWorkspace.states.length - 1]!,
           intent_id: 'nonexistent-intent-id',
         },
       ],
@@ -259,14 +261,14 @@ describe('WorkspaceSchema — 1:1 Intent↔IntentState bijection', () => {
 
   it('rejects a workspace where two intents share the same state_ref', () => {
     const broken = {
-      ...fixtureWorkspace,
+      ...seedWorkspace,
       intents: [
-        fixtureWorkspace.intents[0]!,
+        seedWorkspace.intents[0]!,
         {
-          ...fixtureWorkspace.intents[1]!,
-          state_ref: fixtureWorkspace.intents[0]!.state_ref,
+          ...seedWorkspace.intents[1]!,
+          state_ref: seedWorkspace.intents[0]!.state_ref,
         },
-        ...fixtureWorkspace.intents.slice(2),
+        ...seedWorkspace.intents.slice(2),
       ],
     }
     const result = WorkspaceSchema.safeParse(broken)
@@ -276,7 +278,7 @@ describe('WorkspaceSchema — 1:1 Intent↔IntentState bijection', () => {
 
 describe('OperationSchema — fixture coverage + per-kind falsification', () => {
   it('accepts every operation in the fixture', () => {
-    for (const op of fixtureWorkspace.operations) {
+    for (const op of seedWorkspace.operations) {
       const result = OperationSchema.safeParse(op)
       if (!result.success) {
         throw new Error(
@@ -344,9 +346,9 @@ describe('OperationSchema — fixture coverage + per-kind falsification', () => 
 
   it('WorkspaceSchema requires the operations field', () => {
     const broken = {
-      intents: fixtureWorkspace.intents,
-      states: fixtureWorkspace.states,
-      evidence_links: fixtureWorkspace.evidence_links,
+      intents: seedWorkspace.intents,
+      states: seedWorkspace.states,
+      evidence_links: seedWorkspace.evidence_links,
       // missing operations
     }
     const result = WorkspaceSchema.safeParse(broken)
@@ -356,16 +358,16 @@ describe('OperationSchema — fixture coverage + per-kind falsification', () => 
 
 describe('Provenance.source — v0.1.0 additive amendment', () => {
   it('accepts intents without provenance.source (back-compat)', () => {
-    const intent = fixtureWorkspace.intents[0]!
+    const intent = seedWorkspace.intents[0]!
     // Fixture intents don't currently carry provenance.source — the
     // loader decorates them at fetch time. Schema must accept either.
-    const result = WorkspaceSchema.safeParse(fixtureWorkspace)
+    const result = WorkspaceSchema.safeParse(seedWorkspace)
     expect(result.success).toBe(true)
     expect(intent.provenance.source).toBeUndefined()
   })
 
   it('accepts intents with provenance.source set to a non-empty string', () => {
-    const intent = fixtureWorkspace.intents[0]!
+    const intent = seedWorkspace.intents[0]!
     const decorated = {
       ...intent,
       provenance: { ...intent.provenance, source: 'nous' },
@@ -375,7 +377,7 @@ describe('Provenance.source — v0.1.0 additive amendment', () => {
   })
 
   it('rejects intents with provenance.source as an empty string', () => {
-    const intent = fixtureWorkspace.intents[0]!
+    const intent = seedWorkspace.intents[0]!
     const decorated = {
       ...intent,
       provenance: { ...intent.provenance, source: '' },
@@ -411,7 +413,7 @@ describe('ExternalAnchorKind — additive amendment for github-repo (B2)', () =>
 
 describe('isIntentOfKind — type narrowing helper', () => {
   it('narrows a Nous campaign to its extension shape', () => {
-    const intent = fixtureWorkspace.intents.find(
+    const intent = seedWorkspace.intents.find(
       (i) => i.kind === 'nous-campaign'
     )!
     if (isIntentOfKind(intent, 'nous-campaign')) {

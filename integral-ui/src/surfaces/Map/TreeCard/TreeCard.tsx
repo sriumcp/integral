@@ -148,14 +148,6 @@ function PerKindSummary({ intent }: { intent: Intent }) {
       </div>
     )
   }
-  if (ext.kind === 'paper-campaign') {
-    return (
-      <div style={summaryRowStyle}>
-        {ext.venue && <Chip mono tone="mute">{ext.venue}</Chip>}
-        <Chip mono tone="mute">{ext.sections.length} sections</Chip>
-      </div>
-    )
-  }
   return null
 }
 

@@ -1,17 +1,23 @@
 /**
  * Integral Intent Schema — runtime validators (zod) and inferred TS types.
  *
- * Mirrors `intent-schema-v0.1.md` at the project root. zod schemas are the
+ * Mirrors `intent-schema-v0.2.md` at the project root. zod schemas are the
  * source of truth; TS types below are inferred via `z.infer` — edit the
  * schema, not the type.
  *
- * Schema version: 0.1.0 (additive `tags` field included — additive fields
- * stay at the current minor version per CLAUDE.md).
+ * Schema version: 0.2.0. The v0.1.0 schema declared 9 IntentKinds across
+ * four families (nous, coral, feature, paper). v0.2.0 narrows to the five
+ * kinds we actually ship adapters for today: `nous-campaign`,
+ * `nous-iteration`, `coral-optimization`, `coral-attempt`,
+ * `feature-campaign`. The four kinds with no adapter (`feature-pr`,
+ * `paper-campaign`, `paper-section`, `paper-claim`) are removed; they
+ * will return in a future schema bump when the paper adapter and full
+ * feature-dev land. See `intent-schema-v0.2.md` § "What v0.2.0 removed".
  */
 
 import { z } from 'zod'
 
-export const SCHEMA_VERSION = '0.1.0' as const
+export const SCHEMA_VERSION = '0.2.0' as const
 
 // ─── Primitive / branded scalars ───────────────────────────────────────────
 // We keep these as zod strings rather than branded types to avoid friction
@@ -58,13 +64,8 @@ export const IntentKindSchema = z.enum([
   // (b) Coral-shaped
   'coral-optimization',
   'coral-attempt',
-  // (c) Feature-development-shaped
+  // (c) Feature-development-shaped (campaign only — `feature-pr` returns in v0.3+)
   'feature-campaign',
-  'feature-pr',
-  // (d) Paper-shaped
-  'paper-campaign',
-  'paper-section',
-  'paper-claim',
 ])
 
 export const StatusSchema = z.enum([
@@ -297,69 +298,12 @@ export const CoralAttemptExtensionSchema = z.object({
 })
 
 // (c) Feature
-export const CIStatusSchema = z.enum(['pending', 'passing', 'failing', 'not-run'])
-export const ReviewStatusSchema = z.enum([
-  'unrequested',
-  'requested',
-  'changes-requested',
-  'approved',
-  'merged',
-  'closed',
-])
-
 export const FeatureCampaignExtensionSchema = z.object({
   kind: z.literal('feature-campaign'),
   repo_anchor: ExternalAnchorSchema,
   inherited_conventions: z.array(KnowledgeRefSchema),
   standing_invariants: z.array(ReferenceSchema),
   primary_pr_anchor: ExternalAnchorSchema.optional(),
-})
-
-export const FeaturePRExtensionSchema = z.object({
-  kind: z.literal('feature-pr'),
-  github_pr_anchor: ExternalAnchorSchema,
-  ci_status: CIStatusSchema,
-  review_status: ReviewStatusSchema,
-  diff_summary: z.string().optional(),
-})
-
-// (d) Paper
-export const PaperSectionStatusSchema = z.enum([
-  'outlined',
-  'drafted',
-  'revised',
-  'finalized',
-])
-
-export const ClaimCitationStatusSchema = z.enum([
-  'unsourced',
-  'citation-attached',
-  'self-evidence',
-  'unsupported',
-])
-
-export const PaperCampaignExtensionSchema = z.object({
-  kind: z.literal('paper-campaign'),
-  venue: z.string().optional(),
-  submission_deadline: TimestampSchema.optional(),
-  draft_anchor: ExternalAnchorSchema,
-  citation_library_anchor: ExternalAnchorSchema,
-  sections: z.array(IntentIdSchema),
-})
-
-export const PaperSectionExtensionSchema = z.object({
-  kind: z.literal('paper-section'),
-  section_title: z.string().min(1),
-  section_order: z.number().int().nonnegative(),
-  draft_anchor: ExternalAnchorSchema,
-  claims: z.array(IntentIdSchema),
-  status: PaperSectionStatusSchema,
-})
-
-export const PaperClaimExtensionSchema = z.object({
-  kind: z.literal('paper-claim'),
-  claim_text: z.string().min(1),
-  citation_status: ClaimCitationStatusSchema,
 })
 
 // Discriminated union of all extensions, keyed by `kind`.
@@ -369,10 +313,6 @@ export const TypeExtensionSchema = z.discriminatedUnion('kind', [
   CoralOptimizationExtensionSchema,
   CoralAttemptExtensionSchema,
   FeatureCampaignExtensionSchema,
-  FeaturePRExtensionSchema,
-  PaperCampaignExtensionSchema,
-  PaperSectionExtensionSchema,
-  PaperClaimExtensionSchema,
 ])
 
 // ─── Intent (the core object) ──────────────────────────────────────────────
@@ -707,10 +647,6 @@ export type NousIterationExtension = z.infer<typeof NousIterationExtensionSchema
 export type CoralOptimizationExtension = z.infer<typeof CoralOptimizationExtensionSchema>
 export type CoralAttemptExtension = z.infer<typeof CoralAttemptExtensionSchema>
 export type FeatureCampaignExtension = z.infer<typeof FeatureCampaignExtensionSchema>
-export type FeaturePRExtension = z.infer<typeof FeaturePRExtensionSchema>
-export type PaperCampaignExtension = z.infer<typeof PaperCampaignExtensionSchema>
-export type PaperSectionExtension = z.infer<typeof PaperSectionExtensionSchema>
-export type PaperClaimExtension = z.infer<typeof PaperClaimExtensionSchema>
 
 export type TypeExtension = z.infer<typeof TypeExtensionSchema>
 export type Intent = z.infer<typeof IntentSchema>
