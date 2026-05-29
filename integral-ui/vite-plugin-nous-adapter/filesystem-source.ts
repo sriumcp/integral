@@ -203,31 +203,48 @@ export class FilesystemNousSource implements NousSource {
   }
 }
 
-/**
- * Read NOUS_CAMPAIGN_PARENT from process.env, mirroring nous's
- * `_read_env_var` strictness from #239.
+/** Default location Integral looks for nous campaign runtime artifacts
+ *  (state.json / ledger.json / principles.json) when `NOUS_CAMPAIGN_PARENT`
+ *  is not set in the user's shell. Matches the convention real users
+ *  follow ("nous-campaigns/" sibling under Documents/Projects). Users
+ *  who organize differently override via `export NOUS_CAMPAIGN_PARENT=...`.
  *
- *   - Unset:                    returns null (caller falls back to
- *                               legacy-only discovery).
+ *  The path may not exist on a given machine — that's fine; the adapter's
+ *  discovery loop catches ENOENT and silently moves on (see listRunIds). */
+export const DEFAULT_NOUS_CAMPAIGN_PARENT = path.join(
+  os.homedir(),
+  'Documents',
+  'Projects',
+  'nous-campaigns'
+)
+
+/**
+ * Resolve the directory Integral should scan for nous campaign runtime
+ * artifacts, mirroring nous's `_read_env_var` strictness from #239.
+ *
+ *   - Unset:                    returns DEFAULT_NOUS_CAMPAIGN_PARENT
+ *                               (`~/Documents/Projects/nous-campaigns`).
+ *                               The default may not exist on disk;
+ *                               discovery silently no-ops if so.
  *   - Set to absolute path:     returns the resolved path.
  *   - Set to ~-prefixed path:   expands to home directory.
  *   - Set to empty/whitespace:  THROWS — typically `export
  *                               NOUS_CAMPAIGN_PARENT=$UNSET` typo.
- *                               Silent fallback would mask broken
- *                               env state where nous itself refuses
- *                               to run; surface loudly instead.
+ *                               Silent fallback would mask broken env
+ *                               state where nous itself refuses to run;
+ *                               surface loudly instead.
  *
  * Called per-request from the Vite plugin so a user export between
  * page loads is picked up without restarting the dev server.
  */
-export function resolveCampaignParent(): string | null {
+export function resolveCampaignParent(): string {
   const raw = process.env.NOUS_CAMPAIGN_PARENT
-  if (raw === undefined) return null
+  if (raw === undefined) return DEFAULT_NOUS_CAMPAIGN_PARENT
   const stripped = raw.trim()
   if (!stripped) {
     throw new Error(
       `NOUS_CAMPAIGN_PARENT is set but empty/whitespace (${JSON.stringify(raw)}). ` +
-        `Either unset it to use the legacy <repo>/.nous/<run_id>/ default, ` +
+        `Either unset it to use the default (${DEFAULT_NOUS_CAMPAIGN_PARENT}), ` +
         `or set it to an absolute directory path.`
     )
   }

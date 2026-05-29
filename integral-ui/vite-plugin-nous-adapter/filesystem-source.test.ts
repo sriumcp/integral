@@ -11,8 +11,9 @@
  *
  * 2. Empty-env-var strictness — `resolveCampaignParent` mirrors nous's
  *    `_read_env_var` semantics: empty/whitespace is a hard error
- *    (catches `export NOUS_CAMPAIGN_PARENT=$UNSET` typos), unset is
- *    null.
+ *    (catches `export NOUS_CAMPAIGN_PARENT=$UNSET` typos); unset
+ *    falls back to the documented default location
+ *    (`~/Documents/Projects/nous-campaigns`).
  *
  * Filesystem-isolated in `os.tmpdir()` — never touches the user's
  * actual `~/Documents/Projects/...` trees.
@@ -22,7 +23,11 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FilesystemNousSource, resolveCampaignParent } from './filesystem-source'
+import {
+  DEFAULT_NOUS_CAMPAIGN_PARENT,
+  FilesystemNousSource,
+  resolveCampaignParent,
+} from './filesystem-source'
 
 let tmpRoot: string
 
@@ -82,9 +87,18 @@ describe('resolveCampaignParent', () => {
     }
   })
 
-  it('returns null when env var is unset', () => {
+  it('returns the documented default when env var is unset', () => {
     delete process.env.NOUS_CAMPAIGN_PARENT
-    expect(resolveCampaignParent()).toBeNull()
+    // The default may not exist on disk on a given machine — that is
+    // fine; discovery silently no-ops if so. The test pins the value
+    // returned, not the existence of the directory.
+    expect(resolveCampaignParent()).toBe(DEFAULT_NOUS_CAMPAIGN_PARENT)
+  })
+
+  it('default points at ~/Documents/Projects/nous-campaigns', () => {
+    expect(DEFAULT_NOUS_CAMPAIGN_PARENT).toBe(
+      path.join(os.homedir(), 'Documents', 'Projects', 'nous-campaigns'),
+    )
   })
 
   it('returns the resolved path when env var is set to a directory', () => {

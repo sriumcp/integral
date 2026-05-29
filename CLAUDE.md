@@ -84,6 +84,7 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
 - **`vite-plugin-nous-adapter/` is the architectural barrier.** Despite the historical name, it houses *all* server-side concerns — every adapter's transport, every `/api/*` handler, the LLM clients, `node:fs` and `node:child_process` calls. Real I/O and LLM clients NEVER live in `src/` — not even type-only imports that pull module side-effects.
 - **The projection generator runs in-process.** Whether it splits into a separate service is a future question. `read-at-zoom-level` is a function, not a network call.
 - **The UI is web** for now. Terminal / other surfaces are out of scope until the web surfaces stabilize.
+- **Nous campaign discovery has two locations**, both always scanned: legacy `<source-path>/.nous/<runId>/` and a "campaign parent" directory. The campaign parent defaults to `~/Documents/Projects/nous-campaigns/` (matches the convention real users follow). Override via `export NOUS_CAMPAIGN_PARENT=/some/other/path` in the shell that launches `npm run dev`. Empty/whitespace value is a hard error (catches `export NOUS_CAMPAIGN_PARENT=$UNSET` typos). Each env-var-discovered campaign attributes to a configured `nous` source iff its `state.json.repo_path` matches that source's `path`. Default `DEFAULT_NOUS_CAMPAIGN_PARENT` lives in `vite-plugin-nous-adapter/filesystem-source.ts`.
 
 ## Test discipline
 
