@@ -214,11 +214,16 @@ function parseTable(
 ): TypedDataset | null {
   if (node.children.length < 2) return null // need header + ≥1 data row
   const headerRow = node.children[0]!
-  const headers: string[] = []
+  const rawHeaders: string[] = []
   for (const cell of headerRow.children) {
-    headers.push(inlineText(cell.children).trim() || `col_${headers.length}`)
+    rawHeaders.push(inlineText(cell.children).trim() || `col_${rawHeaders.length}`)
   }
-  if (headers.length === 0) return null
+  if (rawHeaders.length === 0) return null
+  // Slugify so columns become safe identifiers (no spaces, no quotes, no
+  // unicode quirks). The LLM sees the clean identifiers in the prompt
+  // schema and references them consistently in its spec — without this
+  // a header like "What's there" produces all sorts of round-trip bugs.
+  const headers = uniqueSlugs(rawHeaders)
 
   const rawRows: string[][] = []
   for (let i = 1; i < node.children.length; i++) {
@@ -271,4 +276,42 @@ function isFiniteNumeric(s: string): boolean {
   if (s.trim() === '') return false
   const n = Number(s)
   return Number.isFinite(n)
+}
+
+/**
+ * Turn an arbitrary header string into a safe identifier:
+ *  - lowercase
+ *  - drop smart-quotes / curly quotes / apostrophes
+ *  - non-[a-z0-9_] runs → single underscore
+ *  - trim leading/trailing underscores
+ *  - empty → 'col'
+ *
+ * Exported so CSV/JSON/etc. parsers can use the same rule.
+ */
+export function slugifyColumnName(s: string): string {
+  const cleaned = s
+    .normalize('NFKD')
+    .replace(/[‘’“”'`]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_')
+  return cleaned || 'col'
+}
+
+/**
+ * Slugify each name and append `_2`, `_3`, … to disambiguate collisions.
+ * Preserves order. Used so a table whose two headers slug to the same
+ * identifier still produces distinct columns.
+ */
+export function uniqueSlugs(names: string[]): string[] {
+  const seen = new Map<string, number>()
+  const out: string[] = []
+  for (const n of names) {
+    const slug = slugifyColumnName(n)
+    const count = (seen.get(slug) ?? 0) + 1
+    seen.set(slug, count)
+    out.push(count === 1 ? slug : `${slug}_${count}`)
+  }
+  return out
 }

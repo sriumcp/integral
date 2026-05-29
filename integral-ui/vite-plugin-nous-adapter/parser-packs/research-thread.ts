@@ -29,7 +29,7 @@ import type {
   ColumnType,
 } from '../../src/lib/projection/spec'
 import { computeFingerprint, type FingerprintInput } from './util-fingerprint'
-import { parseMarkdown } from './util-mdast'
+import { parseMarkdown, uniqueSlugs } from './util-mdast'
 import { isMissing } from './util-errno'
 
 export type ResearchThreadZoom = 'structure' | 'detail'
@@ -233,14 +233,18 @@ function parseCsvDataset(
     return null
   }
   if (records.length === 0) return null
-  const headers = Object.keys(records[0]!)
-  if (headers.length === 0) return null
+  const rawHeaders = Object.keys(records[0]!)
+  if (rawHeaders.length === 0) return null
+  // Slugify CSV/TSV headers so the LLM sees clean identifiers in the
+  // prompt schema (matches markdown-table treatment in util-mdast).
+  const headers = uniqueSlugs(rawHeaders)
 
-  const types: ColumnType[] = headers.map((h) => {
+  const types: ColumnType[] = headers.map((_, i) => {
+    const rawH = rawHeaders[i]!
     let allNumeric = true
     let anyData = false
     for (const r of records) {
-      const cell = r[h] ?? ''
+      const cell = r[rawH] ?? ''
       if (cell === '') continue
       anyData = true
       if (!Number.isFinite(Number(cell))) { allNumeric = false; break }
@@ -251,7 +255,8 @@ function parseCsvDataset(
   const rows: TypedRow[] = records.map((r) => {
     const obj: TypedRow = {}
     headers.forEach((h, i) => {
-      const cell = r[h] ?? ''
+      const rawH = rawHeaders[i]!
+      const cell = r[rawH] ?? ''
       if (cell === '') obj[h] = null
       else if (types[i] === 'number') obj[h] = Number(cell)
       else obj[h] = cell

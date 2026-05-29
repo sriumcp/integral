@@ -54,8 +54,11 @@ const DEFAULT_CACHE_DIR = path.join(
  *  - '4' — added count_by TransformOp + composer prompt update so the
  *          LLM has a clean primitive for "count rows per category"
  *          (2026-05-29 PM)
+ *  - '5' — slugify markdown table + CSV column names so the LLM sees
+ *          safe identifiers instead of "What's there"-style headers
+ *          (2026-05-29 PM)
  */
-const PIPELINE_VERSION = '4'
+const PIPELINE_VERSION = '5'
 
 function cacheDir(): string {
   return process.env.INTEGRAL_CACHE_DIR ?? DEFAULT_CACHE_DIR
