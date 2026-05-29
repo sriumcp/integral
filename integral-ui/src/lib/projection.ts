@@ -101,8 +101,10 @@ export async function generateProjection(
   let evidence: TypedEvidence
   try {
     evidence = await plugin.evidence(ctx)
-  } catch {
-    return fallbackProjection({ intent, state, workspace, zoom })
+  } catch (err) {
+    const reason = `evidence: ${errMessage(err)}`
+    logFallback(intent.id, zoom, 'evidence', err)
+    return fallbackProjection({ intent, state, workspace, zoom, reason })
   }
 
   // ── Step 2: compose spec via LLM ─────────────────────────────────────
@@ -116,8 +118,9 @@ export async function generateProjection(
       intent_summary: plugin.intentSummary(ctx),
     })
   } catch (err) {
+    const reason = `composer: ${errMessage(err)}`
     logFallback(intent.id, zoom, 'composer', err)
-    return fallbackProjection({ intent, state, workspace, zoom, evidence })
+    return fallbackProjection({ intent, state, workspace, zoom, evidence, reason })
   }
 
   // ── Step 3: execute deterministically ────────────────────────────────
@@ -129,11 +132,13 @@ export async function generateProjection(
     })
   } catch (err) {
     if (err instanceof SpecExecutionError || err instanceof TemplateError) {
+      const reason = `executor: ${errMessage(err)}`
       logFallback(intent.id, zoom, 'executor', err)
-      return fallbackProjection({ intent, state, workspace, zoom, evidence })
+      return fallbackProjection({ intent, state, workspace, zoom, evidence, reason })
     }
+    const reason = `executor: ${errMessage(err)}`
     logFallback(intent.id, zoom, 'executor (unknown)', err)
-    return fallbackProjection({ intent, state, workspace, zoom, evidence })
+    return fallbackProjection({ intent, state, workspace, zoom, evidence, reason })
   }
 
   // ── Step 4: lint prose ───────────────────────────────────────────────
@@ -143,14 +148,19 @@ export async function generateProjection(
   const substitutedExcerpts = collectSubstitutedExcerpts(spec.prose_template, evidence)
   const lint = lintProse(executed.prose, executed.quoted_numerics, { substitutedExcerpts })
   if (!lint.ok) {
-    logFallback(
-      intent.id, zoom, 'lint',
-      `unsourced digits in prose: ${lint.offenders.slice(0, 8).join(', ')}${lint.offenders.length > 8 ? `, +${lint.offenders.length - 8} more` : ''}`
-    )
-    return fallbackProjection({ intent, state, workspace, zoom, evidence })
+    const offenderList = lint.offenders.slice(0, 8).join(', ') +
+      (lint.offenders.length > 8 ? `, +${lint.offenders.length - 8} more` : '')
+    const reason = `lint: unsourced digits in prose (${offenderList})`
+    logFallback(intent.id, zoom, 'lint', `unsourced digits: ${offenderList}`)
+    return fallbackProjection({ intent, state, workspace, zoom, evidence, reason })
   }
 
   return executed
+}
+
+function errMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return String(err)
 }
 
 const PLACEHOLDER_RE = /\{excerpt:([A-Za-z0-9_.\-:]+)\}/g
@@ -199,6 +209,9 @@ export interface FallbackProjectionArgs {
    *  fingerprint so the chrome / cache can still reflect "we saw these
    *  files." */
   evidence?: TypedEvidence
+  /** Human-readable reason for the fallback (composer/executor/lint
+   *  failure). Surfaced in the chrome as a dev hint. */
+  reason?: string
 }
 
 /**
@@ -213,7 +226,7 @@ export interface FallbackProjectionArgs {
  * fields) so consumers don't branch on success/failure.
  */
 export function fallbackProjection(args: FallbackProjectionArgs): ExecutedProjection {
-  const { intent, evidence } = args
+  const { intent, evidence, reason } = args
   const summary = intent.declaration.summary?.trim() ?? ''
   const prose = summary.length > 0
     ? `${intent.declaration.title} — ${summary}`
@@ -226,6 +239,7 @@ export function fallbackProjection(args: FallbackProjectionArgs): ExecutedProjec
     cite_index: [],
     source: 'fallback',
     generated_at: new Date().toISOString(),
-    evidence_fingerprint: evidence?.fingerprint,
+    ...(evidence?.fingerprint ? { evidence_fingerprint: evidence.fingerprint } : {}),
+    ...(reason ? { fallback_reason: reason } : {}),
   }
 }

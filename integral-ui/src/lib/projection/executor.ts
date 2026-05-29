@@ -70,14 +70,16 @@ export function executeSpec(
       )
     }
     const data = applyTransforms(ds.rows, fig.transform ?? [], `figures.${fig.id}`)
-    if (data.length === 0 && !fig.emit_empty) continue
+    // Empty post-transform → always drop, regardless of emit_empty.
+    // The historical emit_empty=true loophole only made sense for
+    // "show empty axes deliberately"; in practice it produced empty
+    // figure chrome the user reads as broken. Refuse uniformly.
+    if (data.length === 0) continue
     validateEncodings(fig, data)
-    // Drop figures that won't produce visible marks. Plot.line / .bar /
-    // .area / .dot all need a numeric y-channel; a figure whose y column
-    // is entirely null/string post-transform renders as empty axes — the
-    // user reads it as a broken chart. The lint-style discipline here:
-    // refuse to render rather than show nothing wrapped in chrome.
-    if (!fig.emit_empty && !hasPlottableEncoding(fig.mark, fig.encodings, data)) {
+    // Drop figures that won't produce visible marks. Per-mark rules
+    // live in hasPlottableEncoding; line/area additionally require
+    // ≥2 numeric points to draw a line (a single point isn't a line).
+    if (!hasPlottableEncoding(fig.mark, fig.encodings, data)) {
       continue
     }
     figures.push({
@@ -408,14 +410,16 @@ function hasPlottableEncoding(
   data: TypedRow[]
 ): boolean {
   if (data.length === 0) return false
-  const hasNumeric = (col: string | undefined): boolean => {
-    if (!col) return false
+  const countNumeric = (col: string | undefined): number => {
+    if (!col) return 0
+    let n = 0
     for (const r of data) {
       const v = r[col]
-      if (typeof v === 'number' && Number.isFinite(v)) return true
+      if (typeof v === 'number' && Number.isFinite(v)) n++
     }
-    return false
+    return n
   }
+  const hasNumeric = (col: string | undefined): boolean => countNumeric(col) >= 1
   const hasNonNull = (col: string | undefined): boolean => {
     if (!col) return false
     for (const r of data) {
@@ -427,6 +431,9 @@ function hasPlottableEncoding(
   switch (mark.type) {
     case 'line':
     case 'area':
+      // A line/area needs ≥2 numeric points to render anything visible.
+      // A single numeric value shows as nothing (Plot draws no segment).
+      return countNumeric(encodings.y) >= 2
     case 'dot':
       return hasNumeric(encodings.y)
     case 'bar':

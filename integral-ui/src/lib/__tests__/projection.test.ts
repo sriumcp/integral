@@ -202,7 +202,7 @@ describe('generateProjection — happy path', () => {
 })
 
 describe('generateProjection — error paths', () => {
-  it('falls back when evidence() throws', async () => {
+  it('falls back when evidence() throws and surfaces a fallback_reason', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
     const plugin = makeEvidencePlugin({ evidenceThrows: true })
@@ -212,37 +212,37 @@ describe('generateProjection — error paths', () => {
       llm: makeMockLLM(JSON.stringify(VALID_SPEC)),
     })
     expect(p.source).toBe('fallback')
+    expect(p.fallback_reason).toMatch(/evidence/i)
   })
 
-  it('falls back when LLM returns malformed JSON twice (composer retry exhausted)', async () => {
+  it('surfaces composer reason when LLM output is malformed twice', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
     const llm = makeMockLLM('not json at all')
-    const plugin = makeEvidencePlugin()
     const p = await generateProjection({
       intent, state, workspace: ws, zoom: 'structure',
-      plugins: { 'nous-campaign': plugin }, llm,
+      plugins: { 'nous-campaign': makeEvidencePlugin() }, llm,
     })
     expect(p.source).toBe('fallback')
+    expect(p.fallback_reason).toMatch(/composer/i)
   })
 
-  it('falls back when prose has unsourced digits (lint reject)', async () => {
+  it('surfaces lint reason when prose has unsourced digits', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
-    // LLM emits a spec whose prose template hardcodes a number not in scalars.
-    const sneakySpec: ProjectionSpec = {
-      spec_version: '1',
-      figures: [],
+    const sneaky: ProjectionSpec = {
+      spec_version: '1', figures: [],
       scalars: [{ op: 'count', id: 'n', dataset: 'iters', column: 'i' }],
       prose_template: '{scalar:n} iterations completed in 2025.',
     }
-    const llm = makeMockLLM(JSON.stringify(sneakySpec))
-    const plugin = makeEvidencePlugin()
     const p = await generateProjection({
       intent, state, workspace: ws, zoom: 'structure',
-      plugins: { 'nous-campaign': plugin }, llm,
+      plugins: { 'nous-campaign': makeEvidencePlugin() },
+      llm: makeMockLLM(JSON.stringify(sneaky)),
     })
     expect(p.source).toBe('fallback')
+    expect(p.fallback_reason).toMatch(/lint/i)
+    expect(p.fallback_reason).toMatch(/2025/)
   })
 
   it('accepts digits that came from substituted excerpt text (provenance via excerpt)', async () => {

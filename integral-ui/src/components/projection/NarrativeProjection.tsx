@@ -39,6 +39,15 @@ export function NarrativeProjection({ projection }: NarrativeProjectionProps) {
           <p key={i}>{para}</p>
         ))}
       </div>
+      {projection.source === 'fallback' && projection.fallback_reason && (
+        <p
+          className={styles.fallbackReason}
+          data-testid="projection-fallback-reason"
+          title="The narrative-arc projection couldn't be generated. This is the reason."
+        >
+          fell back · {projection.fallback_reason}
+        </p>
+      )}
     </div>
   )
 }

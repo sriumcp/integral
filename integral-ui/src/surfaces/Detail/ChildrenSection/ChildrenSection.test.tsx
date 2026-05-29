@@ -87,8 +87,8 @@ describe('ChildrenSection', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('overview zoom always renders for every kind including research-thread', () => {
-    for (const kind of KINDS) {
+  it('overview zoom renders for every kind WITH a body (not research-thread, which is leaf)', () => {
+    for (const kind of KINDS_WITH_BODY) {
       const intent = intentFor(kind)
       const { container } = render(
         <ChildrenSection
@@ -100,6 +100,19 @@ describe('ChildrenSection', () => {
       )
       expect(container.firstElementChild?.getAttribute('data-kind')).toBe(kind)
     }
+  })
+
+  it('overview zoom renders nothing for research-thread (no children-by-design — no "no children" placeholder)', () => {
+    const thread = intentFor('research-thread')
+    const { container } = render(
+      <ChildrenSection
+        intent={thread}
+        workspace={seedWorkspace}
+        zoom="overview"
+        onOpen={() => {}}
+      />
+    )
+    expect(container.firstChild).toBeNull()
   })
 
   it('lists children of nous-campaign with iteration rows', () => {

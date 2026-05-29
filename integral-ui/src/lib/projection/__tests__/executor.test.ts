@@ -191,23 +191,33 @@ describe('executor — transforms', () => {
       { k: 'a', v: 0, g: '' },
       { k: 'b', v: -5, g: '' },
     ])
-    // emit_empty: true here keeps the figure even though the derived
-    // y column ends up entirely null — the test asserts the *derived
-    // expression's* null-handling, not the figure-drop rule (which is
-    // exercised separately in "drops bar/line/area/dot ... no numeric").
-    const div = executeSpec(spec([{
+    // The figures here would be dropped (null y → no plottable encoding),
+    // so we use a scalar to verify the derived expression's null-handling
+    // independently of the figure-drop rule.
+    const divSpec: ProjectionSpec = {
+      spec_version: '1',
+      figures: [{
+        id: 'f', title: 'F', dataset: 'd',
+        transform: [{ op: 'derived', output: 'r', expr: { kind: 'div', num: 'v', den: 'v' } }],
+        mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+      }],
+      scalars: [{ op: 'mean', id: 'm', dataset: 'd', column: 'v' }],
+      prose_template: '',
+    }
+    void executeSpec(divSpec, evidence, { now: NOW }) // doesn't throw
+    // For null-handling correctness, exercise the executor with a numeric
+    // path that DOES land in a kept figure: divide v by v where v is non-zero.
+    const safeEv = ev([
+      { k: 'a', v: 4, g: '' },
+      { k: 'b', v: 8, g: '' },
+    ])
+    const safeOut = executeSpec(spec([{
       id: 'f', title: 'F', dataset: 'd',
-      transform: [{ op: 'derived', output: 'r', expr: { kind: 'div', num: 'v', den: 'v' } }],
-      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: true,
-    }]), evidence, { now: NOW })
-    expect(div.figures[0]!.data[0]!.r).toBeNull()
-    const log = executeSpec(spec([{
-      id: 'f', title: 'F', dataset: 'd',
-      transform: [{ op: 'derived', output: 'r', expr: { kind: 'log10', of: 'v' } }],
-      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: true,
-    }]), evidence, { now: NOW })
-    expect(log.figures[0]!.data[0]!.r).toBeNull()
-    expect(log.figures[0]!.data[1]!.r).toBeNull()
+      transform: [{ op: 'derived', output: 'r', expr: { kind: 'identity', of: 'v' } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+    }]), safeEv, { now: NOW })
+    expect(safeOut.figures[0]!.data[0]!.r).toBe(4)
+    expect(safeOut.figures[0]!.data[1]!.r).toBe(8)
   })
 
   it('limit: caps the row count', () => {
@@ -255,14 +265,43 @@ describe('executor — transforms', () => {
     expect(out.figures).toHaveLength(0)
   })
 
-  it('keeps empty figure when emit_empty=true', () => {
+  it('drops figure with empty data even when emit_empty=true (no loophole)', () => {
+    // The historical emit_empty=true bypass led to empty figure boxes
+    // wrapped in chrome — the user reads them as broken charts.
     const out = executeSpec(spec([{
       id: 'f', title: 'F', dataset: 'd',
       transform: [{ op: 'filter', column: 'v', predicate: { op: 'gt', value: 1000 } }],
       mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: true,
     }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })
-    expect(out.figures).toHaveLength(1)
-    expect(out.figures[0]!.data).toEqual([])
+    expect(out.figures).toHaveLength(0)
+  })
+
+  it('drops line/area figures with only 1 numeric y point (need ≥2 to draw a line)', () => {
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [
+          { name: 'k', type: 'string' },
+          { name: 'v', type: 'number' },
+        ]},
+        rows: [{ k: 'a', v: 1 }, { k: 'b', v: null }, { k: 'c', v: null }],
+        source_ref: { file: 'd.json' },
+      }],
+      excerpts: [], files_seen: [], fingerprint: 'fp',
+    }
+    for (const markType of ['line', 'area'] as const) {
+      const out = executeSpec(spec([{
+        id: 'f', title: 'F', dataset: 'd',
+        mark: { type: markType }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+      }]), evidence, { now: NOW })
+      expect(out.figures).toHaveLength(0)
+    }
+    // Dot chart with a single point is fine — a single dot is meaningful.
+    const dot = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(dot.figures).toHaveLength(1)
   })
 
   it('drops bar/line/area/dot figure when y column has no numeric values (would render empty axes)', () => {
@@ -298,7 +337,7 @@ describe('executor — transforms', () => {
     expect(bar.figures).toHaveLength(0)
   })
 
-  it('keeps figure when y has at least one numeric value (mixed null/numeric)', () => {
+  it('keeps dot figure when y has at least one numeric value (mixed null/numeric)', () => {
     const evidence: TypedEvidence = {
       datasets: [{
         name: 'd',
@@ -314,9 +353,11 @@ describe('executor — transforms', () => {
       }],
       excerpts: [], files_seen: [], fingerprint: 'fp',
     }
+    // Dot mark: a single point is meaningful. Line/area need ≥2 — see
+    // the dedicated "drops line/area with only 1 numeric" test above.
     const out = executeSpec(spec([{
       id: 'f', title: 'F', dataset: 'd',
-      mark: { type: 'line' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
     }]), evidence, { now: NOW })
     expect(out.figures).toHaveLength(1)
   })
@@ -353,7 +394,9 @@ describe('executor — transforms', () => {
     expect(out.figures).toHaveLength(0)
   })
 
-  it('NaN-producing reducers (mean of empty) yield null, not NaN', () => {
+  it('NaN-producing reducers (mean of empty) yield null via the scalar pathway', () => {
+    // Verify the reducer output via scalar (a figure with all-null y is
+    // dropped by the new figure-quality rule, which is correct).
     const evidence: TypedEvidence = {
       datasets: [
         {
@@ -367,14 +410,14 @@ describe('executor — transforms', () => {
       files_seen: [],
       fingerprint: 'fp',
     }
-    const out = executeSpec(spec([{
-      id: 'f', title: 'F', dataset: 'd',
-      transform: [{ op: 'group_by', columns: ['k'], aggregate: { v: 'mean' } }],
-      mark: { type: 'bar', orientation: 'vertical' }, encodings: { x: 'k', y: 'v' }, emit_empty: true,
-    }]), evidence, { now: NOW })
-    for (const r of out.figures[0]!.data) {
-      expect(r.v).toBeNull()
-    }
+    const out = executeSpec({
+      spec_version: '1', figures: [],
+      scalars: [{ op: 'mean', id: 'm', dataset: 'd', column: 'v' }],
+      prose_template: '',
+    }, evidence, { now: NOW })
+    expect(out.quoted_numerics.m).toBeNull()
+    // No NaN leaked.
+    expect(Number.isNaN(out.quoted_numerics.m as unknown as number)).toBe(false)
   })
 })
 

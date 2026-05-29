@@ -26,3 +26,15 @@
   color: var(--ink-3, #6a6a6a);
   font-style: italic;
 }
+
+.fallbackReason {
+  margin: var(--space-1, 6px) 0 0 0;
+  padding: var(--space-1, 6px) var(--space-2, 12px);
+  background: var(--paper-2, #f8f6f1);
+  border-left: 2px solid var(--rose, #c97a7a);
+  font-size: 0.75rem;
+  color: var(--ink-3, #6a6a6a);
+  font-family: var(--mono, ui-monospace, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

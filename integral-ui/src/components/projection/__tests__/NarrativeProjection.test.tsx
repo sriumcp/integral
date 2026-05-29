@@ -72,6 +72,40 @@ describe('NarrativeProjection', () => {
     expect(screen.getByText('Figure Two')).toBeInTheDocument()
   })
 
+  it('surfaces fallback_reason as a small dev hint when source=fallback', () => {
+    const { getByTestId } = render(
+      <NarrativeProjection projection={p({
+        prose: 'fell back to title',
+        source: 'fallback',
+        fallback_reason: 'lint: unsourced digits in prose (5, 12)',
+      })} />
+    )
+    const node = getByTestId('projection-fallback-reason')
+    expect(node.textContent).toContain('lint')
+    expect(node.textContent).toContain('unsourced digits')
+  })
+
+  it('does not render fallback_reason when source=llm even if the field is present', () => {
+    const { queryByTestId } = render(
+      <NarrativeProjection projection={p({
+        prose: 'real prose',
+        source: 'llm',
+        fallback_reason: 'should not appear',
+      })} />
+    )
+    expect(queryByTestId('projection-fallback-reason')).toBeNull()
+  })
+
+  it('does not render fallback chrome when fallback_reason is missing', () => {
+    const { queryByTestId } = render(
+      <NarrativeProjection projection={p({
+        prose: 'fallback prose',
+        source: 'fallback',
+      })} />
+    )
+    expect(queryByTestId('projection-fallback-reason')).toBeNull()
+  })
+
   it('renders figures BEFORE prose so the visual story leads', () => {
     const { container } = render(
       <NarrativeProjection projection={p({

@@ -64,6 +64,10 @@ export function ChildrenSection({
     .filter((p): p is ChildPair => p !== undefined)
 
   if (zoom === 'overview') {
+    // Leaf kinds (research-thread today) have no children-by-design and
+    // no specialized extension overview. Suppress the section so the
+    // chrome doesn't show a misleading "no children" placeholder.
+    if (intent.extension.kind === 'research-thread') return null
     return (
       <section className={styles.section} data-kind={intent.kind}>
         <OverviewSummary intent={intent} childCount={childPairs.length} />

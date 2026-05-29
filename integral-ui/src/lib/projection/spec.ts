@@ -323,5 +323,9 @@ export const ExecutedProjectionSchema = z.object({
   model: z.string().optional(),
   /** Diagnostic only — copies through from TypedEvidence.fingerprint. */
   evidence_fingerprint: z.string().optional(),
+  /** When source='fallback', a short human-readable reason — surfaced
+   *  in the chrome as a dev hint so silent failures are debuggable
+   *  without scraping server logs. Empty for source='llm'. */
+  fallback_reason: z.string().optional(),
 })
 export type ExecutedProjection = z.infer<typeof ExecutedProjectionSchema>

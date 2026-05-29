@@ -48,8 +48,11 @@ const DEFAULT_CACHE_DIR = path.join(
  *  - '1' — initial typed-evidence pipeline (2026-05-29)
  *  - '2' — figure-drop rule + heading-marker strip + excerpt-allow lint
  *          (2026-05-29 PM)
+ *  - '3' — stricter figure-drop (no emit_empty loophole; line/area need
+ *          ≥2 numeric points) + fallback_reason field on
+ *          ExecutedProjection (2026-05-29 PM)
  */
-const PIPELINE_VERSION = '2'
+const PIPELINE_VERSION = '3'
 
 function cacheDir(): string {
   return process.env.INTEGRAL_CACHE_DIR ?? DEFAULT_CACHE_DIR
