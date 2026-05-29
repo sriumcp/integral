@@ -183,6 +183,8 @@ function applyTransform(
       return rows.slice(0, op.n)
     case 'group_by':
       return groupBy(rows, op.columns, op.aggregate, scope)
+    case 'count_by':
+      return countBy(rows, op.columns, op.output, scope)
     case 'bin':
       return binColumn(rows, op.column, op.bins, op.output, scope)
     case 'window':
@@ -218,6 +220,32 @@ function compareCells(a: unknown, b: unknown): number {
   if (b === null || b === undefined) return 1
   if (typeof a === 'number' && typeof b === 'number') return a - b
   return String(a).localeCompare(String(b))
+}
+
+function countBy(
+  rows: TypedRow[],
+  groupCols: string[],
+  output: string,
+  scope: string
+): TypedRow[] {
+  for (const c of groupCols) requireColumn(rows, c, scope)
+  const groupKey = new Map<string, TypedRow>()
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    const key = groupCols.map((c) => JSON.stringify(r[c] ?? null)).join('|')
+    if (!groupKey.has(key)) {
+      const k: TypedRow = {}
+      for (const c of groupCols) k[c] = r[c] ?? null
+      groupKey.set(key, k)
+      counts.set(key, 0)
+    }
+    counts.set(key, counts.get(key)! + 1)
+  }
+  const out: TypedRow[] = []
+  for (const [key, k] of groupKey.entries()) {
+    out.push({ ...k, [output]: counts.get(key)! })
+  }
+  return out
 }
 
 function groupBy(

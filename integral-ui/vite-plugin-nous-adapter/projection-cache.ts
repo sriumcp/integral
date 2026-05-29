@@ -51,8 +51,11 @@ const DEFAULT_CACHE_DIR = path.join(
  *  - '3' — stricter figure-drop (no emit_empty loophole; line/area need
  *          ≥2 numeric points) + fallback_reason field on
  *          ExecutedProjection (2026-05-29 PM)
+ *  - '4' — added count_by TransformOp + composer prompt update so the
+ *          LLM has a clean primitive for "count rows per category"
+ *          (2026-05-29 PM)
  */
-const PIPELINE_VERSION = '3'
+const PIPELINE_VERSION = '4'
 
 function cacheDir(): string {
   return process.env.INTEGRAL_CACHE_DIR ?? DEFAULT_CACHE_DIR

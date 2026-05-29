@@ -141,6 +141,16 @@ export const TransformOpSchema = z.discriminatedUnion('op', [
     aggregate: z.record(z.string(), ReducerSchema),
   }),
   z.object({
+    /** Count rows per group, emit a new count column (preserves the
+     *  grouping columns intact). The clean primitive for "frequency by
+     *  category" — the most common shape the LLM reaches for. Without
+     *  this, group_by aggregate { col: 'count' } overwrites the
+     *  grouping column with the count, losing the label. */
+    op: z.literal('count_by'),
+    columns: z.array(z.string()).min(1),
+    output: z.string().min(1),
+  }),
+  z.object({
     op: z.literal('bin'),
     column: z.string(),
     bins: z.number().int().positive().max(50),

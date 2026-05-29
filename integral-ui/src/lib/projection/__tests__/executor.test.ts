@@ -220,6 +220,60 @@ describe('executor — transforms', () => {
     expect(safeOut.figures[0]!.data[1]!.r).toBe(8)
   })
 
+  it('count_by: counts rows per group, emits a new output column, preserves grouping cols', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'x' },
+      { k: 'b', v: 2, g: 'x' },
+      { k: 'c', v: 3, g: 'y' },
+      { k: 'd', v: 4, g: 'y' },
+      { k: 'e', v: 5, g: 'y' },
+      { k: 'f', v: 6, g: 'z' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'count_by', columns: ['g'], output: 'n' }],
+      mark: { type: 'bar', orientation: 'vertical' },
+      encodings: { x: 'g', y: 'n' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures).toHaveLength(1)
+    const rows = out.figures[0]!.data
+    const byG = new Map(rows.map((r) => [r.g, r.n]))
+    expect(byG.get('x')).toBe(2)
+    expect(byG.get('y')).toBe(3)
+    expect(byG.get('z')).toBe(1)
+    // Grouping column is preserved (not overwritten).
+    expect(rows[0]!.g).not.toBeUndefined()
+  })
+
+  it('count_by: groups by multiple columns', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'x' },
+      { k: 'b', v: 1, g: 'x' },
+      { k: 'c', v: 2, g: 'x' },
+      { k: 'd', v: 2, g: 'y' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'count_by', columns: ['g', 'v'], output: 'n' }],
+      mark: { type: 'bar', orientation: 'vertical' },
+      encodings: { x: 'g', y: 'n', fill: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures).toHaveLength(1)
+    const cells = out.figures[0]!.data.map((r) => `${r.g}/${r.v}/${r.n}`)
+    expect(cells).toContain('x/1/2')
+    expect(cells).toContain('x/2/1')
+    expect(cells).toContain('y/2/1')
+  })
+
+  it('count_by: throws SpecExecutionError when the grouping column is missing', () => {
+    expect(() => executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'count_by', columns: ['nope'], output: 'n' }],
+      mark: { type: 'bar', orientation: 'vertical' },
+      encodings: { x: 'k', y: 'n' }, emit_empty: false,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })).toThrow(/column 'nope' not present/)
+  })
+
   it('limit: caps the row count', () => {
     const evidence = ev([
       { k: 'a', v: 1, g: '' },
