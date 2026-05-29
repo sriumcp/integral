@@ -36,6 +36,21 @@ const DEFAULT_CACHE_DIR = path.join(
   'projections-v2'
 )
 
+/**
+ * Bumped whenever projection BEHAVIOR changes (composer prompt, executor
+ * rules, parser pack output, lint discipline) in a way that would render
+ * existing cached projections stale even though their schema is still
+ * valid. Including this in the cache key means a code change that ships
+ * a behavior bump automatically invalidates every cache entry on the
+ * user's machine — no manual regenerate clicks, no `rm -rf` needed.
+ *
+ * History:
+ *  - '1' — initial typed-evidence pipeline (2026-05-29)
+ *  - '2' — figure-drop rule + heading-marker strip + excerpt-allow lint
+ *          (2026-05-29 PM)
+ */
+const PIPELINE_VERSION = '2'
+
 function cacheDir(): string {
   return process.env.INTEGRAL_CACHE_DIR ?? DEFAULT_CACHE_DIR
 }
@@ -47,7 +62,7 @@ function cacheKey(
 ): string {
   return crypto
     .createHash('sha256')
-    .update(`${intentId}::${zoom}::${stateTimestamp}`)
+    .update(`${PIPELINE_VERSION}::${intentId}::${zoom}::${stateTimestamp}`)
     .digest('hex')
 }
 
