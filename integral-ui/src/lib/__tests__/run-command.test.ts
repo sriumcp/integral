@@ -37,7 +37,7 @@ function nousIntent(opts?: {
 }): Intent {
   return {
     id: opts?.id ?? 'nous:nous:run-foo',
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-campaign',
     declaration: {
       title: 'demo',
@@ -69,7 +69,7 @@ function activeState(intentId: string): IntentState {
   return {
     id: `${intentId}-STATE`,
     intent_id: intentId,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     status: 'active',
     last_advanced_at: '2026-05-24T01:00:00Z',
     last_advanced_by: PARTY,

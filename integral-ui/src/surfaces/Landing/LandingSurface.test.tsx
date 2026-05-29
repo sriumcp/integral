@@ -31,9 +31,9 @@ describe('LandingSurface', () => {
 
   it('peek shows the active root count derived from the validated workspace', () => {
     render(<LandingSurface workspace={validated} me={sri} onEnter={() => {}} />)
-    // Seed has 3 active root campaigns (nous + coral + feature).
-    // The Nous draft is a 4th root but it's `status: draft`, not active.
-    expect(screen.getByText(/3 active/)).toBeInTheDocument()
+    // Seed has 4 active root intents (nous + coral + feature + research-thread).
+    // The Nous draft is a 5th root but it's `status: draft`, not active.
+    expect(screen.getByText(/4 active/)).toBeInTheDocument()
   })
 
   it('peek shows the awaiting-me count from the queue predicate', () => {

@@ -41,7 +41,7 @@ function makeNousDraft(opts?: {
 }): Intent {
   return {
     id: opts?.id ?? '01HXYZ-DRAFT-NOUS-CAMPAIGN-001',
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-campaign',
     declaration: {
       title: opts?.title ?? 'Evaluator-conditioning structural study',

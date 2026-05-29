@@ -432,7 +432,7 @@ function Router({
     const now = new Date().toISOString()
     const blank: Intent = {
       id: draftId,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       kind: 'nous-campaign',
       declaration: {
         title: 'untitled campaign',
@@ -461,7 +461,7 @@ function Router({
     const blankState: IntentState = {
       id: `${draftId}-STATE`,
       intent_id: draftId,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       status: 'draft',
       last_advanced_at: now,
       last_advanced_by: me,

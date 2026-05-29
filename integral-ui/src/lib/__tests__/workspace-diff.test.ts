@@ -55,7 +55,7 @@ function makeCampaign(opts: {
   const id = opts.id ?? uniqueId('camp')
   const intent: Intent = {
     id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-campaign',
     declaration: {
       title: opts.title ?? 'Test campaign',
@@ -84,7 +84,7 @@ function makeCampaign(opts: {
   const state: IntentState = {
     id: `${id}-STATE`,
     intent_id: id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     status: opts.status ?? 'active',
     last_advanced_at: '2026-05-23T08:00:00Z',
     last_advanced_by: PROJECTOR,
@@ -102,7 +102,7 @@ function makeIteration(opts: {
   const id = opts.id ?? uniqueId('iter')
   const intent: Intent = {
     id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-iteration',
     declaration: {
       title: 'iter-1 · pilot',
@@ -137,7 +137,7 @@ function makeIteration(opts: {
   const state: IntentState = {
     id: `${id}-STATE`,
     intent_id: id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     status: opts.status ?? 'active',
     last_advanced_at: '2026-05-23T08:00:00Z',
     last_advanced_by: PROJECTOR,

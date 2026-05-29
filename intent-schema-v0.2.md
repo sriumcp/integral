@@ -1,8 +1,10 @@
 # Integral Intent Schema
 
 **Version: 0.2.0**
-**Status: pre-stable, breaking changes expected. Promote on any breaking change.**
+**Status: superseded by v0.3.0 on 2026-05-29. Kept for historical reference.**
 **Date: 2026-05-29**
+
+> **Read this for the v0.2.0 grammar.** v0.3.0 added the `research-thread` kind on top of v0.2.0's five kinds. Most of this document — core types, holder, lifetime, status, knowledge refs, evidence links, projections, operation log, workspace bundle, shaping operations — applies unchanged to v0.3.0. See `intent-schema-v0.3.md` for the diff and current authoritative kind enum.
 
 ## Versioning policy
 

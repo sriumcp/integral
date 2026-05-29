@@ -8,6 +8,7 @@ const ROOT_KINDS = new Set([
   'nous-campaign',
   'coral-optimization',
   'feature-campaign',
+  'research-thread',
 ])
 
 export interface LandingSurfaceProps {

@@ -29,7 +29,7 @@ const ADAPTER_SOURCE: SourceEntry = {
 function nousIntent(id: string = 'nous:nous:run-foo'): Intent {
   return {
     id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-campaign',
     declaration: {
       title: 'demo',
@@ -61,7 +61,7 @@ function stateWith(intentId: string, status: Status): IntentState {
   return {
     id: `${intentId}-STATE`,
     intent_id: intentId,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     status,
     last_advanced_at: '2026-05-24T01:00:00Z',
     last_advanced_by: PARTY,

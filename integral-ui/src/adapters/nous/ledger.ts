@@ -67,7 +67,7 @@ const UNKNOWN_HUMAN = {
   display_name: '(unknown)',
 }
 
-const SCHEMA_VERSION = '0.2.0' as const
+const SCHEMA_VERSION = '0.3.0' as const
 
 // ─── parseLedger ───────────────────────────────────────────────────────────
 

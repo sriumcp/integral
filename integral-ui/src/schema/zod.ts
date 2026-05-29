@@ -1,23 +1,21 @@
 /**
  * Integral Intent Schema — runtime validators (zod) and inferred TS types.
  *
- * Mirrors `intent-schema-v0.2.md` at the project root. zod schemas are the
+ * Mirrors `intent-schema-v0.3.md` at the project root. zod schemas are the
  * source of truth; TS types below are inferred via `z.infer` — edit the
  * schema, not the type.
  *
- * Schema version: 0.2.0. The v0.1.0 schema declared 9 IntentKinds across
- * four families (nous, coral, feature, paper). v0.2.0 narrows to the five
- * kinds we actually ship adapters for today: `nous-campaign`,
- * `nous-iteration`, `coral-optimization`, `coral-attempt`,
- * `feature-campaign`. The four kinds with no adapter (`feature-pr`,
- * `paper-campaign`, `paper-section`, `paper-claim`) are removed; they
- * will return in a future schema bump when the paper adapter and full
- * feature-dev land. See `intent-schema-v0.2.md` § "What v0.2.0 removed".
+ * Schema version: 0.3.0. v0.2.0 carried 5 IntentKinds (nous-campaign,
+ * nous-iteration, coral-optimization, coral-attempt, feature-campaign).
+ * v0.3.0 adds `research-thread` — a read-only-projection kind for
+ * loose-shaped research artifacts (a directory of markdown + run dirs)
+ * that exist in the user's workspace but aren't shaped by Integral.
+ * See `intent-schema-v0.3.md` § "What v0.3.0 added".
  */
 
 import { z } from 'zod'
 
-export const SCHEMA_VERSION = '0.2.0' as const
+export const SCHEMA_VERSION = '0.3.0' as const
 
 // ─── Primitive / branded scalars ───────────────────────────────────────────
 // We keep these as zod strings rather than branded types to avoid friction
@@ -64,8 +62,12 @@ export const IntentKindSchema = z.enum([
   // (b) Coral-shaped
   'coral-optimization',
   'coral-attempt',
-  // (c) Feature-development-shaped (campaign only — `feature-pr` returns in v0.3+)
+  // (c) Feature-development-shaped (campaign only — `feature-pr` returns later)
   'feature-campaign',
+  // (d) Research thread (v0.3.0): a loose-shaped, read-only directory of
+  //     markdown + experimental artifacts. Projection layer makes meaning;
+  //     no shaper, no writeback, no decomposition into typed children.
+  'research-thread',
 ])
 
 export const StatusSchema = z.enum([
@@ -306,6 +308,24 @@ export const FeatureCampaignExtensionSchema = z.object({
   primary_pr_anchor: ExternalAnchorSchema.optional(),
 })
 
+// (d) Research thread (v0.3.0)
+//
+// A read-only-projection kind for loose-shaped research artifacts: a
+// directory of markdown + experimental run dirs that the user is
+// working in but isn't asking Integral to shape or execute. The
+// extension is deliberately minimal — `root_anchor` is the entire
+// declaration; the projection plugin reads the directory and produces
+// meaning at each zoom level.
+//
+// No decomposition into typed children — research-threads are leaf-
+// shaped intents (decomposition.children = []). If a thread later
+// produces a paper or spawns a Nous campaign, those become first-class
+// intents linked via EvidenceLink, not nested under the thread.
+export const ResearchThreadExtensionSchema = z.object({
+  kind: z.literal('research-thread'),
+  root_anchor: ExternalAnchorSchema,
+})
+
 // Discriminated union of all extensions, keyed by `kind`.
 export const TypeExtensionSchema = z.discriminatedUnion('kind', [
   NousCampaignExtensionSchema,
@@ -313,6 +333,7 @@ export const TypeExtensionSchema = z.discriminatedUnion('kind', [
   CoralOptimizationExtensionSchema,
   CoralAttemptExtensionSchema,
   FeatureCampaignExtensionSchema,
+  ResearchThreadExtensionSchema,
 ])
 
 // ─── Intent (the core object) ──────────────────────────────────────────────
@@ -647,6 +668,7 @@ export type NousIterationExtension = z.infer<typeof NousIterationExtensionSchema
 export type CoralOptimizationExtension = z.infer<typeof CoralOptimizationExtensionSchema>
 export type CoralAttemptExtension = z.infer<typeof CoralAttemptExtensionSchema>
 export type FeatureCampaignExtension = z.infer<typeof FeatureCampaignExtensionSchema>
+export type ResearchThreadExtension = z.infer<typeof ResearchThreadExtensionSchema>
 
 export type TypeExtension = z.infer<typeof TypeExtensionSchema>
 export type Intent = z.infer<typeof IntentSchema>

@@ -43,7 +43,7 @@ test.describe('Map (post-landing)', () => {
   test('AppHeader renders schema-version chip and refresh affordance', async ({ page }) => {
     await page.goto('/')
     await expect(page.locator('header[data-surface="map"]')).toBeVisible()
-    await expect(page.getByText(/schema v0\.2\.0/)).toBeVisible()
+    await expect(page.getByText(/schema v0\.3\.0/)).toBeVisible()
   })
 
   test('clicking the AppHeader logo returns to Landing', async ({ page }) => {

@@ -32,15 +32,17 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-export type AdapterKind = 'nous' | 'coral' | 'github-issues'
+export type AdapterKind = 'nous' | 'coral' | 'github-issues' | 'research-thread'
 
 export interface ConfiguredSource {
   id: string
   kind: AdapterKind
   label: string
-  /** For filesystem-backed adapters (`'nous'`, `'coral'`): a resolved
-   *  absolute filesystem path (with `~` and relatives expanded). For
-   *  `'github-issues'`: an `<owner>/<name>` repo coordinate, NOT
+  /** For filesystem-backed adapters (`'nous'`, `'coral'`,
+   *  `'research-thread'`): a resolved absolute filesystem path (with
+   *  `~` and relatives expanded). For `'research-thread'`, the path is
+   *  the *parent* directory containing one subdirectory per thread.
+   *  For `'github-issues'`: an `<owner>/<name>` repo coordinate, NOT
    *  filesystem-expanded. The dispatcher in `index.ts` interprets this
    *  field according to `kind`. */
   path: string
@@ -53,16 +55,29 @@ const DEFAULT_NOUS_PATH = path.join(
   'inference-sim'
 )
 
-// Default keeps id='nous' + label='nous campaigns' to preserve the URL
-// contract (`?sources=fixture,nous`) and visual baselines from the
-// pre-config-file era. Users who rename their source via
-// integral.config.json get whatever id/label they choose.
+const DEFAULT_RESEARCH_THREAD_PATH = path.join(
+  os.homedir(),
+  'Documents',
+  'Projects',
+  'research-threads'
+)
+
+// Default sources used when no integral.config.json is present. v0.3.0
+// adds a `research-thread` default at ~/Documents/Projects/research-threads/
+// — analogous to the Nous default. Users who configure their own sources
+// override these entirely.
 const DEFAULT_SOURCES: ConfiguredSource[] = [
   {
     id: 'nous',
     kind: 'nous',
     label: 'nous campaigns',
     path: DEFAULT_NOUS_PATH,
+  },
+  {
+    id: 'research-threads',
+    kind: 'research-thread',
+    label: 'research threads',
+    path: DEFAULT_RESEARCH_THREAD_PATH,
   },
 ]
 
@@ -193,10 +208,16 @@ function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (!raw || typeof raw !== 'object') return null
   const obj = raw as Record<string, unknown>
   if (typeof obj.id !== 'string' || obj.id.length === 0) return null
-  if (obj.kind !== 'nous' && obj.kind !== 'coral' && obj.kind !== 'github-issues') {
+  const SUPPORTED_KINDS: ReadonlyArray<AdapterKind> = [
+    'nous',
+    'coral',
+    'github-issues',
+    'research-thread',
+  ]
+  if (!SUPPORTED_KINDS.includes(obj.kind as AdapterKind)) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — supported kinds: "nous", "coral", "github-issues"`
+      `[integral] source "${obj.id}" has unsupported kind "${String(obj.kind)}" — supported kinds: ${SUPPORTED_KINDS.map((k) => `"${k}"`).join(', ')}`
     )
     return null
   }
@@ -204,11 +225,11 @@ function validateEntry(raw: unknown, cwd: string): ConfiguredSource | null {
   if (typeof obj.path !== 'string' || obj.path.length === 0) return null
   // For github-issues, `path` is a repo coordinate (`owner/name`) and
   // must NOT be filesystem-expanded — the gh-cli-source validates the
-  // shape on its own. Filesystem-backed kinds do path expansion.
+  // shape on its own. All other kinds get filesystem path expansion.
   const resolvedPath = obj.kind === 'github-issues' ? obj.path : expandPath(obj.path, cwd)
   return {
     id: obj.id,
-    kind: obj.kind,
+    kind: obj.kind as AdapterKind,
     label: obj.label,
     path: resolvedPath,
   }

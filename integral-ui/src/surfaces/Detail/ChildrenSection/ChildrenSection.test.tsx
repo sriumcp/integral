@@ -176,7 +176,7 @@ describe('ChildrenSection', () => {
     }): Intent {
       return {
         id: opts.id,
-        schema_version: '0.2.0',
+        schema_version: '0.3.0',
         kind: 'nous-iteration',
         declaration: {
           title: `iter-${opts.iterationNumber}`,
@@ -227,7 +227,7 @@ describe('ChildrenSection', () => {
     } {
       const campaign = {
         id: 'CAMP-X',
-        schema_version: '0.2.0',
+        schema_version: '0.3.0',
         kind: 'nous-campaign',
         declaration: {
           title: 'synth campaign',
@@ -254,7 +254,7 @@ describe('ChildrenSection', () => {
       } as unknown as Intent
       const state = {
         intent_id: 'CAMP-X',
-        schema_version: '0.2.0',
+        schema_version: '0.3.0',
         status,
         last_advanced_at: '2026-01-01T00:00:00Z',
         history: [],
@@ -264,7 +264,7 @@ describe('ChildrenSection', () => {
 
     function makeWs(intents: Intent[], states: IntentState[] = []): Workspace {
       return {
-        schema_version: '0.2.0',
+        schema_version: '0.3.0',
         intents,
         states,
         evidence_links: [],

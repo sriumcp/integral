@@ -32,7 +32,7 @@ function makeNousCampaign(opts?: {
   return {
     intent: {
       id,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       kind: 'nous-campaign',
       declaration: {
         title: 'EA-WFQ scheduling fairness',
@@ -64,7 +64,7 @@ function makeNousCampaign(opts?: {
     state: {
       id: `${id}-STATE`,
       intent_id: id,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       status: 'active',
       last_advanced_at: '2026-05-23T00:00:00Z',
       last_advanced_by: PROJECTOR,
@@ -85,7 +85,7 @@ function makeNousIteration(opts: {
   return {
     intent: {
       id: opts.id,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       kind: 'nous-iteration',
       declaration: {
         title: `iter-${opts.iteration_number} · ${opts.family}`,
@@ -121,7 +121,7 @@ function makeNousIteration(opts: {
     state: {
       id: `${opts.id}-STATE`,
       intent_id: opts.id,
-      schema_version: '0.2.0',
+      schema_version: '0.3.0',
       status: result === 'pending' ? 'active' : 'satisfied',
       last_advanced_at: '2026-05-23T00:00:00Z',
       last_advanced_by: PROJECTOR,

@@ -19,8 +19,10 @@ export const KIND_GLYPHS: Record<IntentKind, string> = {
   // (b) Coral-shaped
   'coral-optimization': 'C',
   'coral-attempt': 'c',
-  // (c) Feature-development-shaped (campaign only — feature-pr returns in v0.3+)
+  // (c) Feature-development-shaped (campaign only — feature-pr returns later)
   'feature-campaign': 'F',
+  // (d) Research thread (v0.3.0)
+  'research-thread': 'R',
 }
 
 export interface KindBadgeProps {

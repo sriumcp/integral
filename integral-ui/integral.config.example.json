@@ -1,5 +1,5 @@
 {
-  "_comment": "Configuration for Integral's adapters and identity. Copy this file to `integral.config.json` (sibling) to override the default. The Vite plugin reads `integral.config.json` at startup; if absent, it falls back to a single 'inference-sim' Nous source pointing at ~/Documents/Projects/inference-sim and a `me` derived from your OS username. The optional `me: { id, display_name }` field controls the identity shown in the AppHeader's right-cluster PartyChip and used as the `by` field on lifecycle transitions; omit it to use your OS username automatically. v0.1 supports adapter kinds: 'nous' (Adapter #1, Phases 1-4 + writeback + LLM-driven shaping + run-command surfacing), 'coral' (Adapter #2, Phases 1-2, read-only), 'github-issues' (Adapter #3, Phases 1-2, read-only — requires `gh` CLI installed and authed). The `path` field is a filesystem path for nous/coral and an `<owner>/<name>` repo coordinate for github-issues. Paper kind lands in v0.2. NOUS_CAMPAIGN_PARENT (#239): for `nous` sources, `path` names the target repo where campaign-X.yaml declarations live. Integral always discovers runtime artifacts (state.json, ledger.json, principles.json) at TWO locations: legacy `<repo>/.nous/<run>/` AND a "campaign parent" directory. The campaign parent defaults to `~/Documents/Projects/nous-campaigns/` (matches the convention real users follow); override via `export NOUS_CAMPAIGN_PARENT=/some/other/path` to point elsewhere. Each env-var-located campaign attributes to a source iff its state.json.repo_path matches that source's `path`. The default may not exist on a given machine — that's fine; discovery silently no-ops. Empty/whitespace `NOUS_CAMPAIGN_PARENT` is a hard error (catches `export NOUS_CAMPAIGN_PARENT=$UNSET` typos); unset uses the default.",
+  "_comment": "Configuration for Integral's adapters and identity. Copy this file to `integral.config.json` (sibling) to override the default. The Vite plugin reads `integral.config.json` at startup; if absent, it falls back to a 'nous' source at ~/Documents/Projects/inference-sim, a 'research-thread' source at ~/Documents/Projects/research-threads, and a `me` derived from your OS username. Supported adapter kinds: 'nous' (full round-trip — read + writeback + LLM-driven shaping + run-command surfacing), 'coral' (read-only), 'github-issues' (read-only — requires `gh` CLI installed and authed), 'research-thread' (read-only projection — for loose-shaped research folders that exist out there but aren't shaped through the substrate). The `path` field is a filesystem path for nous/coral/research-thread and an `<owner>/<name>` repo coordinate for github-issues. For research-thread, `path` is the *parent* directory; each immediate subdirectory becomes one research-thread intent. The optional `me: { id, display_name }` field controls the identity in the AppHeader; omit to use your OS username. NOUS_CAMPAIGN_PARENT (#239): for `nous` sources, `path` names the target repo where campaign-X.yaml declarations live. Integral discovers runtime artifacts (state.json, ledger.json, principles.json) at TWO locations: legacy `<repo>/.nous/<run>/` AND a campaign-parent directory defaulting to `~/Documents/Projects/nous-campaigns/`. Override via `export NOUS_CAMPAIGN_PARENT=/some/other/path`. Each env-var-located campaign attributes to a source iff its state.json.repo_path matches that source's `path`. Empty/whitespace `NOUS_CAMPAIGN_PARENT` is a hard error.",
   "me": {
     "id": "sri",
     "display_name": "sri"
@@ -22,6 +22,12 @@
       "kind": "github-issues",
       "label": "sriumcp/integral",
       "path": "sriumcp/integral"
+    },
+    {
+      "id": "research-threads",
+      "kind": "research-thread",
+      "label": "research threads",
+      "path": "~/Documents/Projects/research-threads"
     }
   ]
 }

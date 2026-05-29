@@ -40,11 +40,13 @@ type RootKind =
   | 'nous-campaign'
   | 'coral-optimization'
   | 'feature-campaign'
+  | 'research-thread'
 
 const ROOT_KINDS: ReadonlySet<RootKind> = new Set([
   'nous-campaign',
   'coral-optimization',
   'feature-campaign',
+  'research-thread',
 ])
 
 /**

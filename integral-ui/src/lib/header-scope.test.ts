@@ -35,7 +35,7 @@ const REGISTRY: SourceEntry[] = [
 function makeIntent(id: string, source: string | undefined): Intent {
   return {
     id,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     kind: 'nous-campaign',
     declaration: { title: id, summary: '', success_criterion: '' },
     holder: { mode: 'human-held', parties: [sri] },

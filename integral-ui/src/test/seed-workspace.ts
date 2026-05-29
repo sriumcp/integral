@@ -1,16 +1,17 @@
 /**
- * Seed workspace — typed test data exercising every IntentKind v0.2.0
+ * Seed workspace — typed test data exercising every IntentKind v0.3.0
  * supports (nous-campaign, nous-iteration, coral-optimization,
- * coral-attempt, feature-campaign).
+ * coral-attempt, feature-campaign, research-thread).
  *
  * Test scaffolding only. Never loaded at runtime. Lives under `src/test/`
  * (not `src/fixtures/`) to mark the boundary clearly: production reads
  * adapter-emitted data, not bundled fixtures. Same data appears across
  * many tests so the schema invariants get exercised consistently.
  *
- * Schema-version tagged `0.2.0`. v0.1.0 had four extra kinds
+ * Schema-version tagged `0.3.0`. v0.1.0 had four extra kinds
  * (`feature-pr`, `paper-campaign`, `paper-section`, `paper-claim`) that
- * v0.2.0 removed; this seed only carries the kinds that survive.
+ * v0.2.0 removed; v0.3.0 added `research-thread` for loose-shaped
+ * read-only artifacts.
  */
 
 import type {
@@ -47,7 +48,7 @@ const FID = '01HXYZ-FEATURE-CAMPAIGN-001'
 // ─── (a) Nous campaign + iteration ─────────────────────────────────────────
 const nousCampaign: Intent = {
   id: NID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'nous-campaign',
   declaration: {
     title: 'v3 plateau study',
@@ -88,7 +89,7 @@ const nousCampaign: Intent = {
 
 const nousIteration: Intent = {
   id: NIID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'nous-iteration',
   declaration: {
     title: 'iter-2 · reward-curvature probe',
@@ -137,7 +138,7 @@ const nousIteration: Intent = {
 // ─── (b) Coral campaign + attempt ──────────────────────────────────────────
 const coralCampaign: Intent = {
   id: CID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'coral-optimization',
   declaration: {
     title: 'evaluator search · island-3',
@@ -180,7 +181,7 @@ const coralCampaign: Intent = {
 
 const coralAttempt: Intent = {
   id: CAID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'coral-attempt',
   declaration: {
     title: 'attempt-042 · island-3 mutation of best-so-far',
@@ -218,7 +219,7 @@ const coralAttempt: Intent = {
 // ─── (c) Feature campaign ──────────────────────────────────────────────────
 const featureCampaign: Intent = {
   id: FID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'feature-campaign',
   declaration: {
     title: 'Integral v0 substrate',
@@ -256,10 +257,45 @@ const featureCampaign: Intent = {
   },
 }
 
+// ─── (d) Research thread (v0.3.0) ──────────────────────────────────────────
+const RTID = '01HXYZ-RESEARCH-THREAD-001'
+const researchThread: Intent = {
+  id: RTID,
+  schema_version: '0.3.0',
+  kind: 'research-thread',
+  declaration: {
+    title: 'ea-control-stack',
+    summary: '',
+    success_criterion: '',
+  },
+  holder: {
+    mode: 'human-held',
+    parties: [{ id: 'unknown-human', kind: 'human', display_name: '(unknown)' }],
+  },
+  lifetime: { kind: 'standing', started_at: '2026-05-25T09:00:00Z' },
+  decomposition: { children: [] },
+  provenance: {
+    declared_by: { id: 'unknown-human', kind: 'human', display_name: '(unknown)' },
+    declared_at: '2026-05-25T09:00:00Z',
+    motivated_by: [],
+  },
+  knowledge_refs: [],
+  tags: [],
+  state_ref: RTID + '-STATE',
+  extension: {
+    kind: 'research-thread',
+    root_anchor: {
+      kind: 'filesystem-path',
+      uri: 'file:///Users/sri/Documents/Projects/research-threads/ea-control-stack',
+      read_only: true,
+    },
+  },
+}
+
 // ─── Drafts (shaping mode targets) ─────────────────────────────────────────
 const draftNous: Intent = {
   id: DRAFT_NOUS_ID,
-  schema_version: '0.2.0',
+  schema_version: '0.3.0',
   kind: 'nous-campaign',
   declaration: {
     title: 'evaluator-aware mutation study',
@@ -307,7 +343,7 @@ function makeState(
   return {
     id: id.stateId,
     intent_id: id.intentId,
-    schema_version: '0.2.0',
+    schema_version: '0.3.0',
     status,
     last_advanced_at: advancedAt,
     last_advanced_by: advancedBy,
@@ -359,6 +395,12 @@ const states: IntentState[] = [
   makeState(ref(CID), 'active', coralOrch, '2026-05-22T15:42:00Z', coralHistory),
   makeState(ref(CAID), 'active', coralOrch, '2026-05-22T15:42:00Z'),
   makeState(ref(FID), 'active', sri, '2026-05-22T14:00:00Z'),
+  makeState(
+    ref(RTID),
+    'active',
+    { id: 'unknown-human', kind: 'human', display_name: '(unknown)' },
+    '2026-05-25T09:00:00Z',
+  ),
   makeState(ref(DRAFT_NOUS_ID), 'draft', sri, '2026-05-22T16:00:00Z'),
 ]
 
@@ -457,6 +499,7 @@ export const seedWorkspace: Workspace = {
     coralCampaign,
     coralAttempt,
     featureCampaign,
+    researchThread,
     draftNous,
   ],
   states,

@@ -3,12 +3,15 @@ import type { Plugin } from 'vite'
 import { buildNousWorkspace } from '../src/adapters/nous'
 import { buildCoralWorkspace } from '../src/adapters/coral'
 import { buildFeatureWorkspace } from '../src/adapters/feature'
+import { buildResearchThreadWorkspace } from '../src/adapters/research-thread'
+import { FilesystemResearchThreadSource } from './research-thread-filesystem-source'
 import {
   generateProjection,
   type PluginRegistry,
 } from '../src/lib/projection'
 import { nousCampaignPlugin } from '../src/lib/projection-plugins/nous-campaign'
 import { nousIterationPlugin } from '../src/lib/projection-plugins/nous-iteration'
+import { researchThreadPlugin } from './research-thread-projection-plugin'
 import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
 import {
@@ -74,6 +77,7 @@ export function nousAdapterPlugin(): Plugin {
   const projectionPlugins: PluginRegistry = {
     'nous-campaign': nousCampaignPlugin,
     'nous-iteration': nousIterationPlugin,
+    'research-thread': researchThreadPlugin,
   }
   const { client: llm, provider: llmProvider } = tryCreateLLMClient()
   if (llm) {
@@ -482,6 +486,13 @@ async function buildWorkspaceForSource(
       return buildCoralWorkspace(new FilesystemCoralSource(configured.path))
     case 'github-issues':
       return buildFeatureWorkspace(new GhCliIssuesSource(configured.path))
+    case 'research-thread':
+      return buildResearchThreadWorkspace(
+        new FilesystemResearchThreadSource(configured.path, {
+          id: configured.id,
+          label: configured.label,
+        })
+      )
   }
 }
 

@@ -35,7 +35,7 @@ const CORAL_ORCHESTRATOR_AGENT: Party = {
   display_name: 'coral-orchestrator',
 }
 
-const SCHEMA_VERSION = '0.2.0' as const
+const SCHEMA_VERSION = '0.3.0' as const
 
 export interface BuildCoralWorkspaceOpts {
   /** Reserved for v0.2 — when an `Operation[]` diff lands for Coral, this

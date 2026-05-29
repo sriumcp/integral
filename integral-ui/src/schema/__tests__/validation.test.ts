@@ -76,12 +76,11 @@ describe('IntentSchema — kind/extension consistency', () => {
     expect(result.success).toBe(false)
   })
 
-  it('pins SCHEMA_VERSION to the v0.2.0 literal', () => {
-    // The schema bumped to 0.2.0 when paper-* and feature-pr kinds
-    // were removed (see intent-schema-v0.2.md § "What v0.2.0 removed").
-    // Future bumps create another file; this assertion fails until you
-    // update both the schema and this pin.
-    expect(SCHEMA_VERSION).toBe('0.2.0')
+  it('pins SCHEMA_VERSION to the v0.3.0 literal', () => {
+    // The schema bumped to 0.3.0 when `research-thread` was added (see
+    // intent-schema-v0.3.md). Future bumps create another file; this
+    // assertion fails until both the schema and this pin update.
+    expect(SCHEMA_VERSION).toBe('0.3.0')
   })
 
   it('IntentStateSchema rejects mismatched schema_version too', () => {

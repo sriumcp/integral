@@ -28,7 +28,7 @@ import { reconstructTree } from './tree'
  * fits the schema cleanly and record what doesn't.
  */
 
-const SCHEMA_VERSION = '0.2.0' as const
+const SCHEMA_VERSION = '0.3.0' as const
 
 const UNASSIGNED_PARTY: Party = {
   id: 'github-unassigned',

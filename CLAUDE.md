@@ -2,9 +2,11 @@
 
 ## Project phase
 
-Integral is at **v0.2.0 in progress** — the substrate just shed its demo skin (no fixture, configurable identity, no reversibility placeholder) and the schema bumped to 0.2.0 alongside the cut. v0.1 shipped the Chrome stack + typed `Operation` log + multi-source data plane + three real adapters (Nous full round-trip; Coral and GitHub-issues read-only) + filter/group/sort.
+Integral is at **v0.3.0 in progress** — the schema just added `research-thread`, a read-only-projection kind for loose-shaped research artifacts that exist in the user's workspace as filesystem directories. v0.1 shipped the Chrome stack + typed `Operation` log + multi-source data plane + three real adapters (Nous full round-trip; Coral and GitHub-issues read-only) + filter/group/sort. v0.2.0 narrowed the kind set to "what we ship" + dropped the demo fixture + made identity + scope configurable.
 
-**v0.2.0 schema bump (2026-05-29):** the schema now supports five `IntentKind`s (`nous-campaign`, `nous-iteration`, `coral-optimization`, `coral-attempt`, `feature-campaign`) — down from nine. The four kinds dropped (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) had no adapter and survived only via the bundled fixture; both went away together. Coverage for paper-* returns when the paper adapter ships; coverage for `feature-pr` returns when full feature-dev (PR/CI/review reading) ships. See `intent-schema-v0.2.md` § "What v0.2.0 removed."
+**v0.3.0 schema bump (2026-05-29):** the schema now supports six `IntentKind`s — adds `'research-thread'` to v0.2.0's five. A research-thread is a leaf-shaped intent: no shaper, no writeback, no decomposition into typed children. The new adapter (`FilesystemResearchThreadSource` + `buildResearchThreadWorkspace`) scans a parent directory; each subdir becomes one thread. Default parent dir: `~/Documents/Projects/research-threads/` (analogous to Nous's `~/Documents/Projects/nous-campaigns/`). The projection plugin lives server-side (`vite-plugin-nous-adapter/research-thread-projection-plugin.ts`) because it does I/O at projection time — reads selected markdown files (README, brief, PAPER, reconciliation, …) and asks the LLM to synthesize. See `intent-schema-v0.3.md`.
+
+**v0.2.0 schema bump (2026-05-29):** the schema dropped four kinds (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) that had no adapter and survived only via the bundled fixture; both went away together. Coverage for paper-* returns when the paper adapter ships; coverage for `feature-pr` returns when full feature-dev ships. See `intent-schema-v0.2.md` § "What v0.2.0 removed."
 
 **v0.2 + v0.3 scope decision (2026-05-27):** v0.2 focuses exclusively on the **Nous + Paper-authoring axis**. All Coral and GitHub-issues / feature-development work is deferred to **v0.3+**. The existing read-only Coral + GitHub adapters stay shipped; they don't get extended. This concentrates substrate energy on the research-paper authoring loop (cross-tree story: paper-claim → nous-iteration via `EvidenceLink` once paper adapter lands).
 
@@ -15,8 +17,9 @@ Current state of shipped components is derivable from `git log` and the code; **
 These files are the source of truth. This CLAUDE.md does not summarize them; it points at them and captures only what is not in them.
 
 - `intents-and-harnesses.md` (v2) — the catalog of LLM-harness categories and the intent-aware abstractions Integral provides.
-- `intent-schema-v0.2.md` — **current schema source of truth.** The typed object model: `Intent`, `IntentState`, `KnowledgeRef`, `EvidenceLink`, five `IntentKind`s and their extensions, shaping operations, non-goals.
-- `intent-schema-v0.1.md` — historical, superseded by v0.2.0. Kept on disk so adapters tagged `0.1.0` (none in this repo today, but external readers might reference it) can still find their grammar.
+- `intent-schema-v0.3.md` — **current schema source of truth.** Adds `research-thread` to v0.2.0's five kinds.
+- `intent-schema-v0.2.md` — historical, superseded by v0.3.0. Kept for the v0.2.0 grammar reference (kind set, extensions, examples).
+- `intent-schema-v0.1.md` — historical, superseded by v0.2.0. Kept on disk so external readers referencing `schema_version: '0.1.0'` can still find their grammar.
 - `intent-ux-sketch-v0.1.md` — the four UX surfaces (Map / Detail / Activity / Shaping), figure-rendering rules, filter/group/tag scope, design questions left open. Surface decisions are version-stable across v0.1 → v0.2; this file applies as-is.
 - `semantics-v0.1.md` — the semantic model: how typed objects acquire meaning across the five layers. Catalogs S-1..S-9 components and C-1..C-8 couplings. Names what v0.1 commits to vs. what is later work; conclusions are still load-bearing under v0.2.0.
 - `roadmap.md` — **authoritative live tracker.** Per-item acceptance criteria, stop conditions, v0.2 → v0.3 plan.
@@ -28,7 +31,7 @@ Cross-references between these documents are normative. If a code change require
 ## Core decisions (inherited by every session)
 
 - **Protocol-first, not platform.** Integral describes intents that other harnesses produce; it does not host execution. Adapters read existing-system state through `ExternalAnchor`s.
-- **Five intent kinds in v0.2.0.** `nous-campaign`, `nous-iteration`, `coral-optimization`, `coral-attempt`, `feature-campaign`. The four kinds present in v0.1 (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) were removed when the fixture was deleted; they return when their adapters ship in a future bump.
+- **Six intent kinds in v0.3.0.** `nous-campaign`, `nous-iteration`, `coral-optimization`, `coral-attempt`, `feature-campaign`, `research-thread`. The four v0.1 kinds (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) were removed in v0.2.0 and return when their adapters ship.
 - **State is separated from intent.** Independent versioning of declaration vs. state is load-bearing for the audit log. Don't collapse them.
 - **External anchors, not mirrors.** When another system owns authoritative state (git, GitHub, filesystem, bibtex), point at it via `ExternalAnchor`. Don't try to be the source of truth.
 - **`EvidenceLink` is the unifying primitive.** It's why the kinds aren't parallel schemas. Lives in a separate edge collection, not embedded in intents.
@@ -77,14 +80,15 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
   - `npm run typecheck` — strict TS check, no emit
   - **None of these commands consume LLM tokens.** All test layers run with mocked LLMs.
 - **Schema layer**: `integral-ui/src/schema/zod.ts` is the source of truth. zod schemas first; TS types inferred via `z.infer`. Adding a new schema field is a single edit there; types and validators stay in sync.
-- **Schema_version literal**: every `Intent` / `IntentState` MUST carry `schema_version: '0.2.0'`. The constant lives at `integral-ui/src/schema/zod.ts:SCHEMA_VERSION`. Adapters MUST reject objects with mismatched versions (enforced by `IntentSchema`).
+- **Schema_version literal**: every `Intent` / `IntentState` MUST carry `schema_version: '0.3.0'`. The constant lives at `integral-ui/src/schema/zod.ts:SCHEMA_VERSION`. Adapters MUST reject objects with mismatched versions (enforced by `IntentSchema`).
 - **Test seed data**: `integral-ui/src/test/seed-workspace.ts` and `seed-shaping.ts` provide deterministic typed test data for unit + behavioral tests. **Test scaffolding only — never loaded at runtime.** Lives under `src/test/` (not `src/fixtures/`) because production reads adapter output, not bundled fixtures. The pre-v0.2.0 fixture path is gone; if you need to add a kind back to seed data, also add it to the schema (which means a version bump).
 - **Path alias**: `@/*` → `integral-ui/src/*`. Use it for cross-module imports.
-- **Adapters location**: `integral-ui/src/adapters/{nous,coral,feature}/` (browser-safe interpreters) + `integral-ui/vite-plugin-nous-adapter/` (Node-only transports + middleware + handlers).
+- **Adapters location**: `integral-ui/src/adapters/{nous,coral,feature,research-thread}/` (browser-safe interpreters) + `integral-ui/vite-plugin-nous-adapter/` (Node-only transports + middleware + handlers + projection plugins that need I/O).
 - **`vite-plugin-nous-adapter/` is the architectural barrier.** Despite the historical name, it houses *all* server-side concerns — every adapter's transport, every `/api/*` handler, the LLM clients, `node:fs` and `node:child_process` calls. Real I/O and LLM clients NEVER live in `src/` — not even type-only imports that pull module side-effects.
 - **The projection generator runs in-process.** Whether it splits into a separate service is a future question. `read-at-zoom-level` is a function, not a network call.
 - **The UI is web** for now. Terminal / other surfaces are out of scope until the web surfaces stabilize.
 - **Nous campaign discovery has two locations**, both always scanned: legacy `<source-path>/.nous/<runId>/` and a "campaign parent" directory. The campaign parent defaults to `~/Documents/Projects/nous-campaigns/` (matches the convention real users follow). Override via `export NOUS_CAMPAIGN_PARENT=/some/other/path` in the shell that launches `npm run dev`. Empty/whitespace value is a hard error (catches `export NOUS_CAMPAIGN_PARENT=$UNSET` typos). Each env-var-discovered campaign attributes to a configured `nous` source iff its `state.json.repo_path` matches that source's `path`. Default `DEFAULT_NOUS_CAMPAIGN_PARENT` lives in `vite-plugin-nous-adapter/filesystem-source.ts`.
+- **Research-thread discovery is single-location**: the source's `path` is a *parent* directory; each immediate subdirectory becomes one `research-thread` Intent. Default parent (when no `integral.config.json` is present): `~/Documents/Projects/research-threads/` — analogous to the Nous default. The directory may not exist; the adapter returns `[]` gracefully. Hidden / dotfile-prefixed dirs are skipped. The projection plugin (`vite-plugin-nous-adapter/research-thread-projection-plugin.ts`) reads selected markdown files at projection time — README → brief → PAPER → reconciliation → notes → alphabetical fill, capped at 3 files (structure) / 10 files (detail).
 
 ## Test discipline
 
