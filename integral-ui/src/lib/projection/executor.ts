@@ -89,11 +89,19 @@ export function executeSpec(
     quoted[sc.id] = value
   }
 
+  // Track which excerpt ids the LLM substituted into prose / captions.
+  // The lint uses these to build the allowed-digit set: any digit that
+  // appears verbatim inside a quoted excerpt has provenance via the
+  // excerpt's source_ref. Digits NOT in scalars and NOT in any quoted
+  // excerpt are LLM-invented and rejected.
+  const excerptsResolved = new Set<string>()
+
   // ── Caption substitution (figures may reference scalars) ──────────────
   for (const f of figures) {
     if (f.caption_rendered != null) {
       f.caption_rendered = renderTemplate(f.caption_rendered, quoted, excerptIdx, {
         scope: `figures.${f.id}.caption`,
+        excerptsResolved,
       })
     }
   }
@@ -101,6 +109,7 @@ export function executeSpec(
   // ── Prose ──────────────────────────────────────────────────────────────
   const prose = renderTemplate(spec.prose_template, quoted, excerptIdx, {
     scope: 'prose_template',
+    excerptsResolved,
   })
 
   // ── Citation index (for tooltips / inspector UI) ──────────────────────

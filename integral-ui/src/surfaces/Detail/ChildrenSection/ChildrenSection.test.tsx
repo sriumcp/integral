@@ -28,8 +28,14 @@ function intentFor(kind: (typeof KINDS)[number]): Intent {
   return found
 }
 
+// Kinds that have specialized chrome inside ChildrenSection (NousProgressVisuals,
+// per-extension summary, children list, or detail dump). Research-thread is
+// excluded — it has no specialized chrome, so the section returns null at
+// structure/detail zoom (the projection's narrative arc is the entire UX).
+const KINDS_WITH_BODY = KINDS.filter((k) => k !== 'research-thread')
+
 describe('ChildrenSection', () => {
-  it.each(KINDS)('renders without crashing for kind %s at structure zoom', (kind) => {
+  it.each(KINDS_WITH_BODY)('renders without crashing for kind %s at structure zoom', (kind) => {
     const intent = intentFor(kind)
     const { container } = render(
       <ChildrenSection
@@ -43,7 +49,7 @@ describe('ChildrenSection', () => {
     expect(container.firstElementChild?.getAttribute('data-kind')).toBe(kind)
   })
 
-  it.each(KINDS)('renders without crashing for kind %s at detail zoom', (kind) => {
+  it.each(KINDS_WITH_BODY)('renders without crashing for kind %s at detail zoom', (kind) => {
     const intent = intentFor(kind)
     render(
       <ChildrenSection
@@ -53,6 +59,47 @@ describe('ChildrenSection', () => {
         onOpen={() => {}}
       />
     )
+  })
+
+  it('renders nothing at structure zoom for research-thread (no specialized chrome → no empty box)', () => {
+    const thread = intentFor('research-thread')
+    const { container } = render(
+      <ChildrenSection
+        intent={thread}
+        workspace={seedWorkspace}
+        zoom="structure"
+        onOpen={() => {}}
+      />
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('renders nothing at detail zoom for research-thread', () => {
+    const thread = intentFor('research-thread')
+    const { container } = render(
+      <ChildrenSection
+        intent={thread}
+        workspace={seedWorkspace}
+        zoom="detail"
+        onOpen={() => {}}
+      />
+    )
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('overview zoom always renders for every kind including research-thread', () => {
+    for (const kind of KINDS) {
+      const intent = intentFor(kind)
+      const { container } = render(
+        <ChildrenSection
+          intent={intent}
+          workspace={seedWorkspace}
+          zoom="overview"
+          onOpen={() => {}}
+        />
+      )
+      expect(container.firstElementChild?.getAttribute('data-kind')).toBe(kind)
+    }
   })
 
   it('lists children of nous-campaign with iteration rows', () => {

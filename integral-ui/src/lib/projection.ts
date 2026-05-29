@@ -30,7 +30,7 @@
  */
 
 import type { Intent, IntentKind, IntentState, Workspace, ZoomLevel } from '../schema'
-import { composeProjectionSpec, ComposerError } from './projection/composer'
+import { composeProjectionSpec } from './projection/composer'
 import { executeSpec, SpecExecutionError } from './projection/executor'
 import { lintProse } from './projection/lint'
 import { TemplateError } from './projection/template'
@@ -116,9 +116,7 @@ export async function generateProjection(
       intent_summary: plugin.intentSummary(ctx),
     })
   } catch (err) {
-    if (err instanceof ComposerError) {
-      return fallbackProjection({ intent, state, workspace, zoom, evidence })
-    }
+    logFallback(intent.id, zoom, 'composer', err)
     return fallbackProjection({ intent, state, workspace, zoom, evidence })
   }
 
@@ -131,21 +129,63 @@ export async function generateProjection(
     })
   } catch (err) {
     if (err instanceof SpecExecutionError || err instanceof TemplateError) {
+      logFallback(intent.id, zoom, 'executor', err)
       return fallbackProjection({ intent, state, workspace, zoom, evidence })
     }
+    logFallback(intent.id, zoom, 'executor (unknown)', err)
     return fallbackProjection({ intent, state, workspace, zoom, evidence })
   }
 
   // ── Step 4: lint prose ───────────────────────────────────────────────
-  const lint = lintProse(executed.prose, executed.quoted_numerics)
+  // Build the allowed-digit pool from substituted-excerpt texts as well
+  // as quoted_numerics. Excerpts substituted via `{excerpt:id}` carry
+  // their digits with provenance via the excerpt's source_ref.
+  const substitutedExcerpts = collectSubstitutedExcerpts(spec.prose_template, evidence)
+  const lint = lintProse(executed.prose, executed.quoted_numerics, { substitutedExcerpts })
   if (!lint.ok) {
-    // Lint rejection is rare but real — the LLM tried to slip a digit in
-    // that the executor doesn't have provenance for. Fall back rather
-    // than render the unsourced digits.
+    logFallback(
+      intent.id, zoom, 'lint',
+      `unsourced digits in prose: ${lint.offenders.slice(0, 8).join(', ')}${lint.offenders.length > 8 ? `, +${lint.offenders.length - 8} more` : ''}`
+    )
     return fallbackProjection({ intent, state, workspace, zoom, evidence })
   }
 
   return executed
+}
+
+const PLACEHOLDER_RE = /\{excerpt:([A-Za-z0-9_.\-:]+)\}/g
+
+function collectSubstitutedExcerpts(
+  proseTemplate: string,
+  evidence: TypedEvidence
+): string[] {
+  const ids = new Set<string>()
+  for (const m of proseTemplate.matchAll(PLACEHOLDER_RE)) {
+    if (m[1]) ids.add(m[1])
+  }
+  if (ids.size === 0) return []
+  const out: string[] = []
+  for (const e of evidence.excerpts) {
+    if (ids.has(e.id)) out.push(e.text)
+  }
+  return out
+}
+
+function logFallback(
+  intentId: string,
+  zoom: string,
+  reason: string,
+  detail: unknown
+): void {
+  const message = detail instanceof Error
+    ? detail.message
+    : typeof detail === 'string'
+      ? detail
+      : String(detail)
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[integral] projection fallback for ${intentId} @ ${zoom} — ${reason}: ${message}`
+  )
 }
 
 // ─── Fallback (deterministic, no LLM) ─────────────────────────────────────

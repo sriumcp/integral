@@ -245,6 +245,38 @@ describe('generateProjection — error paths', () => {
     expect(p.source).toBe('fallback')
   })
 
+  it('accepts digits that came from substituted excerpt text (provenance via excerpt)', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    // Evidence: a single excerpt containing a digit ("6,400 result JSONs").
+    const evidenceWithDigitExcerpt: TypedEvidence = {
+      ...TINY_EVIDENCE,
+      excerpts: [
+        { id: 'overview', text: 'Repo holds the 6,400 result JSONs from the run.', kind: 'paragraph', source_ref: { file: 'README.md' } },
+      ],
+    }
+    const plugin: KindProjectionPlugin = {
+      kind: 'nous-campaign',
+      async evidence() { return evidenceWithDigitExcerpt },
+      intentSummary() { return 'X' },
+    }
+    const spec: ProjectionSpec = {
+      spec_version: '1',
+      figures: [],
+      scalars: [],
+      // The literal "6,400" in the rendered prose came from the
+      // substituted excerpt; the lint should accept it.
+      prose_template: 'Per the README: {excerpt:overview}',
+    }
+    const llm = makeMockLLM(JSON.stringify(spec))
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin }, llm,
+    })
+    expect(p.source).toBe('llm')
+    expect(p.prose).toContain('6,400')
+  })
+
   it('falls back when executor cannot find a referenced dataset', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])

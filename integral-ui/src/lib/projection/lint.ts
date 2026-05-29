@@ -19,27 +19,50 @@ import { formatScalar } from './template'
 export interface LintOk { ok: true }
 export interface LintFail {
   ok: false
-  /** Verbatim digit substrings that don't match any quoted_numeric. */
+  /** Verbatim digit substrings that don't match any quoted_numeric or
+   *  any digit inside an excerpt that was substituted into the prose. */
   offenders: string[]
 }
 export type LintResult = LintOk | LintFail
 
 const DIGIT_RE = /\b\d+(?:\.\d+)?\b/g
 
-export function lintProse(prose: string, scalars: QuotedNumerics): LintResult {
+export interface LintOptions {
+  /** Texts of excerpts that were substituted into the prose. Every digit
+   *  that appears in any of these texts is allowed in the rendered prose,
+   *  because the excerpt was quoted verbatim from a source with a
+   *  recorded `source_ref` — the digits have provenance.
+   *
+   *  Without this, ANY research-thread or markdown-derived projection
+   *  that quotes a paragraph containing numbers would fall back, because
+   *  the LLM would faithfully include "the 6,400 result JSONs" in its
+   *  prose template via `{excerpt:foo}` and the substituted text would
+   *  contain unsourced-from-the-lint's-perspective digits. */
+  substitutedExcerpts?: string[]
+}
+
+export function lintProse(
+  prose: string,
+  scalars: QuotedNumerics,
+  options: LintOptions = {}
+): LintResult {
   const allowed = new Set<string>()
   for (const v of Object.values(scalars)) {
     const formatted = formatScalar(v)
-    // Register every digit token from the formatted scalar, in case the
-    // formatter produces strings like "1.234" — the lint should accept
-    // both that whole string and any zero-padded variant.
     for (const m of formatted.matchAll(DIGIT_RE)) {
       allowed.add(m[0])
     }
-    // Also allow the raw numeric string (e.g. integer literals).
     if (typeof v === 'number' && Number.isFinite(v)) {
       allowed.add(String(v))
       if (Number.isInteger(v)) allowed.add(String(Math.trunc(v)))
+    }
+  }
+  // Register every digit token that appears in any substituted excerpt.
+  // The excerpt was quoted verbatim from disk with a recorded source_ref,
+  // so digits inside its text have provenance.
+  for (const text of options.substitutedExcerpts ?? []) {
+    for (const m of text.matchAll(DIGIT_RE)) {
+      allowed.add(m[0])
     }
   }
 
@@ -48,7 +71,6 @@ export function lintProse(prose: string, scalars: QuotedNumerics): LintResult {
     if (!allowed.has(m[0])) offenders.push(m[0])
   }
   if (offenders.length === 0) return { ok: true }
-  // Dedup while preserving order.
   const seen = new Set<string>()
   const dedup = offenders.filter((o) => (seen.has(o) ? false : (seen.add(o), true)))
   return { ok: false, offenders: dedup }

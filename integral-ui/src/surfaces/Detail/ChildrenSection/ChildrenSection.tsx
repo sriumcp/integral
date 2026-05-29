@@ -71,6 +71,16 @@ export function ChildrenSection({
     )
   }
 
+  // Hide the section entirely when nothing renders for this kind+zoom.
+  // Research-thread (and any future leaf kind without typed children +
+  // no specialized extension summary + no detail dump) would otherwise
+  // surface as an empty box. Test this fail-closed: each fragment below
+  // returns null when it has nothing to show; if all four are silent,
+  // the chrome should be silent too.
+  if (!sectionHasAnything(intent, workspace, zoom, childPairs.length)) {
+    return null
+  }
+
   return (
     <section className={styles.section} data-kind={intent.kind}>
       {/* Visual summary atoms sit *first* — adjacent to the projection
@@ -95,6 +105,35 @@ export function ChildrenSection({
       {zoom === 'detail' && <ExtensionDetail intent={intent} />}
     </section>
   )
+}
+
+/**
+ * Predicate mirroring the conditions under which the four child fragments
+ * (NousProgressVisuals, ExtensionSummary, children list, ExtensionDetail)
+ * each return null. If all four are silent, the section is empty and
+ * shouldn't render its outer chrome. Conservative — when in doubt, render.
+ *
+ * Today: research-thread is always silent here (no nous visuals, no
+ * specialized extension summary, no children, no detail dump). Other
+ * kinds always have at least an ExtensionSummary, so they pass.
+ */
+function sectionHasAnything(
+  intent: Intent,
+  workspace: Workspace,
+  zoom: ZoomLevel,
+  childCount: number,
+): boolean {
+  if (childCount > 0) return true
+  if (intent.extension.kind === 'nous-campaign') return true
+  if (intent.extension.kind === 'nous-iteration') return true
+  if (intent.extension.kind === 'coral-optimization') return true
+  if (intent.extension.kind === 'coral-attempt') return true
+  if (intent.extension.kind === 'feature-campaign') return true
+  // research-thread (and any future leaf kind) — only show if zoom-detail
+  // ever surfaces something specialized; v0.3.x has nothing for it.
+  void workspace
+  void zoom
+  return false
 }
 
 /**

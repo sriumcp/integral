@@ -27,6 +27,11 @@ export class TemplateError extends Error {
 
 export interface RenderTemplateOptions {
   scope: string
+  /** Optional collector — if provided, every excerpt id resolved during
+   *  rendering is added. Used by the executor to build the excerpt-digit
+   *  allow-set the lint consults (excerpt-quoted digits have provenance
+   *  via excerpt.source_ref, so they should pass lint). */
+  excerptsResolved?: Set<string>
 }
 
 const PLACEHOLDER_RE = /\{(scalar|excerpt):([A-Za-z0-9_.\-:]+)\}/g
@@ -47,6 +52,7 @@ export function renderTemplate(
     if (kind === 'excerpt') {
       const e = excerpts.get(id)
       if (!e) throw new TemplateError(`unknown excerpt id '${id}'`, opts.scope)
+      opts.excerptsResolved?.add(id)
       return e.text
     }
     return _match

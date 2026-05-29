@@ -50,3 +50,43 @@ describe('lintProse', () => {
     expect(lintProse('Iteration 3 completed.', { i: 3 }).ok).toBe(true)
   })
 })
+
+describe('lintProse — substituted excerpt allow-list', () => {
+  it('accepts digits inside a substituted excerpt verbatim', () => {
+    const r = lintProse(
+      'The repo "does not contain the ~6,400 raw simulator result JSONs (4.7 GB)".',
+      {},
+      { substitutedExcerpts: ['does not contain the ~6,400 raw simulator result JSONs (4.7 GB)'] }
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it('still rejects digits NOT in any substituted excerpt', () => {
+    const r = lintProse(
+      'About 6,400 results — and a 99 hidden in the prose.',
+      {},
+      { substitutedExcerpts: ['About 6,400 results'] }
+    )
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.offenders).toContain('99')
+    expect(r.offenders).not.toContain('400')
+    expect(r.offenders).not.toContain('6')
+  })
+
+  it('union of scalar digits + excerpt digits is allowed', () => {
+    const r = lintProse(
+      'We ran 5 attempts; the README mentioned 12 prior runs.',
+      { n_attempts: 5 },
+      { substitutedExcerpts: ['mentioned 12 prior runs in the legacy report'] }
+    )
+    expect(r.ok).toBe(true)
+  })
+
+  it('empty substitutedExcerpts list behaves identically to no list', () => {
+    const a = lintProse('5 wins', { n: 5 })
+    const b = lintProse('5 wins', { n: 5 }, { substitutedExcerpts: [] })
+    expect(a.ok).toBe(true)
+    expect(b.ok).toBe(true)
+  })
+})
