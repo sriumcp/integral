@@ -5,13 +5,8 @@ import { buildCoralWorkspace } from '../src/adapters/coral'
 import { buildFeatureWorkspace } from '../src/adapters/feature'
 import { buildResearchThreadWorkspace } from '../src/adapters/research-thread'
 import { FilesystemResearchThreadSource } from './research-thread-filesystem-source'
-import {
-  generateProjection,
-  type PluginRegistry,
-} from '../src/lib/projection'
-import { nousCampaignPlugin } from '../src/lib/projection-plugins/nous-campaign'
-import { nousIterationPlugin } from '../src/lib/projection-plugins/nous-iteration'
-import { researchThreadPlugin } from './research-thread-projection-plugin'
+import { generateProjection } from '../src/lib/projection'
+import { buildPluginRegistry } from './projection-plugins-v2'
 import type { Workspace, ZoomLevel } from '../src/schema'
 import { tryCreateLLMClient } from './llm-client-factory'
 import {
@@ -74,11 +69,15 @@ export function nousAdapterPlugin(): Plugin {
   // every projection request.
   const workspaceCache = new Map<string, Workspace>()
 
-  const projectionPlugins: PluginRegistry = {
-    'nous-campaign': nousCampaignPlugin,
-    'nous-iteration': nousIterationPlugin,
-    'research-thread': researchThreadPlugin,
+  // Cache configured sources keyed by their source.id so plugins can
+  // find the source for a given workspace (used by nous plugins to
+  // locate runtime artifacts on disk).
+  const sourceById = new Map<string, ConfiguredSource>()
+  const workspaceToSource = new WeakMap<Workspace, ConfiguredSource>()
+  const resolveSource = (workspace: Workspace): ConfiguredSource | null => {
+    return workspaceToSource.get(workspace) ?? null
   }
+  const projectionPlugins = buildPluginRegistry(resolveSource)
   const { client: llm, provider: llmProvider } = tryCreateLLMClient()
   if (llm) {
     // eslint-disable-next-line no-console
@@ -175,6 +174,8 @@ export function nousAdapterPlugin(): Plugin {
 
           const workspace = await buildWorkspaceForSource(configured)
           workspaceCache.set(configured.id, workspace)
+          workspaceToSource.set(workspace, configured)
+          sourceById.set(configured.id, configured)
 
           res.statusCode = 200
           res.setHeader('content-type', 'application/json')
@@ -382,6 +383,8 @@ export function nousAdapterPlugin(): Plugin {
             if (!ws) {
               ws = await buildWorkspaceForSource(candidate)
               workspaceCache.set(candidate.id, ws)
+              workspaceToSource.set(ws, candidate)
+              sourceById.set(candidate.id, candidate)
             }
             if (ws.intents.some((i) => i.id === intentId)) {
               resolvedSource = candidate
@@ -429,24 +432,22 @@ export function nousAdapterPlugin(): Plugin {
             zoom,
             plugins: projectionPlugins,
             llm: llm ?? noKeyLLMStub,
+            ...(llmProvider ? { model: llmProvider } : {}),
           })
 
-          let response: object = projection
           if (projection.source === 'llm') {
-            const persisted = await writePersistedProjection({
+            await writePersistedProjection({
               intentId,
               zoom,
               stateTimestamp: state.last_advanced_at,
               projection,
-              ...(llmProvider ? { model: llmProvider } : {}),
             })
-            response = persisted
           }
 
           res.statusCode = 200
           res.setHeader('content-type', 'application/json')
           res.setHeader('cache-control', 'no-store')
-          res.end(JSON.stringify(response))
+          res.end(JSON.stringify(projection))
         } catch (err) {
           res.statusCode = 500
           res.setHeader('content-type', 'application/json')

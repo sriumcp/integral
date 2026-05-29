@@ -1,0 +1,456 @@
+import { describe, expect, it } from 'vitest'
+import { executeSpec, SpecExecutionError } from '../executor'
+import type { ProjectionSpec, TypedEvidence } from '../spec'
+
+const NOW = () => '2026-05-29T00:00:00Z'
+
+function ev(rows: Array<Record<string, number | string | boolean | null>>): TypedEvidence {
+  return {
+    datasets: [
+      {
+        name: 'd',
+        schema: { columns: [
+          { name: 'k', type: 'string' },
+          { name: 'v', type: 'number' },
+          { name: 'g', type: 'string' },
+        ]},
+        rows,
+        source_ref: { file: 'd.json' },
+      },
+    ],
+    excerpts: [],
+    files_seen: [],
+    fingerprint: 'fp',
+  }
+}
+
+function spec(figures: ProjectionSpec['figures'], scalars: ProjectionSpec['scalars'] = []): ProjectionSpec {
+  return { spec_version: '1', figures, scalars, prose_template: '' }
+}
+
+describe('executor — transforms', () => {
+  it('filter: numeric predicate eliminates non-matching rows', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'x' },
+      { k: 'b', v: 5, g: 'x' },
+      { k: 'c', v: 9, g: 'x' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'filter', column: 'v', predicate: { op: 'gte', value: 5 } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures[0]!.data).toEqual([{ k: 'b', v: 5, g: 'x' }, { k: 'c', v: 9, g: 'x' }])
+  })
+
+  it('filter: in/eq/ne predicates work over strings + booleans', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'x' },
+      { k: 'b', v: 2, g: 'y' },
+      { k: 'c', v: 3, g: 'z' },
+    ])
+    const inOut = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'filter', column: 'g', predicate: { op: 'in', values: ['x', 'z'] } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(inOut.figures[0]!.data.map((r) => r.k)).toEqual(['a', 'c'])
+  })
+
+  it('sort: asc + desc both honour the order flag', () => {
+    const evidence = ev([
+      { k: 'a', v: 3, g: '' },
+      { k: 'b', v: 1, g: '' },
+      { k: 'c', v: 2, g: '' },
+    ])
+    const asc = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'sort', column: 'v', order: 'asc' }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(asc.figures[0]!.data.map((r) => r.v)).toEqual([1, 2, 3])
+    const desc = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'sort', column: 'v', order: 'desc' }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(desc.figures[0]!.data.map((r) => r.v)).toEqual([3, 2, 1])
+  })
+
+  it('group_by: every reducer (count, sum, mean, median, min, max, first, last)', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'x' },
+      { k: 'b', v: 3, g: 'x' },
+      { k: 'c', v: 5, g: 'x' },
+      { k: 'd', v: 10, g: 'y' },
+      { k: 'e', v: 20, g: 'y' },
+    ])
+    const reducers: Array<[string, number | string | null, number | string | null]> = [
+      ['count', 3, 2],
+      ['sum', 9, 30],
+      ['mean', 3, 15],
+      ['median', 3, 15],
+      ['min', 1, 10],
+      ['max', 5, 20],
+      ['first', 1, 10],
+      ['last', 5, 20],
+    ]
+    for (const [reducer, xExpected, yExpected] of reducers) {
+      const out = executeSpec(spec([{
+        id: 'f', title: 'F', dataset: 'd',
+        transform: [{ op: 'group_by', columns: ['g'], aggregate: { v: reducer as 'sum' } }],
+        mark: { type: 'bar', orientation: 'vertical' }, encodings: { x: 'g', y: 'v' }, emit_empty: false,
+      }]), evidence, { now: NOW })
+      const byG = new Map(out.figures[0]!.data.map((r) => [r.g, r.v]))
+      expect(byG.get('x')).toBe(xExpected)
+      expect(byG.get('y')).toBe(yExpected)
+    }
+  })
+
+  it('group_by: median picks the middle value for odd counts and the average for even', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: 'odd' },
+      { k: 'b', v: 5, g: 'odd' },
+      { k: 'c', v: 9, g: 'odd' },
+      { k: 'd', v: 1, g: 'even' },
+      { k: 'e', v: 3, g: 'even' },
+      { k: 'f', v: 5, g: 'even' },
+      { k: 'g', v: 7, g: 'even' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'group_by', columns: ['g'], aggregate: { v: 'median' } }],
+      mark: { type: 'bar', orientation: 'vertical' }, encodings: { x: 'g', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    const byG = new Map(out.figures[0]!.data.map((r) => [r.g, r.v]))
+    expect(byG.get('odd')).toBe(5)
+    expect(byG.get('even')).toBe(4)
+  })
+
+  it('bin: midpoints land in [min, max] and are deterministic', () => {
+    const evidence = ev([
+      { k: 'a', v: 0, g: '' },
+      { k: 'b', v: 10, g: '' },
+      { k: 'c', v: 100, g: '' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'bin', column: 'v', bins: 5, output: 'bucket' }],
+      mark: { type: 'dot' }, encodings: { x: 'bucket', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    const buckets = out.figures[0]!.data.map((r) => r.bucket as number)
+    for (const b of buckets) {
+      expect(b).toBeGreaterThanOrEqual(0)
+      expect(b).toBeLessThanOrEqual(100)
+    }
+  })
+
+  it('window: rolling mean over a sort-key axis', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: '' },
+      { k: 'b', v: 3, g: '' },
+      { k: 'c', v: 5, g: '' },
+      { k: 'd', v: 7, g: '' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'window', column: 'v', sort_by: 'k', size: 2, reducer: 'mean', output: 'rolling' }],
+      mark: { type: 'line' }, encodings: { x: 'k', y: 'rolling' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures[0]!.data.map((r) => r.rolling)).toEqual([1, 2, 4, 6])
+  })
+
+  it('derived: ratio, delta, log10, identity, add/sub/mul/div', () => {
+    const evidence = ev([
+      { k: 'a', v: 100, g: 'orig' },
+      { k: 'b', v: 10, g: 'orig' },
+    ])
+    type Cases = Array<[
+      Extract<NonNullable<NonNullable<ProjectionSpec['figures'][number]['transform']>[number]>, { op: 'derived' }>['expr'],
+      number | null,
+      number | null
+    ]>
+    const cases: Cases = [
+      [{ kind: 'identity', of: 'v' }, 100, 10],
+      [{ kind: 'log10', of: 'v' }, 2, 1],
+      [{ kind: 'add', a: 'v', b: 'v' }, 200, 20],
+    ]
+    for (const [expr, aExpected, bExpected] of cases) {
+      const out = executeSpec(spec([{
+        id: 'f', title: 'F', dataset: 'd',
+        transform: [{ op: 'derived', output: 'r', expr }],
+        mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+      }]), evidence, { now: NOW })
+      expect(out.figures[0]!.data[0]!.r).toBe(aExpected)
+      expect(out.figures[0]!.data[1]!.r).toBe(bExpected)
+    }
+  })
+
+  it('derived: division by zero or negatives in log10 → null (no NaN leaks)', () => {
+    const evidence = ev([
+      { k: 'a', v: 0, g: '' },
+      { k: 'b', v: -5, g: '' },
+    ])
+    const div = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'derived', output: 'r', expr: { kind: 'div', num: 'v', den: 'v' } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(div.figures[0]!.data[0]!.r).toBeNull()
+    const log = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'derived', output: 'r', expr: { kind: 'log10', of: 'v' } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'r' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(log.figures[0]!.data[0]!.r).toBeNull()
+    expect(log.figures[0]!.data[1]!.r).toBeNull()
+  })
+
+  it('limit: caps the row count', () => {
+    const evidence = ev([
+      { k: 'a', v: 1, g: '' },
+      { k: 'b', v: 2, g: '' },
+      { k: 'c', v: 3, g: '' },
+    ])
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'limit', n: 2 }],
+      mark: { type: 'line' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), evidence, { now: NOW })
+    expect(out.figures[0]!.data).toHaveLength(2)
+  })
+
+  it('throws SpecExecutionError when figure references missing dataset', () => {
+    expect(() => executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'nope',
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })).toThrow(SpecExecutionError)
+  })
+
+  it('throws SpecExecutionError when transform references missing column', () => {
+    expect(() => executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'sort', column: 'nope', order: 'asc' }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })).toThrow(SpecExecutionError)
+  })
+
+  it('throws when encoding references column not in post-transform data', () => {
+    expect(() => executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'absent' }, emit_empty: false,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })).toThrow(SpecExecutionError)
+  })
+
+  it('drops figure when post-transform data is empty (emit_empty=false)', () => {
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'filter', column: 'v', predicate: { op: 'gt', value: 1000 } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })
+    expect(out.figures).toHaveLength(0)
+  })
+
+  it('keeps empty figure when emit_empty=true', () => {
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'filter', column: 'v', predicate: { op: 'gt', value: 1000 } }],
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: true,
+    }]), ev([{ k: 'a', v: 1, g: '' }]), { now: NOW })
+    expect(out.figures).toHaveLength(1)
+    expect(out.figures[0]!.data).toEqual([])
+  })
+
+  it('handles empty dataset gracefully (no rows → empty figure dropped)', () => {
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      mark: { type: 'dot' }, encodings: { x: 'k', y: 'v' }, emit_empty: false,
+    }]), ev([]), { now: NOW })
+    expect(out.figures).toHaveLength(0)
+  })
+
+  it('NaN-producing reducers (mean of empty) yield null, not NaN', () => {
+    const evidence: TypedEvidence = {
+      datasets: [
+        {
+          name: 'd',
+          schema: { columns: [{ name: 'k', type: 'string' }, { name: 'v', type: 'number' }] },
+          rows: [{ k: 'a', v: null }, { k: 'b', v: null }],
+          source_ref: { file: 'd.json' },
+        },
+      ],
+      excerpts: [],
+      files_seen: [],
+      fingerprint: 'fp',
+    }
+    const out = executeSpec(spec([{
+      id: 'f', title: 'F', dataset: 'd',
+      transform: [{ op: 'group_by', columns: ['k'], aggregate: { v: 'mean' } }],
+      mark: { type: 'bar', orientation: 'vertical' }, encodings: { x: 'k', y: 'v' }, emit_empty: true,
+    }]), evidence, { now: NOW })
+    for (const r of out.figures[0]!.data) {
+      expect(r.v).toBeNull()
+    }
+  })
+})
+
+describe('executor — scalars', () => {
+  const evidence = ev([
+    { k: 'a', v: 1, g: 'x' },
+    { k: 'b', v: 5, g: 'x' },
+    { k: 'c', v: 9, g: 'y' },
+    { k: 'd', v: 13, g: 'y' },
+  ])
+
+  it('count, sum, mean, min, max', () => {
+    const out = executeSpec(spec([], [
+      { op: 'count', id: 'n', dataset: 'd', column: 'v' },
+      { op: 'sum', id: 's', dataset: 'd', column: 'v' },
+      { op: 'mean', id: 'm', dataset: 'd', column: 'v' },
+      { op: 'min', id: 'lo', dataset: 'd', column: 'v' },
+      { op: 'max', id: 'hi', dataset: 'd', column: 'v' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.n).toBe(4)
+    expect(out.quoted_numerics.s).toBe(28)
+    expect(out.quoted_numerics.m).toBe(7)
+    expect(out.quoted_numerics.lo).toBe(1)
+    expect(out.quoted_numerics.hi).toBe(13)
+  })
+
+  it('percentile family p25/p50/p75/p95', () => {
+    const out = executeSpec(spec([], [
+      { op: 'p25', id: 'q1', dataset: 'd', column: 'v' },
+      { op: 'p50', id: 'q2', dataset: 'd', column: 'v' },
+      { op: 'p75', id: 'q3', dataset: 'd', column: 'v' },
+      { op: 'p95', id: 'q4', dataset: 'd', column: 'v' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.q1).toBeCloseTo(4)
+    expect(out.quoted_numerics.q2).toBeCloseTo(7)
+    expect(out.quoted_numerics.q3).toBeCloseTo(10)
+    expect(typeof out.quoted_numerics.q4).toBe('number')
+  })
+
+  it('argmax / argmin return the requested column, not the rank column', () => {
+    const out = executeSpec(spec([], [
+      { op: 'argmax', id: 'best_k', dataset: 'd', rank_by: 'v', return: 'k' },
+      { op: 'argmin', id: 'worst_k', dataset: 'd', rank_by: 'v', return: 'k' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.best_k).toBe('d')
+    expect(out.quoted_numerics.worst_k).toBe('a')
+  })
+
+  it('first/last walk the sort axis correctly', () => {
+    const out = executeSpec(spec([], [
+      { op: 'first', id: 'f', dataset: 'd', column: 'k', sort_by: 'v', sort_order: 'asc' },
+      { op: 'last', id: 'l', dataset: 'd', column: 'k', sort_by: 'v', sort_order: 'asc' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.f).toBe('a')
+    expect(out.quoted_numerics.l).toBe('d')
+  })
+
+  it('delta is last - first along sort axis', () => {
+    const out = executeSpec(spec([], [
+      { op: 'delta', id: 'dv', dataset: 'd', column: 'v', sort_by: 'k' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.dv).toBe(12)
+  })
+
+  it('filter applies before reduction', () => {
+    const out = executeSpec(spec([], [
+      {
+        op: 'mean', id: 'mx', dataset: 'd', column: 'v',
+        filter: { column: 'g', predicate: { op: 'eq', value: 'x' } },
+      },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.mx).toBe(3)
+  })
+
+  it('const_string round-trips into quoted_numerics', () => {
+    const out = executeSpec(spec([], [
+      { op: 'const_string', id: 'status', value: 'active' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.status).toBe('active')
+  })
+
+  it('reducers over empty filtered rows return null (mean/median/min/max)', () => {
+    const out = executeSpec(spec([], [
+      {
+        op: 'mean', id: 'm', dataset: 'd', column: 'v',
+        filter: { column: 'g', predicate: { op: 'eq', value: 'never' } },
+      },
+      {
+        op: 'min', id: 'mn', dataset: 'd', column: 'v',
+        filter: { column: 'g', predicate: { op: 'eq', value: 'never' } },
+      },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.m).toBeNull()
+    expect(out.quoted_numerics.mn).toBeNull()
+  })
+
+  it('count over filtered-empty rows returns 0, not null', () => {
+    const out = executeSpec(spec([], [
+      {
+        op: 'count', id: 'n', dataset: 'd', column: 'v',
+        filter: { column: 'g', predicate: { op: 'eq', value: 'never' } },
+      },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.n).toBe(0)
+  })
+
+  it('argmax with no numeric rows returns null', () => {
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [{ name: 'k', type: 'string' }, { name: 'v', type: 'number' }] },
+        rows: [{ k: 'a', v: null }],
+        source_ref: { file: 'd.json' },
+      }],
+      excerpts: [],
+      files_seen: [],
+      fingerprint: 'fp',
+    }
+    const out = executeSpec(spec([], [
+      { op: 'argmax', id: 'best', dataset: 'd', rank_by: 'v', return: 'k' },
+    ]), evidence, { now: NOW })
+    expect(out.quoted_numerics.best).toBeNull()
+  })
+})
+
+describe('executor — output metadata', () => {
+  it('cite_index includes one entry per scalar (with dataset source_ref) + per excerpt', () => {
+    const evidence: TypedEvidence = {
+      datasets: [{
+        name: 'd',
+        schema: { columns: [{ name: 'v', type: 'number' }] },
+        rows: [{ v: 1 }],
+        source_ref: { file: 'd.json', json_path: '$' },
+      }],
+      excerpts: [{
+        id: 'e1', text: 'hi', kind: 'paragraph',
+        source_ref: { file: 'README.md', line_start: 1, line_end: 1 },
+      }],
+      files_seen: [],
+      fingerprint: 'fp',
+    }
+    const s: ProjectionSpec = {
+      spec_version: '1', figures: [],
+      scalars: [{ op: 'count', id: 'n', dataset: 'd', column: 'v' }],
+      prose_template: '{excerpt:e1}',
+    }
+    const out = executeSpec(s, evidence, { now: NOW })
+    const scalarEntry = out.cite_index.find((c) => c.scalar_id === 'n')
+    const excerptEntry = out.cite_index.find((c) => c.excerpt_id === 'e1')
+    expect(scalarEntry?.source_ref.file).toBe('d.json')
+    expect(excerptEntry?.source_ref.file).toBe('README.md')
+  })
+
+  it('source defaults to llm; override to fallback works', () => {
+    const out = executeSpec(spec([]), ev([]), { now: NOW, source: 'fallback' })
+    expect(out.source).toBe('fallback')
+  })
+
+  it('evidence_fingerprint copies through unchanged', () => {
+    const out = executeSpec(spec([]), { ...ev([]), fingerprint: 'sha-xyz' }, { now: NOW })
+    expect(out.evidence_fingerprint).toBe('sha-xyz')
+  })
+})

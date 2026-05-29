@@ -1,32 +1,40 @@
 /**
  * ProjectionSection — fetches the (kind, zoom)-indexed projection from
- * the Vite plugin's /api/projection endpoint and renders the prose.
+ * the Vite plugin's /api/projection endpoint and renders the
+ * narrative-arc projection (figures + prose).
  *
  * Behavior:
  *  - Renders nothing on overview zoom (overview is the Map's job).
  *  - Renders a placeholder while the fetch is in flight.
- *  - Renders the prose content on success.
- *  - Renders the fallback content when source='fallback' (no API key /
- *    no plugin / error path) — same DOM shape as success, but a small
- *    hint so the user knows it's not LLM-generated.
- *  - Re-fetches when zoom changes.
+ *  - Renders the figures + prose on success.
+ *  - Renders the fallback prose when source='fallback'.
+ *  - Re-fetches when zoom or intentId changes.
  *
  * Tests mock `fetch` so we can drive the component without hitting a
- * real server.
+ * real server. The wire shape is `ExecutedProjection` — the new
+ * typed-evidence pipeline contract.
  */
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectionSection } from './ProjectionSection'
+import type { ExecutedProjection } from '@/lib/projection/spec'
 
-interface MockProjectionResponse {
-  content: string
-  source: 'llm' | 'fallback'
-  generated_at?: string
+function makeProjection(opts: Partial<ExecutedProjection> = {}): ExecutedProjection {
+  return {
+    spec_version: '1',
+    figures: [],
+    quoted_numerics: {},
+    prose: 'sample prose',
+    cite_index: [],
+    source: 'llm',
+    generated_at: new Date().toISOString(),
+    ...opts,
+  }
 }
 
-function mockFetchOnce(response: MockProjectionResponse) {
+function mockFetchOnce(response: ExecutedProjection) {
   globalThis.fetch = vi.fn().mockResolvedValueOnce({
     ok: true,
     status: 200,
@@ -34,7 +42,7 @@ function mockFetchOnce(response: MockProjectionResponse) {
   } as Response)
 }
 
-function mockFetchSequence(responses: MockProjectionResponse[]) {
+function mockFetchSequence(responses: ExecutedProjection[]) {
   const queue = [...responses]
   globalThis.fetch = vi.fn().mockImplementation(async () => {
     const next = queue.shift()
@@ -52,66 +60,50 @@ afterEach(() => {
 
 describe('ProjectionSection', () => {
   it('renders nothing when zoom is overview', () => {
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="overview" />
-    )
+    const { container } = render(<ProjectionSection intentId="c1" zoom="overview" />)
     expect(container.firstChild).toBeNull()
   })
 
   it('shows a placeholder while loading', async () => {
     let resolveFetch: (value: Response) => void = () => {}
     globalThis.fetch = vi.fn().mockImplementation(
-      () =>
-        new Promise<Response>((r) => {
-          resolveFetch = r
-        })
+      () => new Promise<Response>((r) => { resolveFetch = r })
     )
     render(<ProjectionSection intentId="c1" zoom="structure" />)
-    // Placeholder is rendered via data-projection-loading.
     const placeholder = await screen.findByTestId('projection-loading')
     expect(placeholder).toBeInTheDocument()
-    // The placeholder text reads "summarizing…" so users know the LLM is in flight.
-    expect(placeholder.textContent).toMatch(/summarizing/i)
-    // Resolve so afterEach doesn't leak an unresolved promise.
+    expect(placeholder.textContent).toMatch(/composing/i)
     resolveFetch({
-      ok: true,
-      status: 200,
-      json: async () => ({ content: 'x', source: 'llm' as const }),
+      ok: true, status: 200,
+      json: async () => makeProjection({ prose: 'x' }),
     } as Response)
   })
 
-  it('renders the prose content on success', async () => {
-    mockFetchOnce({
-      content: 'This campaign investigates EA-WFQ scheduling fairness.',
-      source: 'llm',
-    })
+  it('renders the prose on success', async () => {
+    mockFetchOnce(makeProjection({
+      prose: 'This campaign investigates EA-WFQ scheduling fairness.',
+    }))
     render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
-      expect(
-        screen.getByText(/EA-WFQ scheduling fairness/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/EA-WFQ scheduling fairness/i)).toBeInTheDocument()
     })
   })
 
-  it('exposes data-projection-source on the rendered prose', async () => {
-    mockFetchOnce({ content: 'p', source: 'llm' })
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
+  it('exposes data-projection-source on the rendered projection root', async () => {
+    mockFetchOnce(makeProjection({ prose: 'p', source: 'llm' }))
+    const { container } = render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
       const node = container.querySelector('[data-projection-source]')
       expect(node?.getAttribute('data-projection-source')).toBe('llm')
     })
   })
 
-  it('renders fallback content with source=fallback marker', async () => {
-    mockFetchOnce({
-      content: 'Test campaign — a research campaign',
+  it('renders fallback projection with source=fallback marker', async () => {
+    mockFetchOnce(makeProjection({
+      prose: 'Test campaign — a research campaign',
       source: 'fallback',
-    })
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
+    }))
+    const { container } = render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
       const node = container.querySelector('[data-projection-source]')
       expect(node?.getAttribute('data-projection-source')).toBe('fallback')
@@ -120,216 +112,99 @@ describe('ProjectionSection', () => {
 
   it('refetches when zoom changes', async () => {
     mockFetchSequence([
-      { content: 'structure prose', source: 'llm' },
-      { content: 'detail prose — multi-paragraph', source: 'llm' },
+      makeProjection({ prose: 'structure prose' }),
+      makeProjection({ prose: 'detail prose multi-paragraph' }),
     ])
-    const { rerender } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
-    await waitFor(() => {
-      expect(screen.getByText(/structure prose/)).toBeInTheDocument()
-    })
+    const { rerender } = render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => expect(screen.getByText(/structure prose/)).toBeInTheDocument())
     rerender(<ProjectionSection intentId="c1" zoom="detail" />)
-    await waitFor(() => {
-      expect(screen.getByText(/detail prose/)).toBeInTheDocument()
-    })
+    await waitFor(() => expect(screen.getByText(/detail prose/)).toBeInTheDocument())
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('refetches when intentId changes', async () => {
     mockFetchSequence([
-      { content: 'campaign A prose', source: 'llm' },
-      { content: 'campaign B prose', source: 'llm' },
+      makeProjection({ prose: 'campaign A prose' }),
+      makeProjection({ prose: 'campaign B prose' }),
     ])
-    const { rerender } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
-    await waitFor(() =>
-      expect(screen.getByText(/campaign A/)).toBeInTheDocument()
-    )
+    const { rerender } = render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => expect(screen.getByText(/campaign A/)).toBeInTheDocument())
     rerender(<ProjectionSection intentId="c2" zoom="structure" />)
-    await waitFor(() =>
-      expect(screen.getByText(/campaign B/)).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByText(/campaign B/)).toBeInTheDocument())
   })
 
-  it('handles a failed fetch by rendering nothing (chrome stays clean)', async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
+  it('handles a failed fetch by rendering nothing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 500 } as Response)
+    const { container } = render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
-      // After fetch settles + error path, no projection content rendered.
-      // Component falls back to null so the chrome doesn't show a partial.
-      expect(
-        container.querySelector('[data-projection-source]')
-      ).toBeNull()
+      expect(container.querySelector('[data-projection-source]')).toBeNull()
     })
   })
 
-  // ─── Regenerate button + timestamp ───────────────────────────────────
+  it('rejects malformed wire shapes (drift protection) and renders nothing', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true, status: 200,
+      json: async () => ({ content: 'old shape', source: 'llm' }),
+    } as Response)
+    const { container } = render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => {
+      expect(container.querySelector('[data-projection-source]')).toBeNull()
+    })
+  })
 
   it('shows a generated-at hint when the response includes generated_at', async () => {
-    mockFetchOnce({
-      content: 'cached prose',
-      source: 'llm',
+    mockFetchOnce(makeProjection({
+      prose: 'cached prose',
       generated_at: new Date(Date.now() - 5 * 60_000).toISOString(),
-    })
+    }))
     render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
       expect(screen.getByText(/generated.*ago/i)).toBeInTheDocument()
     })
   })
 
-  it('marks the timestamp amber when the projection is stale (past 60min)', async () => {
-    mockFetchOnce({
-      content: 'old prose',
-      source: 'llm',
+  it('marks the timestamp stale past 60min', async () => {
+    mockFetchOnce(makeProjection({
+      prose: 'old prose',
       generated_at: new Date(Date.now() - 90 * 60_000).toISOString(),
-    })
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
-    await waitFor(() => {
-      expect(screen.getByText(/old prose/)).toBeInTheDocument()
-    })
-    const stamp = container.querySelector('[data-stale]')
-    expect(stamp?.getAttribute('data-stale')).toBe('true')
+    }))
+    const { container } = render(<ProjectionSection intentId="c1" zoom="structure" />)
+    await waitFor(() => expect(screen.getByText(/old prose/)).toBeInTheDocument())
+    expect(container.querySelector('[data-stale="true"]')).not.toBeNull()
   })
 
-  it('does not mark the timestamp stale when fresh (under 60min)', async () => {
-    mockFetchOnce({
-      content: 'fresh prose',
-      source: 'llm',
-      generated_at: new Date(Date.now() - 5 * 60_000).toISOString(),
-    })
-    const { container } = render(
-      <ProjectionSection intentId="c1" zoom="structure" />
-    )
-    await waitFor(() => {
-      expect(screen.getByText(/fresh prose/)).toBeInTheDocument()
-    })
-    const stamp = container.querySelector('[data-stale="true"]')
-    expect(stamp).toBeNull()
-  })
-
-  it('does not show the generated-at hint when generated_at is missing (fallback case)', async () => {
-    mockFetchOnce({ content: 'fallback prose', source: 'fallback' })
+  it('does not show generated-at hint for fallback projections', async () => {
+    mockFetchOnce(makeProjection({ prose: 'fallback prose', source: 'fallback' }))
     render(<ProjectionSection intentId="c1" zoom="structure" />)
-    await waitFor(() => {
-      expect(screen.getByText(/fallback prose/)).toBeInTheDocument()
-    })
+    await waitFor(() => expect(screen.getByText(/fallback prose/)).toBeInTheDocument())
     expect(screen.queryByText(/generated.*ago/i)).not.toBeInTheDocument()
   })
 
-  it('exposes a regenerate button when source=llm', async () => {
-    mockFetchOnce({
-      content: 'p',
-      source: 'llm',
-      generated_at: new Date().toISOString(),
-    })
+  it('exposes a regenerate button for source=llm', async () => {
+    mockFetchOnce(makeProjection({ prose: 'p' }))
     render(<ProjectionSection intentId="c1" zoom="structure" />)
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /regenerate/i })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /regenerate/i })).toBeInTheDocument()
     })
   })
 
-  it('does not show the regenerate button for fallback projections', async () => {
-    mockFetchOnce({ content: 'p', source: 'fallback' })
+  it('does not show regenerate button for fallback projections', async () => {
+    mockFetchOnce(makeProjection({ prose: 'p', source: 'fallback' }))
     render(<ProjectionSection intentId="c1" zoom="structure" />)
-    await waitFor(() => {
-      expect(screen.getByText(/^p$/)).toBeInTheDocument()
-    })
-    expect(
-      screen.queryByRole('button', { name: /regenerate/i })
-    ).not.toBeInTheDocument()
-  })
-
-  it('shows "regenerating…" in the footer while a refresh is in flight', async () => {
-    // First call resolves quickly (so we have a populated state).
-    // Second call (the regenerate) is held pending so we can inspect the
-    // intermediate UI.
-    let resolveSecond: (value: Response) => void = () => {}
-    let firstDone = false
-    globalThis.fetch = vi.fn().mockImplementation(() => {
-      if (!firstDone) {
-        firstDone = true
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
-            content: 'old prose',
-            source: 'llm' as const,
-            generated_at: new Date(Date.now() - 60_000).toISOString(),
-          }),
-        } as Response)
-      }
-      return new Promise<Response>((r) => {
-        resolveSecond = r
-      })
-    })
-    render(<ProjectionSection intentId="c1" zoom="structure" />)
-    await waitFor(() => {
-      expect(screen.getByText('old prose')).toBeInTheDocument()
-    })
-    // Click regenerate; second fetch is now pending.
-    await userEvent.click(
-      screen.getByRole('button', { name: /regenerate/i })
-    )
-    // The "regenerating…" hint should appear immediately (replacing the
-    // timestamp), and the existing prose stays visible (we don't blank
-    // the section while waiting).
-    await waitFor(() => {
-      expect(screen.getByText(/regenerating/i)).toBeInTheDocument()
-    })
-    expect(screen.getByText('old prose')).toBeInTheDocument()
-    // Resolve so afterEach doesn't leak.
-    resolveSecond({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        content: 'new prose',
-        source: 'llm' as const,
-        generated_at: new Date().toISOString(),
-      }),
-    } as Response)
-    await waitFor(() => {
-      expect(screen.getByText('new prose')).toBeInTheDocument()
-    })
-    // Once the regenerate completes, the regenerating hint is gone.
-    expect(screen.queryByText(/regenerating/i)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/^p$/)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /regenerate/i })).not.toBeInTheDocument()
   })
 
   it('clicking regenerate refetches with refresh=true', async () => {
     mockFetchSequence([
-      {
-        content: 'old prose',
-        source: 'llm',
-        generated_at: new Date(Date.now() - 60_000).toISOString(),
-      },
-      {
-        content: 'new prose',
-        source: 'llm',
-        generated_at: new Date().toISOString(),
-      },
+      makeProjection({ prose: 'old prose' }),
+      makeProjection({ prose: 'new prose' }),
     ])
     render(<ProjectionSection intentId="c1" zoom="structure" />)
-    await waitFor(() => {
-      expect(screen.getByText('old prose')).toBeInTheDocument()
-    })
-    const button = screen.getByRole('button', { name: /regenerate/i })
-    await userEvent.click(button)
-    await waitFor(() => {
-      expect(screen.getByText('new prose')).toBeInTheDocument()
-    })
-    // The second fetch carried refresh=true; assert this against the
-    // recorded call URL.
-    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } })
-      .mock.calls
+    await waitFor(() => expect(screen.getByText('old prose')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: /regenerate/i }))
+    await waitFor(() => expect(screen.getByText('new prose')).toBeInTheDocument())
+    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
     expect(calls.length).toBe(2)
     expect(String(calls[1]?.[0])).toContain('refresh=true')
   })

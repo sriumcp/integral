@@ -17,9 +17,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
+    "@observablehq/plot": "^0.6.17",
+    "csv-parse": "^6.2.1",
+    "gray-matter": "^4.0.3",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm-table": "^2.0.0",
+    "micromark-extension-gfm-table": "^2.1.1",
     "openai": "^6.39.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

@@ -1,0 +1,35 @@
+.figure {
+  margin: 0 0 var(--space-3, 16px) 0;
+  padding: var(--space-2, 12px);
+  background: var(--paper-2, #f8f6f1);
+  border: 1px solid var(--line, #e2dccf);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 6px);
+}
+
+.title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-2, #4a4a4a);
+  margin: 0;
+}
+
+.caption {
+  font-size: 0.8rem;
+  color: var(--ink-3, #6a6a6a);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.svgMount {
+  display: flex;
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+
+.svgMount > svg {
+  max-width: 100%;
+  height: auto;
+}

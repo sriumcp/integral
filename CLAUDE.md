@@ -4,7 +4,9 @@
 
 Integral is at **v0.3.0 in progress** — the schema just added `research-thread`, a read-only-projection kind for loose-shaped research artifacts that exist in the user's workspace as filesystem directories. v0.1 shipped the Chrome stack + typed `Operation` log + multi-source data plane + three real adapters (Nous full round-trip; Coral and GitHub-issues read-only) + filter/group/sort. v0.2.0 narrowed the kind set to "what we ship" + dropped the demo fixture + made identity + scope configurable.
 
-**v0.3.0 schema bump (2026-05-29):** the schema now supports six `IntentKind`s — adds `'research-thread'` to v0.2.0's five. A research-thread is a leaf-shaped intent: no shaper, no writeback, no decomposition into typed children. The new adapter (`FilesystemResearchThreadSource` + `buildResearchThreadWorkspace`) scans a parent directory; each subdir becomes one thread. Default parent dir: `~/Documents/Projects/research-threads/` (analogous to Nous's `~/Documents/Projects/nous-campaigns/`). The projection plugin lives server-side (`vite-plugin-nous-adapter/research-thread-projection-plugin.ts`) because it does I/O at projection time — reads selected markdown files (README, brief, PAPER, reconciliation, …) and asks the LLM to synthesize. See `intent-schema-v0.3.md`.
+**v0.3.0 schema bump (2026-05-29):** the schema now supports six `IntentKind`s — adds `'research-thread'` to v0.2.0's five. A research-thread is a leaf-shaped intent: no shaper, no writeback, no decomposition into typed children. The new adapter (`FilesystemResearchThreadSource` + `buildResearchThreadWorkspace`) scans a parent directory; each subdir becomes one thread. Default parent dir: `~/Documents/Projects/research-threads/` (analogous to Nous's `~/Documents/Projects/nous-campaigns/`).
+
+**v0.3.x projection upgrade (2026-05-29, additive — no schema bump):** the projection layer became a typed-evidence + spec/execution pipeline. Parser packs turn adapter source data into typed datasets + excerpts; the LLM authors a `ProjectionSpec` against schemas (never bulk numerics); the executor computes figures + scalars deterministically; a lint enforces every digit in prose appears in `quoted_numerics`. Cache namespace bumped to `~/.cache/integral/projections-v2/`. Wire shape of `/api/projection` is `ExecutedProjection { figures, prose, quoted_numerics, cite_index, source, generated_at, model? }`. Adding a new projection-bearing kind = one parser pack + one ~30-line plugin. See `intent-schema-v0.3.md § Projection contract addendum` and CLAUDE.md § Patterns for new endpoints, hooks, and UI extensions.
 
 **v0.2.0 schema bump (2026-05-29):** the schema dropped four kinds (`paper-campaign`, `paper-section`, `paper-claim`, `feature-pr`) that had no adapter and survived only via the bundled fixture; both went away together. Coverage for paper-* returns when the paper adapter ships; coverage for `feature-pr` returns when full feature-dev ships. See `intent-schema-v0.2.md` § "What v0.2.0 removed."
 
@@ -102,6 +104,7 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
   - The real Anthropic / OpenAI clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they're **architecturally unreachable** from the Vitest runner by construction. **Treat this barrier as load-bearing — never `import` a real client into `src/`.**
   - Any test that wants to verify LLM behavior against a real model is a **smoke test** — manual, runs outside `npm test*`, never picked up by the canonical glob.
   - **New code paths that introduce LLM calls MUST land alongside a mock injection seam.** If you can't make the seam, the design is wrong — refactor before merging.
+- **Zero-hallucination invariant on projections (v0.3.x)**: the projection layer's `lintProse` (`src/lib/projection/lint.ts`) rejects any digit in rendered prose that isn't in `quoted_numerics`. The lint is part of the deterministic spine — a failed lint causes the engine to fall back to a raw-fields projection. Tests exercise this discipline at three layers: (a) the lint itself (`src/lib/projection/__tests__/lint.test.ts`), (b) the executor (`__tests__/executor.test.ts`), and (c) the engine end-to-end (`__tests__/projection.test.ts` "lint reject" case). New parser packs must produce evidence that supports this discipline — narrative numerics buried in markdown text are **not** automatically registered as scalars; they must come through a typed dataset (table, JSON, CSV) or a `const_string` scalar request with provenance.
   - **Audit grep** before claiming verification:
     ```
     grep -rln "OPENAI_API_KEY\|ANTHROPIC_API_KEY\|ANTHROPIC_AUTH_TOKEN\|tryCreateLLMClient\|api.openai.com\|api.anthropic.com\|@anthropic-ai\|from 'openai'" \
@@ -117,6 +120,21 @@ The production code lives in `integral-ui/` (Vite + React 19 + TypeScript strict
 ## Patterns for new endpoints, hooks, and UI extensions
 
 Load-bearing patterns the codebase has converged on. Deviations should be motivated by the limitation, not by drift. Read the cited reference files when implementing.
+
+### Adding a new projection-bearing kind (typed-evidence pipeline)
+
+The projection layer ships a shared pipeline:
+`ParserPack → TypedEvidence → LLMComposer → ProjectionSpec → SpecExecutor → ExecutedProjection → Lint`. The hallucination guarantee is a type-system property: the LLM never sees bulk numerics (only schemas + ≤6-row samples), it declares aggregations / scalars in a typed DSL, and the executor computes them deterministically. The lint regex (`/\b\d+(?:\.\d+)?\b/g`) rejects any digit in rendered prose that isn't in `quoted_numerics` — fall back to deterministic raw fields when it does. See `intent-schema-v0.3.md § Projection contract addendum` for the full contract.
+
+Three steps to opt a new kind in:
+
+1. **Parser pack** at `integral-ui/vite-plugin-nous-adapter/parser-packs/<kind>.ts`. Pure (or filesystem-only) function returning `TypedEvidence`. Use standard parsers — `mdast-util-from-markdown` for markdown (with `gfmTable` for tables), `gray-matter` for frontmatter, `csv-parse/sync` for CSV/TSV, native `JSON.parse` for JSON arrays. Never let the LLM extract numerics from raw text — they're either typed JSON fields, parsed-table rows, or parsed-CSV rows. Reference: `vite-plugin-nous-adapter/parser-packs/research-thread.ts`, `vite-plugin-nous-adapter/parser-packs/nous.ts`.
+2. **Plugin** at `integral-ui/vite-plugin-nous-adapter/projection-plugins-v2/<kind>.ts`. ~30 lines: `evidence(ctx)` calls the parser pack; `intentSummary(ctx)` returns a short string the composer puts in the prompt. Reference: `projection-plugins-v2/research-thread.ts`.
+3. **Register** in `vite-plugin-nous-adapter/projection-plugins-v2/index.ts`.
+
+For kind-specific narrative-arc nudging, add a branch to `narrativeArcInstruction` in `src/lib/projection/composer.ts`. The composer ships kind-aware instructions for `nous-campaign`, `nous-iteration`, `research-thread`; new kinds inherit the common arc framing if no branch is added.
+
+The cache layer (`vite-plugin-nous-adapter/projection-cache.ts`) auto-invalidates on `state.last_advanced_at` change — include any source-fingerprint signal in `state.last_advanced_at` (directory mtime, latest-iteration timestamp, etc.) so editing source data triggers a fresh LLM call. Tests live next to each parser pack + plugin; mock LLMs are injected via `ProjectionContext.llm` (never instantiate a real client in `src/`).
 
 ### A new `/api/...` endpoint that does I/O
 

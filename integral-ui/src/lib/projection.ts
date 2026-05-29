@@ -1,15 +1,19 @@
 /**
  * Projection engine — kind-pluggable, indexed by `(intent.kind, zoom)`.
  *
- * The two axes ask different questions:
- *  - **Kind** dictates *what to talk about* — different prompt templates.
- *  - **Zoom** dictates *how much, and what context* — different prompt
- *    templates AND different context bundles passed to the LLM.
+ * The new pipeline (v0.3.x) replaces "LLM summarises text" with:
  *
- * v0.1 commits to 4 LLM-driven cells (nous-campaign × {structure, detail},
- * nous-iteration × {structure, detail}); other kinds + overview zoom fall
- * back to raw-field rendering. See `semantics-v0.1.md` S-1 for the matrix
- * framing and v0.2 plans.
+ *   1. The plugin's `evidence(ctx)` produces TypedEvidence
+ *      (datasets + excerpts + fingerprint). Deterministic; LLM never
+ *      involved.
+ *   2. `composeProjectionSpec` asks the LLM to author a `ProjectionSpec`
+ *      (figures + scalars + prose template) given dataset *schemas* and
+ *      sample rows. The LLM never sees raw bulk numerics.
+ *   3. `executeSpec` runs the spec deterministically against TypedEvidence,
+ *      computing every numeric. The LLM is the analyst; the executor is
+ *      the calculator.
+ *   4. `lintProse` enforces zero-hallucination — every digit in rendered
+ *      prose must come from a quoted_numeric.
  *
  * Discipline:
  *  - Engine is pure: takes plugins + LLMClient as injected deps. No
@@ -18,26 +22,25 @@
  *  - **Tests NEVER call real LLMs.** All projection tests inject a mock
  *    `LLMClient` that returns canned strings. The real Anthropic / OpenAI
  *    clients live in `vite-plugin-nous-adapter/` (outside `src/`) so they
- *    are unreachable from the test runner by construction. If a test ever
- *    needs to assert behavior against a real LLM, it's a *smoke test*,
- *    runs manually outside `npm test*`, and is documented as such.
- *  - Fallback is the safety net. Missing plugin OR missing zoom method OR
- *    plugin throw OR empty LLM response → fall back to raw-field render.
- *    The chrome should never see undefined.
- *  - Char budget enforced post-hoc. Even if the LLM overshoots, content
- *    is clamped to the zoom's budget (with `…` marker).
+ *    are unreachable from the test runner by construction.
+ *  - Fallback is the safety net. Missing plugin OR plugin throw OR composer
+ *    failure OR executor failure OR lint rejection → fall back to a
+ *    deterministic raw-fields projection. The chrome should never see
+ *    undefined.
  */
 
 import type { Intent, IntentKind, IntentState, Workspace, ZoomLevel } from '../schema'
+import { composeProjectionSpec, ComposerError } from './projection/composer'
+import { executeSpec, SpecExecutionError } from './projection/executor'
+import { lintProse } from './projection/lint'
+import { TemplateError } from './projection/template'
+import {
+  SPEC_VERSION,
+  type ExecutedProjection,
+  type TypedEvidence,
+} from './projection/spec'
 
-// ─── Types ─────────────────────────────────────────────────────────────────
-
-export interface Projection {
-  content: string
-  /** Where the content came from. `fallback` = raw fields rendered without
-   *  an LLM call (default plugin missing, error path, or overview zoom). */
-  source: 'llm' | 'fallback'
-}
+// ─── Public types ─────────────────────────────────────────────────────────
 
 export interface LLMClient {
   /** Generate text from a prompt. Implementations may be Anthropic, OpenAI,
@@ -55,21 +58,14 @@ export interface ProjectionContext {
 
 export interface KindProjectionPlugin {
   kind: IntentKind
-  /** Structure-zoom prose. ≤800 chars budget enforced post-hoc by engine. */
-  structure?: (ctx: ProjectionContext) => Promise<Projection>
-  /** Detail-zoom prose. Unbounded budget. */
-  detail?: (ctx: ProjectionContext) => Promise<Projection>
-  // overview is intentionally absent in v0.1 — overview stays structural
-  // (TreeCard rendering) across all kinds. Per matrix framing in
-  // semantics-v0.1.md S-1.
+  /** Build TypedEvidence for this kind+zoom. May do disk I/O when running
+   *  server-side. Should be deterministic on identical inputs. */
+  evidence(ctx: ProjectionContext): Promise<TypedEvidence>
+  /** Free-form per-call narrative context the LLM should attend to. */
+  intentSummary(ctx: ProjectionContext): string
 }
 
 export type PluginRegistry = Partial<Record<IntentKind, KindProjectionPlugin>>
-
-// ─── Char budgets per zoom ─────────────────────────────────────────────────
-
-const STRUCTURE_BUDGET = 800
-// detail is unbounded; overview falls back so no budget here.
 
 // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -80,12 +76,14 @@ export interface GenerateProjectionArgs {
   zoom: ZoomLevel
   plugins: PluginRegistry
   llm: LLMClient
+  /** Optional model name to record on the ExecutedProjection. */
+  model?: string
 }
 
 export async function generateProjection(
   args: GenerateProjectionArgs
-): Promise<Projection> {
-  const { intent, state, workspace, zoom, plugins, llm } = args
+): Promise<ExecutedProjection> {
+  const { intent, state, workspace, zoom, plugins, llm, model } = args
 
   // Overview always falls back — TreeCard is the structural surface.
   if (zoom === 'overview') {
@@ -93,59 +91,101 @@ export async function generateProjection(
   }
 
   const plugin = plugins[intent.kind]
-  const method = plugin?.[zoom]
-  if (!plugin || !method) {
+  if (!plugin) {
     return fallbackProjection({ intent, state, workspace, zoom })
   }
 
   const ctx: ProjectionContext = { intent, state, workspace, zoom, llm }
 
-  let raw: Projection
+  // ── Step 1: build evidence ───────────────────────────────────────────
+  let evidence: TypedEvidence
   try {
-    raw = await method(ctx)
+    evidence = await plugin.evidence(ctx)
   } catch {
     return fallbackProjection({ intent, state, workspace, zoom })
   }
 
-  // Empty content from the LLM = degenerate; treat as fallback.
-  if (!raw.content || raw.content.trim().length === 0) {
-    return fallbackProjection({ intent, state, workspace, zoom })
-  }
-
-  // Clamp by zoom budget. detail is unbounded.
-  if (zoom === 'structure' && raw.content.length > STRUCTURE_BUDGET) {
-    return {
-      ...raw,
-      content: raw.content.slice(0, STRUCTURE_BUDGET - 1) + '…',
+  // ── Step 2: compose spec via LLM ─────────────────────────────────────
+  let spec
+  try {
+    spec = await composeProjectionSpec({
+      evidence,
+      zoom: zoom === 'detail' ? 'detail' : 'structure',
+      kind: intent.kind,
+      llm,
+      intent_summary: plugin.intentSummary(ctx),
+    })
+  } catch (err) {
+    if (err instanceof ComposerError) {
+      return fallbackProjection({ intent, state, workspace, zoom, evidence })
     }
+    return fallbackProjection({ intent, state, workspace, zoom, evidence })
   }
 
-  return raw
+  // ── Step 3: execute deterministically ────────────────────────────────
+  let executed: ExecutedProjection
+  try {
+    executed = executeSpec(spec, evidence, {
+      source: 'llm',
+      ...(model ? { model } : {}),
+    })
+  } catch (err) {
+    if (err instanceof SpecExecutionError || err instanceof TemplateError) {
+      return fallbackProjection({ intent, state, workspace, zoom, evidence })
+    }
+    return fallbackProjection({ intent, state, workspace, zoom, evidence })
+  }
+
+  // ── Step 4: lint prose ───────────────────────────────────────────────
+  const lint = lintProse(executed.prose, executed.quoted_numerics)
+  if (!lint.ok) {
+    // Lint rejection is rare but real — the LLM tried to slip a digit in
+    // that the executor doesn't have provenance for. Fall back rather
+    // than render the unsourced digits.
+    return fallbackProjection({ intent, state, workspace, zoom, evidence })
+  }
+
+  return executed
 }
 
-// ─── Fallback (raw-field render) ───────────────────────────────────────────
+// ─── Fallback (deterministic, no LLM) ─────────────────────────────────────
 
 export interface FallbackProjectionArgs {
   intent: Intent
   state: IntentState
   workspace: Workspace
   zoom: ZoomLevel
+  /** When the failure happened *after* evidence was built, surface its
+   *  fingerprint so the chrome / cache can still reflect "we saw these
+   *  files." */
+  evidence?: TypedEvidence
 }
 
 /**
- * Raw-field render — what the chrome shows today (declaration title +
- * summary). The fallback never calls the LLM; it's the safety net for
- * every "no plugin" / "error" / "overview zoom" case so the chrome
- * always has something to display.
+ * Raw-field render — what the chrome shows when:
+ *  - the plugin is missing for this kind
+ *  - evidence-building threw
+ *  - the LLM is unavailable / failed validation twice
+ *  - the executor or lint rejected the LLM's output
  *
- * v0.2 may invest in a richer fallback (e.g., per-kind structural prose
- * generated without LLM); v0.1 stays minimal.
+ * The fallback never calls the LLM; it's the safety net. Output uses the
+ * `ExecutedProjection` shape (no figures, prose drawn from declaration
+ * fields) so consumers don't branch on success/failure.
  */
-export function fallbackProjection(args: FallbackProjectionArgs): Projection {
-  const { intent } = args
+export function fallbackProjection(args: FallbackProjectionArgs): ExecutedProjection {
+  const { intent, evidence } = args
   const summary = intent.declaration.summary?.trim() ?? ''
-  const content = summary.length > 0
+  const prose = summary.length > 0
     ? `${intent.declaration.title} — ${summary}`
     : intent.declaration.title
-  return { content, source: 'fallback' }
+  return {
+    spec_version: SPEC_VERSION,
+    figures: [],
+    quoted_numerics: {},
+    prose,
+    cite_index: [],
+    source: 'fallback',
+    generated_at: new Date().toISOString(),
+    evidence_fingerprint: evidence?.fingerprint,
+  }
 }

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ZoomLevel } from '@/schema'
 import { SectionLabel } from '@/components/atoms'
+import { NarrativeProjection } from '@/components/projection/NarrativeProjection'
+import {
+  ExecutedProjectionSchema,
+  type ExecutedProjection,
+} from '@/lib/projection/spec'
 import styles from './ProjectionSection.module.css'
 
 export interface ProjectionSectionProps {
@@ -8,37 +13,26 @@ export interface ProjectionSectionProps {
   zoom: ZoomLevel
 }
 
-interface ProjectionResponse {
-  content: string
-  source: 'llm' | 'fallback'
-  /** Present when source='llm' and the server cached this projection. */
-  generated_at?: string
-  model?: string
-}
-
 /**
  * ProjectionSection — fetches the (kind, zoom)-indexed projection from
- * the Vite plugin's `/api/projection` endpoint and renders the prose.
+ * the Vite plugin's `/api/projection` endpoint and renders the
+ * narrative-arc projection (figures + prose).
  *
- * Per the matrix framing in `semantics-v0.1.md` S-1: the engine returns
- * `source: 'fallback'` for cells without an LLM plugin (or when the
- * server has no API key) and `source: 'llm'` for the 4 v0.1 cells
- * (nous-campaign × {structure, detail}, nous-iteration × {structure,
- * detail}). The chrome treats both shapes the same; the
- * `data-projection-source` attribute lets future styling distinguish
- * them if useful.
+ * Wire shape (v0.3.x): `ExecutedProjection`. The zero-hallucination
+ * guarantee is upstream — every digit in `prose` came from
+ * `quoted_numerics` (verified by lint), every figure's data was
+ * pre-aggregated server-side from typed evidence.
  *
  * Persistence: when source='llm', the response includes `generated_at`
  * (set by the server's disk cache layer). The chrome surfaces this as a
  * "generated <relative-time> ago" hint and offers a `regenerate` button
- * that re-fetches with `?refresh=true` so the user can force a fresh
- * LLM call when the cached prose is stale or wrong.
+ * that re-fetches with `?refresh=true`.
  *
- * Renders nothing on overview zoom — overview is the Map's job, not
- * Detail's. Renders nothing on fetch error so the chrome stays clean.
+ * Renders nothing on overview zoom — overview is the Map's job. Renders
+ * nothing on fetch error so the chrome stays clean.
  */
 export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
-  const [projection, setProjection] = useState<ProjectionResponse | null>(null)
+  const [projection, setProjection] = useState<ExecutedProjection | null>(null)
   const [loading, setLoading] = useState(false)
   const [errored, setErrored] = useState(false)
 
@@ -52,7 +46,12 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
       fetch(`/api/projection?${params.toString()}`)
         .then(async (res) => {
           if (!res.ok) throw new Error(`projection fetch failed: ${res.status}`)
-          return res.json() as Promise<ProjectionResponse>
+          const body: unknown = await res.json()
+          // Validate the wire shape — protects against drift between
+          // server + client in dev, and short-circuits a malformed cache.
+          const parsed = ExecutedProjectionSchema.safeParse(body)
+          if (!parsed.success) throw new Error('projection schema mismatch')
+          return parsed.data
         })
         .then((body) => {
           if (cancelled) return
@@ -86,7 +85,7 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
     return (
       <section className={styles.section} data-testid="projection-loading">
         <SectionLabel>summary</SectionLabel>
-        <p className={styles.loadingText}>summarizing…</p>
+        <p className={styles.loadingText}>composing projection…</p>
       </section>
     )
   }
@@ -104,18 +103,12 @@ export function ProjectionSection({ intentId, zoom }: ProjectionSectionProps) {
 
   return (
     <section className={styles.section}>
-      <SectionLabel
-        hint={projection.source === 'fallback' ? 'raw' : undefined}
-      >
+      <SectionLabel hint={projection.source === 'fallback' ? 'raw' : undefined}>
         summary
       </SectionLabel>
-      <p
-        className={styles.prose}
-        data-projection-source={projection.source}
-        data-regenerating={isRegenerating ? 'true' : undefined}
-      >
-        {projection.content}
-      </p>
+      <div data-regenerating={isRegenerating ? 'true' : undefined}>
+        <NarrativeProjection projection={projection} />
+      </div>
       {isLLM && (
         <footer className={styles.footer}>
           {isRegenerating ? (

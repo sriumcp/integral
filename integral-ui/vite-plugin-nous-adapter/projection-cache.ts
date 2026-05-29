@@ -1,50 +1,39 @@
 /**
  * Disk persistence for generated projections.
  *
- * Default cache dir: `~/.cache/integral/projections/`. Overridable via
- * `INTEGRAL_CACHE_DIR` env var. Each projection lives in its own JSON file
- * named after the SHA-256 of `(intent_id, zoom, state_timestamp)` — that
- * triple is the natural cache key:
- *  - `intent_id` scopes the cache to one intent
+ * v0.3.x payload bump: cache now stores `ExecutedProjection`, not the
+ * old `{content, source}` prose payload. The cache *namespace* moves
+ * from `projections/` to `projections-v2/` so the old prose cache files
+ * become orphans (harmless — they take a few MB; the user can rm if
+ * they care).
+ *
+ * Cache dir: `~/.cache/integral/projections-v2/` (overridable via
+ * `INTEGRAL_CACHE_DIR`). Each projection lives in its own JSON file
+ * named after the SHA-256 of `(intent_id, zoom, state_timestamp)`. The
+ * triple is the cache key:
+ *  - `intent_id` scopes to one intent
  *  - `zoom` scopes to one matrix cell
  *  - `state_timestamp` invalidates automatically when underlying state
- *    changes (a new iteration appears, h_main resolves, etc.) — old key
- *    no longer matches, fresh LLM call fires
+ *    changes (a new iteration appears, h_main resolves, a markdown file
+ *    is touched) — old key no longer matches, fresh LLM call fires
  *
- * The cache file payload includes the projection plus metadata: when it
- * was generated, which model produced it. The chrome can render
- * "generated 12m ago" hints from this metadata.
- *
- * Server-side only — `fs`, `path`, `os`, `crypto` imports. Never reachable
- * from `src/` per the test isolation discipline (CLAUDE.md § Test
- * discipline).
+ * Server-side only — `fs`, `path`, `os`, `crypto` imports.
  */
 
 import * as crypto from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
-import type { Projection } from '../src/lib/projection'
-
-export interface PersistedProjection {
-  content: string
-  source: 'llm' | 'fallback'
-  /** ISO timestamp of when the LLM call completed. */
-  generated_at: string
-  /** Model name (when source='llm'). Helps debug provider/model issues
-   *  visible in the cache without re-running. */
-  model?: string
-  intent_id: string
-  zoom: string
-  /** The `state.last_advanced_at` this projection was generated for. */
-  state_timestamp: string
-}
+import {
+  ExecutedProjectionSchema,
+  type ExecutedProjection,
+} from '../src/lib/projection/spec'
 
 const DEFAULT_CACHE_DIR = path.join(
   os.homedir(),
   '.cache',
   'integral',
-  'projections'
+  'projections-v2'
 )
 
 function cacheDir(): string {
@@ -70,19 +59,16 @@ export async function readPersistedProjection(args: {
   intentId: string
   zoom: string
   stateTimestamp: string
-}): Promise<PersistedProjection | null> {
+}): Promise<ExecutedProjection | null> {
   const key = cacheKey(args.intentId, args.zoom, args.stateTimestamp)
   try {
     const raw = await fs.readFile(cacheFile(key), 'utf-8')
-    const parsed = JSON.parse(raw) as PersistedProjection
-    // Sanity-check the payload — guards against partial writes / bit-rot.
-    if (
-      typeof parsed.content !== 'string' ||
-      (parsed.source !== 'llm' && parsed.source !== 'fallback')
-    ) {
-      return null
-    }
-    return parsed
+    const parsed = JSON.parse(raw) as unknown
+    const result = ExecutedProjectionSchema.safeParse(parsed)
+    // Stale schema (e.g. from a prior spec_version) → treat as miss so
+    // we regenerate against the new shape. Cache file gets overwritten.
+    if (!result.success) return null
+    return result.data
   } catch (err) {
     // ENOENT = cache miss. Other errors are also treated as miss for
     // resilience — a corrupt cache file shouldn't break projection
@@ -96,23 +82,17 @@ export async function writePersistedProjection(args: {
   intentId: string
   zoom: string
   stateTimestamp: string
-  projection: Projection
-  model?: string
-}): Promise<PersistedProjection> {
+  projection: ExecutedProjection
+}): Promise<ExecutedProjection> {
   const dir = cacheDir()
   await fs.mkdir(dir, { recursive: true })
   const key = cacheKey(args.intentId, args.zoom, args.stateTimestamp)
-  const payload: PersistedProjection = {
-    content: args.projection.content,
-    source: args.projection.source,
-    generated_at: new Date().toISOString(),
-    intent_id: args.intentId,
-    zoom: args.zoom,
-    state_timestamp: args.stateTimestamp,
-    ...(args.model ? { model: args.model } : {}),
-  }
-  await fs.writeFile(cacheFile(key), JSON.stringify(payload, null, 2), 'utf-8')
-  return payload
+  await fs.writeFile(
+    cacheFile(key),
+    JSON.stringify(args.projection, null, 2),
+    'utf-8'
+  )
+  return args.projection
 }
 
 /** Exposed for diagnostics / dev tooling. */

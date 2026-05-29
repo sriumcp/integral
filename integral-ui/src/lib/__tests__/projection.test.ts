@@ -1,18 +1,16 @@
 /**
  * Projection engine — kind-pluggable, indexed by (kind, zoom).
  *
- * v0.1 ships LLM-driven prose for Nous kinds at structure + detail zooms;
- * other kinds + overview zoom fall back to raw-field rendering. The matrix
- * framing lives in semantics-v0.1.md S-1.
+ * v0.3.x ships a typed-evidence pipeline:
+ *   plugin.evidence(ctx) → composer (LLM) → executor → lint → ExecutedProjection
  *
  * Discipline:
  *  - Engine is pure: takes plugins + LLMClient as injected deps. No
  *    network, no env reads, no API key handling here.
- *  - Fallback is the safety net. If a plugin is missing for the kind, or
- *    the requested zoom isn't implemented, fall back to raw-field render.
- *    The chrome should never see undefined.
- *  - Char budget enforced post-hoc. Even if the LLM overshoots, the
- *    Projection's content is clamped to the zoom's budget.
+ *  - Fallback is the safety net. If a plugin is missing, evidence-building
+ *    throws, the LLM round-trip fails twice, the executor errors, OR lint
+ *    rejects the prose → fall back to a deterministic raw-fields projection.
+ *  - Tests never call real LLMs. Mock LLMs are injected via ProjectionContext.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -24,6 +22,7 @@ import {
   type LLMClient,
   type ProjectionContext,
 } from '../projection'
+import type { ProjectionSpec, TypedEvidence } from '../projection/spec'
 
 // ─── Test fixtures ─────────────────────────────────────────────────────────
 
@@ -91,7 +90,30 @@ function makeWorkspace(
   }
 }
 
-// Mock LLM client that records calls and returns canned responses.
+const TINY_EVIDENCE: TypedEvidence = {
+  datasets: [
+    {
+      name: 'iters',
+      schema: { columns: [{ name: 'i', type: 'number' }] },
+      rows: [{ i: 1 }, { i: 2 }, { i: 3 }],
+      source_ref: { file: 'test' },
+    },
+  ],
+  excerpts: [
+    { id: 'rq', text: 'Test question', kind: 'paragraph', source_ref: { file: 'test' } },
+  ],
+  files_seen: [],
+  fingerprint: 'test-fp',
+}
+
+const VALID_SPEC: ProjectionSpec = {
+  spec_version: '1',
+  figures: [],
+  scalars: [{ op: 'count', id: 'n', dataset: 'iters', column: 'i' }],
+  prose_template: '{scalar:n} iterations. RQ: {excerpt:rq}',
+}
+
+// Mock LLM that returns the given JSON string verbatim.
 function makeMockLLM(canned: string): LLMClient & { calls: string[] } {
   const calls: string[] = []
   return {
@@ -103,259 +125,168 @@ function makeMockLLM(canned: string): LLMClient & { calls: string[] } {
   }
 }
 
-// ─── Fallback projection (raw-field render) ────────────────────────────────
+function makeEvidencePlugin(opts: {
+  evidence?: TypedEvidence | (() => TypedEvidence | Promise<TypedEvidence>)
+  evidenceThrows?: boolean
+} = {}): KindProjectionPlugin {
+  return {
+    kind: 'nous-campaign',
+    async evidence(_ctx: ProjectionContext): Promise<TypedEvidence> {
+      if (opts.evidenceThrows) throw new Error('boom')
+      const e = opts.evidence ?? TINY_EVIDENCE
+      return typeof e === 'function' ? await e() : e
+    },
+    intentSummary() {
+      return 'Nous campaign: Test'
+    },
+  }
+}
+
+// ─── Fallback ──────────────────────────────────────────────────────────────
 
 describe('fallbackProjection', () => {
-  it('returns the intent declaration title + summary as content', () => {
+  it('returns ExecutedProjection shape with empty figures + raw-field prose', () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
-    const p = fallbackProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-    })
-    expect(p.content).toContain('Test campaign')
+    const p = fallbackProjection({ intent, state, workspace: ws, zoom: 'structure' })
     expect(p.source).toBe('fallback')
-  })
-
-  it('marks source as fallback (not llm)', () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const p = fallbackProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'overview',
-    })
-    expect(p.source).toBe('fallback')
+    expect(p.figures).toEqual([])
+    expect(p.prose).toContain('Test campaign')
+    expect(p.spec_version).toBe('1')
   })
 })
 
-// ─── generateProjection (engine) ───────────────────────────────────────────
+// ─── generateProjection ────────────────────────────────────────────────────
 
-describe('generateProjection — plugin selection', () => {
-  it('falls back when no plugin is registered for the kind', async () => {
+describe('generateProjection — happy path', () => {
+  it('runs plugin.evidence → composer → executor → lint and returns ExecutedProjection', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
-    const llm = makeMockLLM('SHOULD NOT BE CALLED')
+    const llm = makeMockLLM(JSON.stringify(VALID_SPEC))
+    const plugin = makeEvidencePlugin()
     const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: {}, // empty registry
-      llm,
-    })
-    expect(p.source).toBe('fallback')
-    expect(llm.calls.length).toBe(0)
-  })
-
-  it('falls back when the plugin lacks a method for the requested zoom', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const llm = makeMockLLM('SHOULD NOT BE CALLED')
-    const onlyStructurePlugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async (_ctx) => ({
-        content: 'structure-zoom prose',
-        source: 'llm',
-      }),
-      // detail intentionally missing
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'detail',
-      plugins: { 'nous-campaign': onlyStructurePlugin },
-      llm,
-    })
-    expect(p.source).toBe('fallback')
-    expect(llm.calls.length).toBe(0)
-  })
-
-  it('falls back at overview zoom even when a plugin is registered (overview is structural)', async () => {
-    // Per the matrix framing: overview is the Map scan surface; LLM at
-    // overview slows first paint without changing scan semantics. The
-    // engine doesn't dispatch overview to plugins in v0.1.
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const llm = makeMockLLM('SHOULD NOT BE CALLED')
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async () => ({ content: 's', source: 'llm' }),
-      detail: async () => ({ content: 'd', source: 'llm' }),
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'overview',
-      plugins: { 'nous-campaign': plugin },
-      llm,
-    })
-    expect(p.source).toBe('fallback')
-    expect(llm.calls.length).toBe(0)
-  })
-
-  it('dispatches to the structure plugin method when available', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const llm = makeMockLLM('campaign structure prose')
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async (ctx) => {
-        const content = await ctx.llm.generate('test prompt')
-        return { content, source: 'llm' }
-      },
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm,
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin }, llm,
     })
     expect(p.source).toBe('llm')
-    expect(p.content).toBe('campaign structure prose')
+    expect(p.quoted_numerics.n).toBe(3)
+    expect(p.prose).toContain('3 iterations')
+    expect(p.prose).toContain('Test question')
     expect(llm.calls.length).toBe(1)
   })
-})
 
-// ─── Char budget enforcement ───────────────────────────────────────────────
-
-describe('generateProjection — char budgets', () => {
-  it('clamps structure projection to ≤800 chars even if plugin overshoots', async () => {
+  it('returns fallback at overview zoom even with a plugin registered', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
-    const longText = 'x'.repeat(2000)
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async () => ({ content: longText, source: 'llm' }),
-    }
+    const llm = makeMockLLM('SHOULD NOT BE CALLED')
+    const plugin = makeEvidencePlugin()
     const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm: makeMockLLM(''),
-    })
-    expect(p.content.length).toBeLessThanOrEqual(800)
-  })
-
-  it('does not clamp detail projection (unbounded)', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const longText = 'x'.repeat(5000)
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      detail: async () => ({ content: longText, source: 'llm' }),
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'detail',
-      plugins: { 'nous-campaign': plugin },
-      llm: makeMockLLM(''),
-    })
-    expect(p.content.length).toBe(5000)
-  })
-
-  it('appends an ellipsis when clamping for the user to see truncation', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async () => ({ content: 'x'.repeat(2000), source: 'llm' }),
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm: makeMockLLM(''),
-    })
-    expect(p.content.endsWith('…')).toBe(true)
-  })
-})
-
-// ─── ProjectionContext bundle ──────────────────────────────────────────────
-
-describe('ProjectionContext', () => {
-  it('passes the intent, state, workspace, and llm to the plugin method', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const llm = makeMockLLM('p')
-    let captured: ProjectionContext | undefined
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async (ctx) => {
-        captured = ctx
-        return { content: 'x', source: 'llm' }
-      },
-    }
-    await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm,
-    })
-    expect(captured?.intent.id).toBe('c1')
-    expect(captured?.state.intent_id).toBe('c1')
-    expect(captured?.workspace).toBe(ws)
-    expect(captured?.llm).toBe(llm)
-  })
-})
-
-// ─── Error handling ────────────────────────────────────────────────────────
-
-describe('generateProjection — errors', () => {
-  it('falls back when the plugin throws', async () => {
-    const { intent, state } = makeNousCampaign({ id: 'c1' })
-    const ws = makeWorkspace([{ intent, state }])
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async () => {
-        throw new Error('LLM call failed')
-      },
-    }
-    const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm: makeMockLLM(''),
+      intent, state, workspace: ws, zoom: 'overview',
+      plugins: { 'nous-campaign': plugin }, llm,
     })
     expect(p.source).toBe('fallback')
-    // Errors don't propagate — chrome always renders something.
+    expect(llm.calls.length).toBe(0)
   })
 
-  it('falls back when the LLM returns an empty string', async () => {
+  it('falls back when no plugin registered for kind (no LLM call)', async () => {
     const { intent, state } = makeNousCampaign({ id: 'c1' })
     const ws = makeWorkspace([{ intent, state }])
-    const plugin: KindProjectionPlugin = {
-      kind: 'nous-campaign',
-      structure: async (ctx) => {
-        const content = await ctx.llm.generate('p')
-        return { content, source: 'llm' }
-      },
-    }
+    const llm = makeMockLLM('SHOULD NOT BE CALLED')
     const p = await generateProjection({
-      intent,
-      state,
-      workspace: ws,
-      zoom: 'structure',
-      plugins: { 'nous-campaign': plugin },
-      llm: makeMockLLM(''), // empty response
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: {}, llm,
     })
     expect(p.source).toBe('fallback')
+    expect(llm.calls.length).toBe(0)
+  })
+})
+
+describe('generateProjection — error paths', () => {
+  it('falls back when evidence() throws', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    const plugin = makeEvidencePlugin({ evidenceThrows: true })
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin },
+      llm: makeMockLLM(JSON.stringify(VALID_SPEC)),
+    })
+    expect(p.source).toBe('fallback')
+  })
+
+  it('falls back when LLM returns malformed JSON twice (composer retry exhausted)', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    const llm = makeMockLLM('not json at all')
+    const plugin = makeEvidencePlugin()
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin }, llm,
+    })
+    expect(p.source).toBe('fallback')
+  })
+
+  it('falls back when prose has unsourced digits (lint reject)', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    // LLM emits a spec whose prose template hardcodes a number not in scalars.
+    const sneakySpec: ProjectionSpec = {
+      spec_version: '1',
+      figures: [],
+      scalars: [{ op: 'count', id: 'n', dataset: 'iters', column: 'i' }],
+      prose_template: '{scalar:n} iterations completed in 2025.',
+    }
+    const llm = makeMockLLM(JSON.stringify(sneakySpec))
+    const plugin = makeEvidencePlugin()
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin }, llm,
+    })
+    expect(p.source).toBe('fallback')
+  })
+
+  it('falls back when executor cannot find a referenced dataset', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    const badSpec: ProjectionSpec = {
+      spec_version: '1',
+      figures: [],
+      // composer pre-execution check should catch this before executor;
+      // either way, we should fall back without throwing.
+      scalars: [{ op: 'count', id: 'n', dataset: 'phantom', column: 'x' }],
+      prose_template: '{scalar:n}.',
+    }
+    const llm = makeMockLLM(JSON.stringify(badSpec))
+    const plugin = makeEvidencePlugin()
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': plugin }, llm,
+    })
+    expect(p.source).toBe('fallback')
+  })
+})
+
+describe('generateProjection — pipeline contract', () => {
+  it('records the model name passed in', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': makeEvidencePlugin() },
+      llm: makeMockLLM(JSON.stringify(VALID_SPEC)),
+      model: 'mock-model-1',
+    })
+    expect(p.model).toBe('mock-model-1')
+  })
+
+  it('passes the typed evidence fingerprint through to the executed projection', async () => {
+    const { intent, state } = makeNousCampaign({ id: 'c1' })
+    const ws = makeWorkspace([{ intent, state }])
+    const p = await generateProjection({
+      intent, state, workspace: ws, zoom: 'structure',
+      plugins: { 'nous-campaign': makeEvidencePlugin() },
+      llm: makeMockLLM(JSON.stringify(VALID_SPEC)),
+    })
+    expect(p.evidence_fingerprint).toBe('test-fp')
   })
 })

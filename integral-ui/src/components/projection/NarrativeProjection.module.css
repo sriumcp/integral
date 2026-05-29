@@ -1,0 +1,28 @@
+.narrative {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 16px);
+}
+
+.figureStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 12px);
+}
+
+.prose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 12px);
+}
+
+.prose p {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--ink, #2a2a2a);
+}
+
+.narrative[data-projection-source='fallback'] .prose p {
+  color: var(--ink-3, #6a6a6a);
+  font-style: italic;
+}

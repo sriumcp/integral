@@ -120,3 +120,73 @@ If v0.3.0 survives contact with real research-thread navigation, the most likely
 - Is one `'research-thread'` kind enough, or will real-world threads pressure us to split into "research-thread" (loose) + something more structured (e.g., `study-batch`) once the chrome lands? v0.3.0 commits to the loose-only shape; the answer comes from use.
 - Should `external_anchors` on `IntentState` reflect richer thread structure (one anchor per significant subdir / file) instead of just the root? v0.3.0 emits one root anchor; v0.4 may expand.
 - Is the projection plugin's selection heuristic (README → brief → PAPER → reconciliation → notes → alphabetical fill) the right ranking? Real threads will adjust.
+
+---
+
+## Projection contract addendum (v0.3.x amendment, 2026-05-29)
+
+The projection layer ships a typed-evidence + spec/execution pipeline shared by
+every projection-bearing kind (today: `nous-campaign`, `nous-iteration`,
+`research-thread`; future kinds slot in by writing one parser pack). This is an
+*internal* contract — `Intent` and `IntentState` shapes are unchanged, so this
+amendment does **not** bump the schema_version. It does change the on-the-wire
+shape of `/api/projection`, and it changes the disk cache namespace from
+`~/.cache/integral/projections/` to `~/.cache/integral/projections-v2/`.
+
+### Pipeline
+
+```
+adapter source files
+  → ParserPack (deterministic; mdast / yaml / json / csv parsers; no LLM, no inference)
+  → TypedEvidence { datasets, excerpts, files_seen, fingerprint }
+  → LLMComposer (sees schemas + ≤6-row samples + excerpt index — never bulk numerics)
+  → ProjectionSpec { figures: PlotSpec[], scalars: ScalarRequest[], prose_template }
+  → SpecExecutor (deterministic; runs Plot transforms + scalar reducers over TypedEvidence)
+  → ExecutedProjection { figures: PreparedFigure[], quoted_numerics, prose, cite_index }
+  → Lint (rejects any digit in prose not in quoted_numerics; falls back on rejection)
+  → cache write
+```
+
+### Zero-hallucination invariant
+
+The LLM is an **analyst**, never a calculator. It declares which aggregations,
+groupings, bins, windows, and named scalars it wants — the deterministic
+executor computes them against typed evidence, then substitutes them into the
+prose template. The lint enforces by regex that every digit in the rendered
+prose appears verbatim in `quoted_numerics`. If any does not, the projection
+falls back to a deterministic raw-fields render — never to the LLM's prose
+verbatim.
+
+This means:
+- "best score climbed from 0.12 to 0.55" — fine; both digits are computed
+  scalars (`first_score`, `best_score`) substituted from `{scalar:...}` placeholders.
+- "iteration 3 was the breakthrough" — the literal `3` must be a scalar
+  (`{scalar:best_iter}`); the LLM cannot hardcode it.
+- "the campaign began in 2026" — the literal `2026` must be requested as a
+  `const_string` scalar with provenance, otherwise the lint rejects.
+
+### Token economy
+
+Projections cache on disk keyed by `(intent_id, zoom, state.last_advanced_at)`.
+The cache survives dev-server restarts; only an explicit `?refresh=true`
+(triggered by the regenerate button) or a real change to underlying state
+causes a fresh LLM call. The composer prompt includes dataset *schemas* +
+≤6-row samples + ≤120-char excerpt previews — never bulk row data.
+
+### Adding a new projection-bearing kind
+
+A new kind opts into the pipeline by:
+1. Writing a parser pack at `integral-ui/vite-plugin-nous-adapter/parser-packs/<kind>.ts`
+   that produces `TypedEvidence` from the adapter's source data.
+2. Writing a thin plugin at `integral-ui/vite-plugin-nous-adapter/projection-plugins-v2/<kind>.ts`
+   that exports a `KindProjectionPlugin` with `evidence(ctx)` and
+   `intentSummary(ctx)`. ~30 lines.
+3. Registering the plugin in `projection-plugins-v2/index.ts`.
+
+The composer's narrative-arc instructions are kind-aware
+(`integral-ui/src/lib/projection/composer.ts § narrativeArcInstruction`); add a
+per-kind branch there to nudge the LLM toward the most informative story for
+that kind.
+
+No schema bump is required to add a new parser pack or plugin — the contract
+is internal.
